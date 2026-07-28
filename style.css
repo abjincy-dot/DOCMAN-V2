@@ -44,24 +44,25 @@ box-sizing: border-box;
 
 
 body.light-mode { 
---bg-deep: #c8d4e0; 
---glass-bg: rgba(185, 200, 215, 0.88); 
---glass-bg-hover: rgba(175, 192, 208, 0.94); 
---glass-border: rgba(0, 0, 0, 0.1); 
---glass-border-hover: rgba(0, 0, 0, 0.16); 
---toolbar-bg-header: linear-gradient(90deg, #e7e4fb 0%, #eee6fb 100%); 
---toolbar-bg-topbar: linear-gradient(90deg, #ebe8fc 0%, #f1e9fc 100%); 
---toolbar-bg-stats: linear-gradient(90deg, #eeecfd 0%, #f3ecfd 100%); 
---toolbar-border-header: rgba(99, 102, 241, 0.3); 
---toolbar-border-topbar: rgba(139, 92, 246, 0.22); 
---toolbar-border-stats: rgba(139, 92, 246, 0.16); 
---toolbar-glow: rgba(99, 102, 241, 0.25); 
+--bg-deep: #8a7864; 
+--app-wallpaper: url('Images/bg-theme-sunset.jpg'); 
+--glass-bg: rgba(209, 212, 216, 0.92); 
+--glass-bg-hover: rgba(198, 201, 205, 0.96); 
+--glass-border: rgba(0, 0, 0, 0.12); 
+--glass-border-hover: rgba(0, 0, 0, 0.18); 
+--toolbar-bg-header: linear-gradient(90deg, #dee1e3 0%, #d6d9db 100%); 
+--toolbar-bg-topbar: linear-gradient(90deg, #d9dcde 0%, #dfe2e4 100%); 
+--toolbar-bg-stats: linear-gradient(90deg, #dbdedf 0%, #e0e2e4 100%); 
+--toolbar-border-header: rgba(80, 80, 88, 0.32); 
+--toolbar-border-topbar: rgba(80, 80, 88, 0.24); 
+--toolbar-border-stats: rgba(80, 80, 88, 0.18); 
+--toolbar-glow: rgba(90, 90, 98, 0.25); 
 --text-primary: #1e293b; 
 --text-secondary: #334155; 
 --text-muted: #64748b; 
---card-bg: rgba(200, 212, 224, 0.93); 
---card-bg-hover: rgba(210, 220, 230, 0.97); 
---input-bg: rgba(215, 225, 235, 0.90); 
+--card-bg: rgba(205, 208, 212, 0.93); 
+--card-bg-hover: rgba(194, 197, 201, 0.97); 
+--input-bg: rgba(200, 203, 207, 0.90); 
 }
 
 body { 
@@ -156,53 +157,9 @@ animation: childReveal 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both;
     margin-left: -13px;
     margin-right: -13px;
     padding: 10px 14px;
-    background: linear-gradient(135deg, #8a1f1f 0%, #c1442e 30%, #e8823a 65%, #f4a93c 100%);
-    border: 1.5px solid rgba(10, 6, 4, 0.4);
     border-radius: 40px;
-box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.18),
-    0 20px 40px rgba(140, 50, 25, 0.35),
-    0 0 10px var(--toolbar-glow);
     position: relative;
     z-index: 1;
-}
-
-.top-panel::after {
-content: '';
-position: absolute;
-inset: 0;
-border-radius: 40px;
-background: radial-gradient(120% 90% at 15% -10%, rgba(255,255,255,0.16), transparent 55%);
-pointer-events: none;
-z-index: -1;
-}
-
-.top-panel::before {
-content: '';
-position: absolute;
-inset: 0;
-border-radius: 40px;
-padding: 1.5px;
-background: linear-gradient(
-135deg,
-#ffcf8a 0%,
-#f4a93c 45%,
-#c1442e 100%
-);
-box-shadow:
-0 0 6px 1px rgba(244, 169, 60, 0.4),
-0 0 16px 4px rgba(193, 68, 46, 0.22);
-
--webkit-mask:
-linear-gradient(#fff 0 0) content-box,
-linear-gradient(#fff 0 0);
-mask:
-linear-gradient(#fff 0 0) content-box,
-linear-gradient(#fff 0 0);
--webkit-mask-composite: xor;
-mask-composite: exclude;
-pointer-events: none;
-z-index: 1;
 }
 
 .header {
@@ -716,7 +673,7 @@ transform: translateY(-50%) scale(1.1);
 }
 
 body.light-mode .search-container { 
-background: rgba(200, 212, 224, 0.92); 
+background: rgba(206, 209, 213, 0.92); 
 }
 
 body.light-mode .search-container::before { 
@@ -890,7 +847,7 @@ color: white;
 font-weight: 700; 
 font-size: 0.75rem; 
 cursor: pointer; 
-width: auto !important; 
+width: 122px !important; 
 height: 40px; 
 justify-content: center; 
 white-space: nowrap; 
@@ -1857,7 +1814,7 @@ line-height: 1;
 }
 
 body.light-mode .card { 
-background: rgba(241, 245, 249, 0.92); 
+background: rgba(208, 211, 215, 0.92); 
 }
 
 .card::before { 
@@ -2028,8 +1985,8 @@ border: none !important;
 
 
 body.light-mode .action-bar { 
-background: #cbd5e1 !important; 
-border-color: #94a3b8 !important; 
+background: #ccced2 !important; 
+border-color: #82828a !important; 
 }
 
 .action-btn { 
@@ -2708,22 +2665,22 @@ animation: searchLinePulseLight 3.5s ease-in-out infinite;
 }
 
 body.light-mode .type-selector { 
-background: rgba(200, 212, 224, 0.92); 
+background: rgba(206, 209, 213, 0.92); 
 }
 
 
 body.light-mode .top-panel { 
-background: rgba(99, 102, 241, 0.07) !important; 
-border-color: rgba(139, 92, 246, 0.16) !important; 
+background: rgba(90, 90, 98, 0.10) !important; 
+border-color: rgba(80, 80, 88, 0.28) !important; 
 } 
 body.light-mode .header { 
-background: rgba(231, 228, 251, 0.95) !important; 
+background: rgba(214, 217, 219, 0.95) !important; 
 } 
 body.light-mode .top-bar { 
-background: rgba(235, 231, 252, 0.92) !important; 
+background: rgba(209, 212, 215, 0.92) !important; 
 } 
 body.light-mode .stats-bar { 
-background: rgba(235, 231, 252, 0.92) !important; 
+background: rgba(209, 212, 215, 0.92) !important; 
 } 
 body.light-mode .stat-item { 
 background: transparent !important; 
@@ -2818,7 +2775,7 @@ color: #d1176b !important;
 
 body.light-mode .file-card, 
 body.light-mode .note-card { 
-background: rgba(205, 217, 228, 0.95) !important; 
+background: rgba(204, 207, 211, 0.95) !important; 
 color: #1e293b !important; 
 } 
 body.light-mode .card-filename, 
@@ -2838,7 +2795,7 @@ color: #dc2626 !important;
 
 
 body.light-mode .folder-path-card { 
-background: rgba(200, 212, 224, 0.95) !important; 
+background: rgba(204, 207, 211, 0.95) !important; 
 color: #1e293b !important; 
 }
 
@@ -2916,7 +2873,7 @@ padding: 0 !important;
 .card-buttons button i { font-size: 0.75rem !important; } 
 #uploadBtn, #newNoteBtn { 
 padding: 0 13px !important; 
-width: auto !important; 
+width: 108px !important; 
 height: 38px !important; 
 border-radius: var(--radius-full) !important; 
 font-size: 0.72rem !important; 
@@ -2927,7 +2884,7 @@ font-size: 0.72rem !important;
 .stat-item { gap: 6px !important; } 
 .stat-number { font-size: 0.92rem; } 
 .stat-data label { font-size: 0.5rem; } 
-.fav-pill-btn { min-width: 80px !important; padding: 0 10px !important; font-size: 0.62rem !important; letter-spacing: 0.04em !important; height: 38px !important; }
+.fav-pill-btn { min-width: 100px !important; height: 40px !important; position: relative !important; top: 4px !important; }
 .close-viewer-btn { padding: 8px 16px; font-size: 0.85rem; } 
 }
 
@@ -4943,30 +4900,29 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     display: flex;
     align-items: center;
     justify-content: center;
-    background: radial-gradient(ellipse at 50% 30%, #c026c0 0%, #8a008a 50%, #4a004a 100%);
-    border: 1.5px solid rgba(255, 60, 255, 0.85);
-    border-radius: 999px;
-    padding: 0 20px;
+    background: transparent;
+    border: none;
+    padding: 0;
     height: 44px;
-    min-width: 110px;
+    min-width: 115px;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
-    box-shadow:
-        0 4px 0 rgba(30, 0, 30, 0.9),
-        inset 0 1px 3px rgba(255, 200, 255, 0.3),
-        inset 0 -2px 4px rgba(0, 0, 0, 0.4);
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    color: #ffffff;
-    font-family: 'Inter', sans-serif;
+    position: relative;
+    top: 3px;
 }
 
 .fav-pill-btn:active {
-    transform: translateY(4px);
-    box-shadow:
-        0 1px 0 rgba(30, 0, 30, 0.9),
-        inset 0 2px 4px rgba(0, 0, 0, 0.5);
+    transform: translateY(2px);
+    opacity: 0.85;
+}
+
+.fav-pill-img-btn {
+    height: 100%;
+    width: auto;
+    object-fit: contain;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
 }
 
 .fav-pill-img {
@@ -5447,6 +5403,25 @@ body.light-mode .cf-part-current {
   color: #c9a68a;
   font-family: Inter, sans-serif;
 }
+.search-history-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.search-history-clear {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #ff9d3d;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: none;
+  cursor: pointer;
+}
+.search-history-clear:hover, .search-history-clear:active {
+  text-decoration: underline;
+}
 .search-suggest-item {
   display: flex;
   align-items: center;
@@ -5664,6 +5639,9 @@ body.lock-active .shimmer {
     overflow: visible !important;
     position: relative;
 }
+body.light-mode .folder-toolbar {
+    background-image: url('Images/folder-toolbar-bg-light.png') !important;
+}
 
 .ft-zone {
     -webkit-tap-highlight-color: transparent;
@@ -5718,7 +5696,25 @@ body.lock-active .shimmer {
     align-items: center !important;
     justify-content: center !important;
     flex: 0 0 auto !important;
+    border-radius: 50% !important;
+    border: 2px solid currentColor !important;
+    background: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.4) 78%) !important;
+    box-shadow:
+        inset 0 1px 2px rgba(255, 255, 255, 0.18),
+        inset 0 -3px 5px rgba(0, 0, 0, 0.35),
+        0 2px 5px rgba(0, 0, 0, 0.25),
+        0 0 9px 0 currentColor !important;
 }
+.ft-icon i {
+    font-size: 1.15rem;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+.ft-back .ft-icon   { color: #22c55e !important; }
+.ft-add .ft-icon    { color: #3b82f6 !important; }
+.ft-rename .ft-icon { color: #ff8a00 !important; }
+.ft-delete .ft-icon { color: #ef4444 !important; }
+
+body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.75), rgba(0, 0, 0, 0.12) 78%) !important; }
 .ft-icon img {
     display: block !important;
     width: 100% !important;
@@ -5730,7 +5726,7 @@ body.lock-active .shimmer {
 .ft-label {
     font-size: 0.72rem;
     font-weight: 700;
-    color: #f2f4f8;
+    color: var(--text-primary);
     text-align: center;
     line-height: 1.15;
     white-space: normal;
@@ -5757,11 +5753,6 @@ body.lock-active .shimmer {
 /* Add Subfolder — blue */
 .ft-add .ft-underline { background: linear-gradient(90deg, #3b82f6, #2563eb); }
 
-body.light-mode .folder-toolbar {
-    background: linear-gradient(180deg, #1c1e24 0%, #14161b 60%, #0f1014 100%) !important;
-    border-color: rgba(255, 255, 255, 0.06) !important;
-}
-body.light-mode .ft-label { color: #f2f4f8 !important; }
 
 @media (max-width: 380px) {
     .ft-icon { width: 48px !important; height: 48px !important; min-width: 48px !important; min-height: 48px !important; }
@@ -5772,28 +5763,24 @@ body.light-mode .ft-label { color: #f2f4f8 !important; }
 
 
 /* ============================================================
-   Header / Search / Home theme — dark card with orange glow
-   border, matching requested reference image.
+   Header / Search / Home theme — dark card with magenta/purple
+   glow border and embossed edge depth.
    ============================================================ */
 .top-panel {
-    background: linear-gradient(180deg, #14161b 0%, #0f1013 55%, #0a0b0e 100%) !important;
-    border: 1px solid rgba(255, 140, 40, 0.28) !important;
+    background:
+        radial-gradient(90% 70% at 108% -15%, rgba(255, 214, 150, 0.95) 0%, rgba(255, 176, 100, 0.55) 18%, transparent 48%),
+        linear-gradient(145deg, #16213e 0%, #1f2c50 22%, #2e3468 42%, #5a4470 58%, #9a5f5e 72%, #cf7d4e 86%, #e79b56 100%);
+    border: 1.5px solid rgba(255, 214, 165, 0.28);
+    border-top-color: rgba(255, 230, 195, 0.55);
+    border-left-color: rgba(220, 225, 255, 0.40);
+    border-bottom-color: rgba(0, 0, 0, 0.65);
+    border-right-color: rgba(0, 0, 0, 0.50);
     box-shadow:
-        0 0 0 1px rgba(255, 140, 40, 0.10),
-        0 0 22px 2px rgba(255, 140, 40, 0.22),
-        0 18px 34px rgba(0, 0, 0, 0.55),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
-}
-
-.top-panel::after {
-    background: radial-gradient(120% 90% at 15% -10%, rgba(255, 170, 80, 0.08), transparent 55%) !important;
-}
-
-.top-panel::before {
-    background: linear-gradient(135deg, #ffb35c 0%, #ff8c28 45%, #d4590f 100%) !important;
-    box-shadow:
-        0 0 8px 1px rgba(255, 160, 60, 0.5),
-        0 0 20px 5px rgba(255, 120, 30, 0.25) !important;
+        inset 3px 3px 4px rgba(255, 230, 195, 0.35),
+        inset -4px -4px 7px rgba(0, 0, 0, 0.55),
+        inset 0 1.5px 0 rgba(255, 230, 195, 0.15),
+        0 20px 38px rgba(0, 0, 0, 0.6),
+        0 3px 0 rgba(0, 0, 0, 0.45);
 }
 
 /* Logo box — real icon image carries its own styling, no extra frame */
@@ -5904,16 +5891,6 @@ body.light-mode .doc-tag { color: #f2f4f8 !important; }
 
 #searchInput { padding-right: 66px !important; }
 
-body.light-mode .search-container { background: #101216 !important; }
-body.light-mode #searchInput::placeholder { color: rgba(255, 255, 255, 0.32) !important; }
-body.light-mode .search-container > i { color: rgba(255, 255, 255, 0.35) !important; }
-
-/* Folder toolbar — unify with header's orange glow border */
-/* superseded — .folder-toolbar now uses the real image background defined above */
-body.light-mode .folder-toolbar {
-    background-image: url('Images/folder-toolbar-bg.png') !important;
-}
-
 
 /* Home button — shrink to match the other top-bar controls */
 .top-bar > #backBtn,
@@ -5941,18 +5918,16 @@ body.light-mode .folder-toolbar {
    the original blue glass look.
    ============================================================ */
 .current-folder-card {
-    background-image: url('Images/folder-card-bg.png') !important;
-    background-size: 100% 100% !important;
-    background-repeat: no-repeat !important;
-    background-color: transparent !important;
+    background: var(--toolbar-bg-header) !important;
+    border: 1px solid rgba(255, 195, 60, 0.65) !important;
+    border-radius: var(--radius-lg) !important;
+    box-shadow: var(--shadow-sm) !important;
     box-sizing: border-box !important;
-    padding: 6px 16px 5px !important;
-    aspect-ratio: 1466 / 190;
-    margin: 3px -13px 3px -13px !important;
+    padding: 12px 60px 12px 16px !important;
+    margin: 10px 0 !important;
+    min-height: 64px;
     overflow: visible !important;
-    border-radius: 0 !important;
     position: relative !important;
-    border: none !important;
     display: flex !important;
     flex-direction: column !important;
     justify-content: center !important;
@@ -5961,7 +5936,16 @@ body.light-mode .folder-toolbar {
     display: none !important;
 }
 .current-folder-card::after {
-    display: none !important;
+    content: "\f07b";
+    font-family: "Font Awesome 5 Free";
+    font-weight: 900;
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.7rem;
+    color: #ff8c28;
+    text-shadow: 0 2px 6px rgba(255, 140, 40, 0.4);
 }
 .cf-path-row,
 .cf-bottom-row {
@@ -5986,13 +5970,13 @@ body.light-mode .folder-toolbar {
     font-weight: 700 !important;
 }
 .cf-sep {
-    color: rgba(255, 255, 255, 0.4) !important;
+    color: var(--text-muted) !important;
 }
 
 .cf-folder-name {
     font-size: 0.98rem !important;
     font-weight: 800 !important;
-    color: #ffffff !important;
+    color: var(--text-primary) !important;
     text-shadow: none;
 }
 
@@ -6022,6 +6006,15 @@ body.light-mode .folder-toolbar {
     border: 1px solid rgba(255, 150, 60, 0.28) !important;
 }
 
+body.light-mode .card.glow-folder {
+    background: rgba(204, 207, 211, 0.95) !important;
+    border: 1.5px solid rgba(100, 100, 108, 0.25) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+body.light-mode .card.glow-folder::before {
+    background: rgba(204, 207, 211, 0.95) !important;
+}
+
 /* Modal rename/prompt input — override the default text-selection highlight
    (was rendering as a greenish/teal tint), keep selected text crisp white */
 #modalInput::selection {
@@ -6031,4 +6024,200 @@ body.light-mode .folder-toolbar {
 #modalInput::-moz-selection {
     background: rgba(255, 255, 255, 0.28) !important;
     color: #ffffff !important;
+}
+
+/* ============================================================
+   Files / Notes toggle — gradient pill switch replacing the
+   old two separate buttons, matching the neon-bordered
+   blue-to-purple reference design.
+   ============================================================ */
+.type-selector {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    position: relative !important;
+    background: #101014 !important;
+    border-radius: 999px !important;
+    padding: 4px !important;
+    gap: 0 !important;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45) !important;
+    overflow: visible !important;
+}
+.type-selector::before {
+    content: '' !important;
+    position: absolute !important;
+    inset: 0 !important;
+    border-radius: 999px !important;
+    padding: 1.5px !important;
+    background: linear-gradient(90deg, #38bdf8 0%, #6366f1 50%, #a855f7 100%) !important;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0) !important;
+    -webkit-mask-composite: xor !important;
+    mask-composite: exclude !important;
+    pointer-events: none !important;
+    z-index: 1 !important;
+}
+
+.type-btn {
+    flex: 1 1 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 999px !important;
+    color: rgba(200, 200, 210, 0.75) !important;
+    font-weight: 700 !important;
+    font-size: 0.85rem !important;
+    padding: 11px 14px !important;
+    position: relative !important;
+    z-index: 2 !important;
+    transition: color 0.2s ease !important;
+}
+.type-btn i {
+    font-size: 0.95rem !important;
+}
+.type-btn::before {
+    display: none !important;
+}
+
+.type-btn.active {
+    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 60%, #a855f7 100%) !important;
+    color: #ffffff !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.25),
+        0 4px 14px rgba(99, 102, 241, 0.45) !important;
+}
+
+body.light-mode .type-btn:not(.active) { color: rgba(200, 200, 210, 0.75) !important; }
+
+/* ============================================================
+   Files / Notes toggle — real switch image (extracted from
+   reference), mirrored via CSS transform to represent the two
+   states, with FILES/NOTES labels overlaid.
+   ============================================================ */
+.type-selector {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    background: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    height: auto !important;
+    min-height: 82px !important;
+    overflow: visible !important;
+}
+.type-selector::before {
+    display: none !important;
+}
+
+.ft-toggle {
+    position: relative !important;
+    width: 214px !important;
+    height: 52px !important;
+    min-width: 214px !important;
+    min-height: 52px !important;
+    max-width: none !important;
+    max-height: none !important;
+    flex: 0 0 214px !important;
+    overflow: hidden !important;
+}
+
+.ft-toggle-track {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background-image: url('Images/toggle-track.png') !important;
+    background-size: 100% 100% !important;
+    background-repeat: no-repeat !important;
+    z-index: 1 !important;
+    pointer-events: none !important;
+}
+
+/* The glossy black card itself slides between FILES and NOTES. */
+.ft-toggle-thumb {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 50% !important;
+    height: 100% !important;
+    background-image: url('Images/toggle-thumb.png') !important;
+    background-size: 100% 100% !important;
+    background-repeat: no-repeat !important;
+    z-index: 3 !important;
+    pointer-events: none !important;
+    transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+.ft-toggle.active-notes .ft-toggle-thumb {
+    left: 50% !important;
+    transform: scaleX(-1) !important;
+}
+.ft-toggle.hidden,
+.type-selector.hidden { display: none !important; }
+
+/* Label text sits above the thumb so it's always visible and always
+   shows the correct word for whichever side it's on. */
+.ft-toggle-label {
+    position: absolute !important;
+    top: 50% !important;
+    width: 50% !important;
+    text-align: center !important;
+    transform: translateY(-50%) !important;
+    font-weight: 800 !important;
+    font-size: 0.92rem !important;
+    letter-spacing: 0.03em !important;
+    color: rgba(255, 255, 255, 0.38) !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
+    pointer-events: none !important;
+    z-index: 5 !important;
+    transition: color 0.25s ease, text-shadow 0.25s ease, opacity 0.25s ease !important;
+}
+.ft-toggle-label-files {
+    left: 0 !important;
+}
+.ft-toggle-label-notes {
+    right: 0 !important;
+}
+
+/* Active side (wherever the black thumb currently sits) glows sky blue;
+   the other side dims. */
+.ft-toggle.active-files .ft-toggle-label-files,
+.ft-toggle.active-notes .ft-toggle-label-notes {
+    color: #7dd3fc !important;
+    text-shadow:
+        0 0 6px rgba(56, 189, 248, 0.95),
+        0 0 16px rgba(56, 189, 248, 0.65),
+        0 1px 2px rgba(0, 0, 0, 0.5) !important;
+}
+.ft-toggle.active-files .ft-toggle-label-notes,
+.ft-toggle.active-notes .ft-toggle-label-files {
+    color: rgba(255, 255, 255, 0.32) !important;
+    text-shadow: none !important;
+}
+
+.ft-toggle-zone {
+    position: absolute !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    width: 50% !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    cursor: pointer !important;
+    z-index: 4 !important;
+    -webkit-tap-highlight-color: transparent !important;
+    transition: transform 0.15s ease !important;
+}
+.ft-toggle-zone-files {
+    left: 0 !important;
+}
+.ft-toggle-zone-notes {
+    right: 0 !important;
+}
+.ft-toggle-zone:active {
+    transform: scale(0.97) !important;
 }
