@@ -157,7 +157,7 @@ animation: childReveal 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both;
     margin-left: -13px;
     margin-right: -13px;
     padding: 10px 14px;
-    border-radius: 40px;
+    border-radius: 24px;
     position: relative;
     z-index: 1;
 }
@@ -214,15 +214,19 @@ box-shadow: none;
 }
 
 
-.header-title { 
-display: flex; 
-flex-direction: column; 
-gap: 2px; 
-align-items: center;
-position: absolute;
-left: 50%;
-transform: translateX(-50%);
-pointer-events: none;
+.header-title {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    align-items: flex-start !important;
+    position: relative !important;
+    left: auto !important;
+    transform: none !important;
+    pointer-events: auto !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    padding-right: 74px !important;
+    box-sizing: border-box !important;
 }
 
 .main-line { 
@@ -233,9 +237,9 @@ flex-wrap: wrap;
 }
 
 .header-title h1 {
-    font-size: 2rem;
+    font-size: 1.7rem;
     font-weight: 900;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
     line-height: 0.9;
     margin: 0;
 
@@ -260,16 +264,18 @@ background: linear-gradient(135deg, #1e293b, #334155, #475569);
 }
 
 .doc-tag { 
-font-size: 0.7rem; 
+font-size: 0.62rem; 
   font-weight: 600; 
   color: #e2e8f0;
   background: rgba(255,158,68,0.12); 
-  padding: 4px 10px; 
+  padding: 3px 9px; 
   border-radius: var(--radius-full); 
   display: inline-flex; 
   align-items: center; 
-  gap: 5px; 
+  gap: 4px; 
   width: fit-content;
+  white-space: nowrap;
+  flex-shrink: 0;
   position: relative;
   border: 1px solid transparent;
   background-clip: padding-box;
@@ -1773,19 +1779,19 @@ text-overflow: ellipsis;
 .dept-info     { display: none; }
 
 
-.dept-card[data-dept="REMELT"]    .dept-pill-bg { background: linear-gradient(135deg, #211f4c, #12123a); } 
-.dept-card[data-dept="CASTER"]    .dept-pill-bg { background: linear-gradient(135deg, #6a2f80, #301447); } 
-.dept-card[data-dept="HRM"]       .dept-pill-bg { background: linear-gradient(135deg, #873671, #4a133d); } 
-.dept-card[data-dept="CRM"]       .dept-pill-bg { background: linear-gradient(135deg, #a33a60, #5f1b39); } 
-.dept-card[data-dept="ANNEALING"] .dept-pill-bg { background: linear-gradient(135deg, #d45d5c, #883232); } 
-.dept-card[data-dept="TLL"]       .dept-pill-bg { background: linear-gradient(135deg, #f49d37, #ac5401); } 
-.dept-card[data-dept="SLITTER"]   .dept-pill-bg { background: linear-gradient(135deg, #e4a8a9, #995d63); } 
-.dept-card[data-dept="UTILITY"]   .dept-pill-bg { background: linear-gradient(135deg, #e6bcbc, #9e7173); }
+.dept-card[data-dept="Personal"]         .dept-pill-bg { background: linear-gradient(135deg, #211f4c, #12123a); } 
+.dept-card[data-dept="Work"]             .dept-pill-bg { background: linear-gradient(135deg, #6a2f80, #301447); } 
+.dept-card[data-dept="Finance & Bills"]  .dept-pill-bg { background: linear-gradient(135deg, #f49d37, #ac5401); } 
+.dept-card[data-dept="Education"]        .dept-pill-bg { background: linear-gradient(135deg, #873671, #4a133d); } 
+.dept-card[data-dept="Health & Medical"] .dept-pill-bg { background: linear-gradient(135deg, #d45d5c, #883232); } 
+.dept-card[data-dept="ID & Legal"]       .dept-pill-bg { background: linear-gradient(135deg, #a33a60, #5f1b39); } 
+.dept-card[data-dept="Home & Property"]  .dept-pill-bg { background: linear-gradient(135deg, #e4a8a9, #995d63); } 
+.dept-card[data-dept="Others"]           .dept-pill-bg { background: linear-gradient(135deg, #e6bcbc, #9e7173); }
 
 .dept-card .dept-pill-center-icon i { filter: drop-shadow(0 1px 4px rgba(0,0,0,0.55)); }
 
 
-.dept-card:not([data-dept="REMELT"]):not([data-dept="CASTER"]):not([data-dept="HRM"]):not([data-dept="CRM"]):not([data-dept="ANNEALING"]):not([data-dept="TLL"]):not([data-dept="SLITTER"]):not([data-dept="UTILITY"]) .dept-pill-bg { background: linear-gradient(135deg, #2a52e0, #3a6af0); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]) .dept-pill-bg { background: linear-gradient(135deg, #2a52e0, #3a6af0); }
 
 
 .content { 
@@ -2670,17 +2676,19 @@ background: rgba(206, 209, 213, 0.92);
 
 
 body.light-mode .top-panel { 
-background: rgba(90, 90, 98, 0.10) !important; 
-border-color: rgba(80, 80, 88, 0.28) !important; 
+background:
+        radial-gradient(ellipse 160px 140px at 100% 0%, rgba(255, 90, 40, 0.38) 0%, rgba(255, 80, 30, 0.14) 35%, transparent 60%),
+        #0c0f1c !important; 
+border-color: transparent !important; 
 } 
 body.light-mode .header { 
-background: rgba(214, 217, 219, 0.95) !important; 
+background: none !important; 
 } 
 body.light-mode .top-bar { 
-background: rgba(209, 212, 215, 0.92) !important; 
+background: none !important; 
 } 
 body.light-mode .stats-bar { 
-background: rgba(209, 212, 215, 0.92) !important; 
+background: #0c0f1c !important; 
 } 
 body.light-mode .stat-item { 
 background: transparent !important; 
@@ -2884,7 +2892,7 @@ font-size: 0.72rem !important;
 .stat-item { gap: 6px !important; } 
 .stat-number { font-size: 0.92rem; } 
 .stat-data label { font-size: 0.5rem; } 
-.fav-pill-btn { min-width: 100px !important; height: 40px !important; position: relative !important; top: 4px !important; }
+.fav-pill-btn { min-width: 92px !important; height: 70px !important; position: relative !important; top: 4px !important; }
 .close-viewer-btn { padding: 8px 16px; font-size: 0.85rem; } 
 }
 
@@ -5464,7 +5472,6 @@ body.light-mode .cf-part-current {
   transition: background 0.15s ease, transform 0.15s ease;
 }
 .stat-icon-btn:active { background: rgba(255,255,255,0.14); transform: scale(0.94); }
-body.light-mode .stat-icon-btn { border-color: rgba(0,0,0,0.12); color: #475569; background: rgba(0,0,0,0.04); }
 
 .stat-icon-btn-recent {
   background: radial-gradient(circle at 32% 26%, rgba(255,255,255,0.16) 0%, rgba(14,16,22,0.92) 48%, rgba(6,7,10,0.96) 100%);
@@ -5585,6 +5592,17 @@ body.light-mode .stat-icon-btn { border-color: rgba(0,0,0,0.12); color: #475569;
   font-size: 0.85rem;
   margin-left: 4px;
   flex-shrink: 0;
+}
+
+.dept-lock-indicator {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  color: #fbbf24;
+  font-size: 0.7rem;
+  z-index: 3;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+  pointer-events: none;
 }
 body.lock-active .shimmer {
   animation-play-state: paused;
@@ -5768,25 +5786,90 @@ body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(2
    ============================================================ */
 .top-panel {
     background:
-        radial-gradient(90% 70% at 108% -15%, rgba(255, 214, 150, 0.95) 0%, rgba(255, 176, 100, 0.55) 18%, transparent 48%),
-        linear-gradient(145deg, #16213e 0%, #1f2c50 22%, #2e3468 42%, #5a4470 58%, #9a5f5e 72%, #cf7d4e 86%, #e79b56 100%);
-    border: 1.5px solid rgba(255, 214, 165, 0.28);
-    border-top-color: rgba(255, 230, 195, 0.55);
-    border-left-color: rgba(220, 225, 255, 0.40);
-    border-bottom-color: rgba(0, 0, 0, 0.65);
-    border-right-color: rgba(0, 0, 0, 0.50);
+        radial-gradient(ellipse 160px 140px at 100% 0%, rgba(255, 90, 40, 0.38) 0%, rgba(255, 80, 30, 0.14) 35%, transparent 60%),
+        #0c0f1c !important;
+    border: none !important;
     box-shadow:
-        inset 3px 3px 4px rgba(255, 230, 195, 0.35),
-        inset -4px -4px 7px rgba(0, 0, 0, 0.55),
-        inset 0 1.5px 0 rgba(255, 230, 195, 0.15),
-        0 20px 38px rgba(0, 0, 0, 0.6),
-        0 3px 0 rgba(0, 0, 0, 0.45);
+        0 0 0 0.6px rgba(255, 130, 20, 0.65),
+        0 20px 44px rgba(0, 0, 0, 0.55) !important;
+    padding: 14px 18px 16px !important;
+    margin-right: -11px !important;
+    overflow: hidden !important;
+}
+.top-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 0.6px;
+    background: linear-gradient(135deg, #ffb347, #ff8f1f, #ffa337, #ffb347);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 1;
+    z-index: 0;
+}
+/* Warm glow blob behind the gear icon, top-right corner — small, corner-hugging, mango orange */
+.top-panel::after {
+    display: none !important;
+}
+.top-panel > * { position: relative; z-index: 1; }
+
+/* Stats-bar icon buttons — colour underline accents added below each,
+   dimensions/corners of .stat-icon-btn itself are untouched. */
+.stat-icon-col {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex: 0 0 auto !important;
+}
+.stat-icon-underline {
+    width: 26px;
+    height: 3px;
+    border-radius: 3px;
+}
+.stat-icon-underline-recent      { background: linear-gradient(90deg, #60a5fa, #3b82f6); }
+.stat-icon-underline-sort        { background: linear-gradient(90deg, #ffb15c, #ff8c28); }
+.stat-icon-underline-dashboard   { background: linear-gradient(90deg, #6ee7b7, #34d399); }
+.stat-icon-underline-recyclebin  { background: linear-gradient(90deg, #fb7185, #f43f5e); }
+
+.stats-bar-divider {
+    width: 1px;
+    align-self: stretch;
+    margin: 4px 0;
+    background: rgba(255, 255, 255, 0.18);
+    flex: 0 0 1px;
+}
+
+.fav-pill-btn {
+    flex: 0 1 26% !important;
+    min-width: 92px !important;
+    max-width: 130px !important;
+    height: 70px !important;
+    overflow: hidden !important;
+}
+.fav-pill-img-btn {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+}
+.stats-bar {
+    background: #0c0f1c !important;
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    border-radius: 12px !important;
+    padding: 10px 12px !important;
+    margin-top: 4px !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+    align-items: center !important;
 }
 
 /* Logo box — real icon image carries its own styling, no extra frame */
 .logo-inner {
-    width: 60px !important;
-    height: 60px !important;
+    width: 52px !important;
+    height: 52px !important;
     background: none !important;
     border: none !important;
     box-shadow: none !important;
@@ -5805,7 +5888,7 @@ body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(2
 }
 .logo-doc { color: #ffffff !important; }
 .logo-man {
-    background: linear-gradient(135deg, #ffcf8a, #ff8c28 60%, #d4590f) !important;
+    background: linear-gradient(135deg, #e8720a, #c95a05, #d96608, #e8720a) !important;
     -webkit-background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
 }
@@ -5816,7 +5899,7 @@ body.light-mode .logo-doc { color: #14161b !important; }
 .doc-tag {
     background: rgba(255, 140, 40, 0.08) !important;
     color: #f2f4f8 !important;
-    border: 1px solid rgba(255, 150, 60, 0.5) !important;
+    border: 1px solid #ff8c28 !important;
 }
 .doc-tag::before { display: none !important; }
 .doc-tag i { color: #f2f4f8 !important; }
@@ -5827,28 +5910,43 @@ body.light-mode .doc-tag { color: #f2f4f8 !important; }
     background: none !important;
     box-shadow: none !important;
     padding: 0 !important;
+    margin: 0 !important;
+    position: absolute !important;
+    top: 3px !important;
+    right: 3px !important;
+}
+.header-dots {
+    position: absolute;
+    right: 48px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 60px;
+    height: 60px;
+    background-image: radial-gradient(rgba(255, 150, 50, 0.35) 1px, transparent 1.5px);
+    background-size: 10px 10px;
+    pointer-events: none;
+    z-index: 0;
 }
 .header-gear-icon {
-    width: 66px !important;
-    height: 66px !important;
+    width: 54px !important;
+    height: 54px !important;
 }
 
-/* Home button — dark rounded square, orange border glow */
+/* Home button — icon only, no background square/border */
 #homeBtn.btn-back,
 #homeBtn {
-    background: radial-gradient(circle at 35% 30%, #23262e 0%, #16181d 65%, #101216 100%) !important;
-    border: 1px solid rgba(255, 150, 60, 0.55) !important;
-    border-radius: 16px !important;
-    box-shadow: 0 0 12px rgba(255, 140, 40, 0.28) !important;
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 
 /* Search bar — dark pill, subtle border, no purple glow */
 .search-container {
     background: #101216 !important;
-    border: 1px solid rgba(255, 170, 60, 0.55) !important;
+    border: 1px solid #ff8c28 !important;
 }
 .search-container::before { display: none !important; }
-.search-container > i { color: rgba(255, 255, 255, 0.35) !important; }
+.search-container > i { color: rgba(255, 255, 255, 0.85) !important; }
 .search-container:focus-within > i { color: #ff8c28 !important; }
 #searchInput { caret-color: #ff8c28 !important; }
 #searchInput::placeholder { color: rgba(255, 255, 255, 0.32) !important; }
@@ -5869,7 +5967,7 @@ body.light-mode .doc-tag { color: #f2f4f8 !important; }
     transform: translateY(-50%) !important;
     width: 16px !important;
     height: 16px !important;
-    color: rgba(255, 255, 255, 0.35);
+    color: rgba(255, 255, 255, 0.9) !important;
     z-index: 2;
     pointer-events: none;
 }
@@ -5895,19 +5993,23 @@ body.light-mode .doc-tag { color: #f2f4f8 !important; }
 /* Home button — shrink to match the other top-bar controls */
 .top-bar > #backBtn,
 .top-bar > #homeBtn {
-    width: 54px !important;
-    min-width: 54px !important;
+    width: 52px !important;
+    min-width: 52px !important;
 }
 #homeBtn.btn-back,
 #homeBtn {
-    width: 54px !important;
-    min-width: 54px !important;
-    height: 54px !important;
-    border-radius: 16px !important;
+    width: 52px !important;
+    min-width: 52px !important;
+    height: 52px !important;
+    border-radius: 13px !important;
 }
 #homeBtn .home-icon-img {
-    width: 47px !important;
-    height: 47px !important;
+    width: 52px !important;
+    height: 52px !important;
+}
+#searchInput {
+    padding-top: 7px !important;
+    padding-bottom: 7px !important;
 }
 
 
@@ -6220,4 +6322,57 @@ body.light-mode .type-btn:not(.active) { color: rgba(200, 200, 210, 0.75) !impor
 }
 .ft-toggle-zone:active {
     transform: scale(0.97) !important;
+}
+
+/* ============================================================
+   FINAL FORCE OVERRIDE — top panel must look identical in
+   light mode and dark mode. Placed at the very end of the file
+   with maximum specificity + !important on every box property
+   to guarantee nothing upstream can win.
+   ============================================================ */
+body.light-mode .top-panel,
+body.light-mode.light-mode .top-panel {
+    background:
+        radial-gradient(ellipse 160px 140px at 100% 0%, rgba(255, 90, 40, 0.38) 0%, rgba(255, 80, 30, 0.14) 35%, transparent 60%),
+        #0c0f1c !important;
+    background-color: #0b0c11 !important;
+    border: none !important;
+    box-shadow:
+        0 0 0 0.6px rgba(255, 130, 20, 0.65),
+        0 0 34px rgba(255, 130, 20, 0.14),
+        0 20px 44px rgba(0, 0, 0, 0.55) !important;
+}
+body.light-mode .header,
+body.light-mode .top-bar {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+body.light-mode .stats-bar {
+    background: #0c0f1c !important;
+    background-color: #0e0f14 !important;
+    border: 1px solid rgba(255, 255, 255, 0.07) !important;
+    box-shadow: none !important;
+}
+body.light-mode .header-title h1,
+body.light-mode .logo-doc {
+    color: #ffffff !important;
+}
+body.light-mode .doc-tag {
+    color: #f2f4f8 !important;
+    background: rgba(255,158,68,0.12) !important;
+}
+body.light-mode #searchInput {
+    color: #f5f6f8 !important;
+}
+body.light-mode #searchInput::placeholder {
+    color: rgba(255,255,255,0.4) !important;
+}
+body.light-mode .search-container {
+    background: #101216 !important;
+    background-color: #101216 !important;
+}
+body.light-mode .search-container > i {
+    color: rgba(255,255,255,0.35) !important;
 }
