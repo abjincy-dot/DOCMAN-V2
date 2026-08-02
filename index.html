@@ -20,7 +20,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/inter/inter.css">
-<link rel="stylesheet" href="style.css?v=73">
+<link rel="stylesheet" href="style.css?v=106-TEST">
 
 </head>
 <body>
@@ -366,6 +366,7 @@ border: 1px solid rgba(255,255,255,0.2);
       <h1><span class="logo-doc">DOC</span><span class="logo-man">MAN</span></h1>
       <span class="doc-tag"><i class="fas fa-shield-alt"></i> Document Manager</span>
     </div>
+    <div class="header-dots"></div>
     <button id="settingsBtn" class="header-gear-btn" aria-label="Settings">
      
         
@@ -425,10 +426,25 @@ border: 1px solid rgba(255,255,255,0.2);
     <button id="favStatItem" class="fav-pill-btn">
       <img src="Images/favorite-btn.png" alt="Favorite" class="fav-pill-img-btn">
     </button>
-    <button id="recentStatItem" class="stat-icon-btn stat-icon-btn-recent" title="Recent" aria-label="Recent Documents"><i class="fas fa-clock-rotate-left"></i></button>
-    <button id="sortBtn" class="stat-icon-btn stat-icon-btn-sort" aria-label="Sort" title="Sort"><i class="fas fa-sort"></i></button>
-    <button id="dashboardStatItem" class="stat-icon-btn stat-icon-btn-dashboard" title="Storage Dashboard" aria-label="Storage Dashboard"><i class="fas fa-chart-pie"></i></button>
-    <button id="recycleBinStatItem" class="stat-icon-btn stat-icon-btn-recyclebin" title="Recycle Bin" aria-label="Recycle Bin"><i class="fas fa-trash-can"></i></button>
+    <div class="stat-icon-col">
+      <button id="recentStatItem" class="stat-icon-btn stat-icon-btn-recent" title="Recent" aria-label="Recent Documents"><i class="fas fa-clock-rotate-left"></i></button>
+      <span class="stat-icon-underline stat-icon-underline-recent"></span>
+    </div>
+    <span class="stats-bar-divider"></span>
+    <div class="stat-icon-col">
+      <button id="sortBtn" class="stat-icon-btn stat-icon-btn-sort" aria-label="Sort" title="Sort"><i class="fas fa-sort"></i></button>
+      <span class="stat-icon-underline stat-icon-underline-sort"></span>
+    </div>
+    <span class="stats-bar-divider"></span>
+    <div class="stat-icon-col">
+      <button id="dashboardStatItem" class="stat-icon-btn stat-icon-btn-dashboard" title="Storage Dashboard" aria-label="Storage Dashboard"><i class="fas fa-chart-pie"></i></button>
+      <span class="stat-icon-underline stat-icon-underline-dashboard"></span>
+    </div>
+    <span class="stats-bar-divider"></span>
+    <div class="stat-icon-col">
+      <button id="recycleBinStatItem" class="stat-icon-btn stat-icon-btn-recyclebin" title="Recycle Bin" aria-label="Recycle Bin"><i class="fas fa-trash-can"></i></button>
+      <span class="stat-icon-underline stat-icon-underline-recyclebin"></span>
+    </div>
   </div> <!-- stats-bar close -->
   </div> <!-- top-panel close -->
 
