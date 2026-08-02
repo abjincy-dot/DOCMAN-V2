@@ -122,13 +122,16 @@ function computeFolderSizeBytes(folderObj, pathArr) {
 
 const haptic = (() => {
     const cap = () => window.Capacitor?.Plugins?.Haptics;
-    const imp = style => cap()?.impact({ style }) ?? navigator.vibrate?.(style === 'Heavy' ? 30 : style === 'Medium' ? 18 : 12);
+    // Everything routes through a single gentle vibration now — no more
+    // Medium/Heavy impact styles, and the fallback duration is short
+    // regardless of which action triggered it.
+    const imp = () => cap()?.impact({ style: 'Light' }) ?? navigator.vibrate?.(10);
     return {
-        press:     () => imp('Light'),
-        longPress: () => imp('Medium'),
-        success:   () => cap() ? imp('Medium') : navigator.vibrate?.([10, 30, 10]),
-        warning:   () => imp('Heavy'),
-        toggle:    () => imp('Light'),
+        press:     () => imp(),
+        longPress: () => imp(),
+        success:   () => imp(),
+        warning:   () => imp(),
+        toggle:    () => imp(),
     };
 })();
 
@@ -1266,21 +1269,24 @@ function getSearchSuggestions(query, limit = 8) {
         out.push({ name, path, icon, kind });
     };
 
+    const scopeRoot = getCurrentFolderObject() || fileSystem;
     (function walk(obj, pathArr) {
         for (const key in obj) {
             if (!obj[key] || typeof obj[key] !== 'object') continue;
             if (key.toLowerCase().includes(q)) push(key, [...pathArr, key].join('/'), 'fa-folder', 'folder');
             walk(obj[key], [...pathArr, key]);
         }
-    })(fileSystem, []);
+    })(scopeRoot, [...currentPath]);
 
     for (const path in allFiles) {
+        if (!isWithinSearchScope(path)) continue;
         if (!allFiles[path]) continue;
         for (const f of allFiles[path]) {
             if (f.name.toLowerCase().includes(q)) push(f.name, path, getFileIcon(f.name), 'file');
         }
     }
     for (const path in allNotes) {
+        if (!isWithinSearchScope(path)) continue;
         if (!allNotes[path]) continue;
         for (const n of allNotes[path]) {
             if (n.title.toLowerCase().includes(q)) push(n.title, path, 'fa-sticky-note', 'note');
@@ -1297,8 +1303,19 @@ function renderSearchSuggestions() {
 
     let itemsHtml = '';
     if (!query) {
-        box.classList.add('hidden');
-        return;
+        const history = loadSearchHistory();
+        if (!history.length) { box.classList.add('hidden');
+            return; }
+        itemsHtml = '<div class="search-suggest-heading search-history-heading">' +
+                '<span>Recent searches</span>' +
+                '<button type="button" class="search-history-clear" id="searchHistoryClearBtn" aria-label="Clear recent searches">Clear</button>' +
+            '</div>' +
+            history.map(term => `
+                <div class="search-suggest-item search-history-item" data-fill="${escapeHtml(term)}">
+                    <i class="fas fa-clock-rotate-left"></i>
+                    <span>${escapeHtml(term)}</span>
+                </div>
+            `).join('');
     } else {
         const suggestions = getSearchSuggestions(query);
         if (!suggestions.length) { box.classList.add('hidden');
@@ -1324,6 +1341,14 @@ function renderSearchSuggestions() {
             render();
         });
     });
+    const clearBtn = document.getElementById('searchHistoryClearBtn');
+    if (clearBtn) {
+        clearBtn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            saveSearchHistory([]);
+            box.classList.add('hidden');
+        });
+    }
 }
 
 function loadRecents() {
@@ -1422,6 +1447,15 @@ function getFilesForCurrentFolder() {
 
 function getNotesForCurrentFolder() {
     return allNotes[currentPath.join('/')] || [];
+}
+
+// Returns true if folderPathStr (e.g. "REMELT/Motors") is the current
+// folder or a sub-folder of it. When currentPath is empty (root), every
+// folder is considered in scope — search behaves the same as before at root.
+function isWithinSearchScope(folderPathStr) {
+    const scope = currentPath.join('/');
+    if (!scope) return true;
+    return folderPathStr === scope || folderPathStr.startsWith(scope + '/');
 }
 
 // ============================================================
@@ -2842,6 +2876,7 @@ function createCard(title, onClick, isFolder = false, fullPath = null) {
     let tappedByTouch = false;
     div.addEventListener('touchend', () => {
         cancelPress();
+        if (Date.now() - lastNavigationAt < 400) return;
         if (!longPressTriggered && !isScrolling && Date.now() - touchStartTime < 300) {
             tappedByTouch = true;
             onClick();
@@ -2859,6 +2894,14 @@ function createCard(title, onClick, isFolder = false, fullPath = null) {
         if (touchCount > 1) { touchCount = 0; return; }
         touchCount = 0;
         if (longPressTriggered) { longPressTriggered = false; return; }
+        // Same leftover-synthetic-click guard as file/note cards: a click
+        // landing here right after a navigation is very likely a stray
+        // click meant for the folder that was just tapped, not this one
+        // (which only exists because that tap's navigation re-rendered
+        // the screen at the same position) -- e.g. tapping FURNACE 1
+        // navigates into it, re-rendering its subfolder F in the same
+        // spot, and the trailing click then lands on F and opens it too.
+        if (Date.now() - lastNavigationAt < 400) return;
         onClick();
     });
 
@@ -3244,6 +3287,7 @@ function render() {
 
         if (docmanSettings.searchFileNames !== false) {
             for (const path in allFiles) {
+                if (!isWithinSearchScope(path)) continue;
                 if (allFiles[path]) {
                     allFiles[path].forEach(f => {
                         if (f.name.toLowerCase().includes(query)) {
@@ -3256,6 +3300,7 @@ function render() {
 
         if (docmanSettings.searchNotes !== false) {
             for (const path in allNotes) {
+                if (!isWithinSearchScope(path)) continue;
                 if (allNotes[path]) {
                     allNotes[path].forEach(n => {
                         if (n.title.toLowerCase().includes(query) || n.content.toLowerCase().includes(query)) {
@@ -3268,6 +3313,10 @@ function render() {
 
         const folderResults = [];
         if (docmanSettings.searchFolderNames !== false) {
+            // Start the walk from the current folder's node (root node when
+            // currentPath is empty) so sub-folder names outside the current
+            // scope are never visited in the first place.
+            const scopeRoot = getCurrentFolderObject() || fileSystem;
             (function walk(obj, pathArr) {
                 for (const key in obj) {
                     if (!obj[key] || typeof obj[key] !== 'object') continue;
@@ -3277,12 +3326,13 @@ function render() {
                     }
                     walk(obj[key], fullPath);
                 }
-            })(fileSystem, []);
+            })(scopeRoot, [...currentPath]);
         }
 
         const totalResults = results.length + folderResults.length;
         document.getElementById('searchInfo').classList.remove('hidden');
-        document.getElementById('searchInfo').innerHTML = `<i class="fas fa-search"></i> Found ${totalResults} result(s) for "${escapeHtml(rawQuery)}" <button onclick="clearSearch()">Clear</button>`;
+        const scopeLabel = currentPath.length ? ` in "${escapeHtml(currentPath[currentPath.length - 1])}"` : '';
+        document.getElementById('searchInfo').innerHTML = `<i class="fas fa-search"></i> Found ${totalResults} result(s) for "${escapeHtml(rawQuery)}"${scopeLabel} <button onclick="clearSearch()">Clear</button>`;
 
         const contentDiv = document.getElementById('content');
         contentDiv.innerHTML = '';
@@ -3291,7 +3341,7 @@ function render() {
         document.getElementById('newNoteBtn').classList.add('hidden');
         document.getElementById('departmentsSection').innerHTML = '';
         document.getElementById('breadcrumb').innerHTML = '';
-        document.querySelector('.type-selector').style.display = 'none';
+        document.querySelector('.type-selector').classList.add('hidden');
 
         if (!totalResults) {
             contentDiv.innerHTML = '<div class="empty-state"><i class="fas fa-search"></i><p>No results found.</p></div>';
@@ -3329,14 +3379,14 @@ function render() {
 
     if (isRoot) {
         const deptIcons = {
-            'REMELT': 'fa-fire-flame-curved',
-            'CASTER': 'fa-industry',
-            'HRM': 'fa-users',
-            'CRM': 'fa-microchip',
-            'ANNEALING': 'fa-temperature-high',
-            'TLL': 'fa-gears',
-            'SLITTER': 'fa-scissors',
-            'UTILITY': 'fa-wrench',
+            'Personal': 'fa-user',
+            'Work': 'fa-briefcase',
+            'Finance & Bills': 'fa-wallet',
+            'Education': 'fa-graduation-cap',
+            'Health & Medical': 'fa-heart-pulse',
+            'ID & Legal': 'fa-file-shield',
+            'Home & Property': 'fa-house',
+            'Others': 'fa-folder',
         };
         const deptKeys = sortFolderKeys(Object.keys(fileSystem), fileSystem, []);
         const hasDepts = deptKeys.length > 0;
@@ -3347,9 +3397,10 @@ function render() {
             for (const dept of deptKeys) {
                 const total = countDepartmentFiles(fileSystem[dept], [dept]);
                 const icon = deptIcons[dept] || 'fa-folder';
-                const knownDepts = ['REMELT', 'CASTER', 'HRM', 'CRM', 'ANNEALING', 'TLL', 'SLITTER', 'UTILITY'];
+                const knownDepts = ['Personal', 'Work', 'Finance & Bills', 'Education', 'Health & Medical', 'ID & Legal', 'Home & Property', 'Others'];
                 const pillBgStyle = (!knownDepts.includes(dept) && deptColors[dept]) ? ` style="background:${deptColors[dept]}"` : '';
 
+                const isDeptLocked = !!(folderMeta[dept] && folderMeta[dept].locked);
                 html += `<div class="dept-card" data-dept="${escapeHtml(dept)}">
                     <div class="dept-oval">
                         <div class="dept-pill-bg"${pillBgStyle}></div>
@@ -3357,6 +3408,7 @@ function render() {
                         <div class="dept-pill-body">
                             <div class="dept-pill-name">${escapeHtml(dept)}</div>
                         </div>
+                        ${isDeptLocked ? '<i class="fas fa-lock dept-lock-indicator"></i>' : ''}
                     </div>
                     <div class="dept-pill-icon">
                         <span class="dept-count">${total}</span>
@@ -3401,7 +3453,7 @@ function render() {
     const isLeafFolder = !isRoot && !hasSubfolders;
 
     const typeSelector = document.querySelector('.type-selector');
-    if (typeSelector) typeSelector.style.display = isLeafFolder ? 'flex' : 'none';
+    if (typeSelector) typeSelector.classList.toggle('hidden', !isLeafFolder);
 
     if (isLeafFolder) {
         if (currentActiveTab === 'pdfs') {
@@ -3700,9 +3752,91 @@ function drawDeptConnectors() {
 
 function attachDepartmentPressEffects() {
     document.querySelectorAll('.dept-oval').forEach(oval => {
-        oval.addEventListener('touchstart', () => {}, { passive: false });
+        if (oval._deptPressWired) return; // avoid stacking duplicate listeners across re-renders
+        oval._deptPressWired = true;
+
         const card = oval.closest('.dept-card');
-        if (card) oval.onclick = () => selectDepartment(card.dataset.dept);
+        if (!card) return;
+        const dept = card.dataset.dept;
+
+        // Long-press → Favourite/Lock context menu, same interaction
+        // language and folderMeta storage as regular sub-folder cards
+        // (guardFolderEntry already checks folderMeta[dept].locked in
+        // selectDepartment -- this just adds the missing UI to set it).
+        let pressTimer = null;
+        let longPressTriggered = false;
+        let touchStartPos = { x: 0, y: 0 };
+        let isScrolling = false;
+
+        const openDeptContextMenu = () => {
+            showCardContextMenu({
+                title: dept,
+                isFav: !!(folderMeta[dept] && folderMeta[dept].favourite),
+                triggerEl: oval,
+                onFav: async () => {
+                    const meta = folderMeta[dept] || (folderMeta[dept] = {});
+                    meta.favourite = !meta.favourite;
+                    haptic.toggle();
+                    await saveFolderMeta();
+                    render();
+                    showToast(meta.favourite ? '⭐ Added to favourites' : 'Removed from favourites');
+                },
+                isLocked: !!(folderMeta[dept] && folderMeta[dept].locked),
+                onLock: () => {
+                    const meta = folderMeta[dept] || (folderMeta[dept] = {});
+
+                    const applyLock = async (newLocked) => {
+                        meta.locked = newLocked;
+                        haptic.toggle();
+                        await saveFolderMeta();
+                        updateLockedItemsCountSub();
+                        render();
+                        showToast(newLocked ? '🔒 Department locked' : 'Department unlocked');
+                    };
+
+                    if (meta.locked) { applyLock(false); return; }
+                    ensurePinExistsForLock(() => applyLock(true));
+                }
+            });
+        };
+
+        const startPress = (e) => {
+            const touch = e.touches ? e.touches[0] : e;
+            touchStartPos = { x: touch.clientX, y: touch.clientY };
+            longPressTriggered = false;
+            isScrolling = false;
+            pressTimer = setTimeout(() => {
+                if (isScrolling) return;
+                longPressTriggered = true;
+                haptic.longPress();
+                openDeptContextMenu();
+            }, 500);
+        };
+
+        const cancelPress = () => {
+            if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+        };
+
+        const checkMove = (e) => {
+            const touch = e.touches ? e.touches[0] : e;
+            const dx = Math.abs(touch.clientX - touchStartPos.x);
+            const dy = Math.abs(touch.clientY - touchStartPos.y);
+            if (dx > 10 || dy > 10) { isScrolling = true; cancelPress(); }
+        };
+
+        oval.addEventListener('touchstart', startPress, { passive: true });
+        oval.addEventListener('touchmove', checkMove, { passive: true });
+        oval.addEventListener('touchend', cancelPress, { passive: true });
+        oval.addEventListener('touchcancel', cancelPress, { passive: true });
+
+        oval.addEventListener('mousedown', startPress);
+        oval.addEventListener('mouseup', cancelPress);
+        oval.addEventListener('mouseleave', cancelPress);
+
+        oval.addEventListener('click', () => {
+            if (longPressTriggered) { longPressTriggered = false; return; }
+            selectDepartment(dept);
+        });
     });
 }
 
@@ -4330,22 +4464,26 @@ function closeRecycleBinView() {
 // ============================================================
 
 function setActiveTab(tab) {
+    haptic.toggle();
     currentActiveTab = tab;
     const pdfBtn = document.getElementById('pdfTabBtn');
     const notesBtn = document.getElementById('notesTabBtn');
     const uploadBtn = document.getElementById('uploadBtn');
     const newNoteBtn = document.getElementById('newNoteBtn');
+    const toggleEl = document.getElementById('fileNoteToggle');
 
     if (tab === 'pdfs') {
         pdfBtn.classList.add('active');
         notesBtn.classList.remove('active');
         uploadBtn.classList.remove('hidden');
         newNoteBtn.classList.add('hidden');
+        if (toggleEl) { toggleEl.classList.add('active-files'); toggleEl.classList.remove('active-notes'); }
     } else {
         pdfBtn.classList.remove('active');
         notesBtn.classList.add('active');
         uploadBtn.classList.add('hidden');
         newNoteBtn.classList.remove('hidden');
+        if (toggleEl) { toggleEl.classList.add('active-notes'); toggleEl.classList.remove('active-files'); }
     }
     render();
 }
@@ -6018,6 +6156,75 @@ const DRIVE_PICKER_URL = 'https://abjincy-dot.github.io/docman-drive-picker/driv
 // it's consumed (success, mismatch, or cancellation).
 let pendingDriveState = null;
 
+// ============================================================
+// ANDROID HARDWARE BACK BUTTON
+// ============================================================
+//
+// Without this listener the app never registers a 'backButton' handler,
+// so Capacitor falls back to its default WebView behaviour -- and since
+// this is a single-page app that never uses webview.history, canGoBack()
+// is always false, which left the back key doing nothing instead of
+// closing anything. This restores a normal Android back stack: close any
+// open overlay/modal first, then step out of folders/search, and only
+// exit the app on a second press at the true root (so one accidental tap
+// can't kill it).
+function initAndroidBackButton() {
+    const App = window.Capacitor?.Plugins?.App;
+    if (!App) return; // Web/PWA build -- hardware back key doesn't apply.
+
+    let lastBackPressAt = 0;
+
+    App.addListener('backButton', () => {
+        // Never let back-button navigation bypass the lock screen.
+        const lockScreen = document.getElementById('appLockScreen');
+        if (lockScreen) { App.exitApp(); return; }
+
+        // PIN verify prompt (locked folder/file/note, erase-all confirm, etc.)
+        const pinVerify = document.getElementById('pinVerifyModal');
+        if (pinVerify) { pinVerify.querySelector('#pvCancel')?.click(); return; }
+
+        // Generic confirm/prompt modal (rename, delete, new folder, etc.)
+        const genericModal = document.getElementById('customPrompt') || document.getElementById('customConfirm');
+        if (genericModal) { genericModal.querySelector('#modalCancel')?.click(); return; }
+
+        // Long-press context menu (Favourite/Lock/Rename/...).
+        const ctxMenu = document.getElementById('ctxMenuOverlay');
+        if (ctxMenu) { ctxMenu.remove(); return; }
+
+        // Full-screen sub-views.
+        const subViews = [
+            ['favouritesView', closeFavouritesView],
+            ['recentsView', closeRecentsView],
+            ['dashboardView', closeDashboardView],
+            ['recycleBinView', closeRecycleBinView],
+        ];
+        for (const [id, closeFn] of subViews) {
+            const el = document.getElementById(id);
+            if (el && !el.classList.contains('hidden')) { closeFn(); return; }
+        }
+
+        // Settings page.
+        const settingsPage = document.getElementById('settingsPage');
+        if (settingsPage && !settingsPage.classList.contains('hidden')) { closeSettingsPage(); return; }
+
+        // Search mode.
+        if (isSearchMode) { clearSearch(); return; }
+
+        // Inside a folder/department -- step up one level.
+        if (currentPath.length) { goBack(); return; }
+
+        // True root -- require a confirming second press within 2s before
+        // actually exiting.
+        const now = Date.now();
+        if (now - lastBackPressAt < 2000) {
+            App.exitApp();
+        } else {
+            lastBackPressAt = now;
+            showToast('Press back again to exit');
+        }
+    });
+}
+
 function initGoogleDrivePicker() {
     const App = window.Capacitor?.Plugins?.App;
     if (!App) return; // Web/PWA build -- Drive picker is native-app only.
@@ -6371,6 +6578,7 @@ function initElasticOverscroll() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     initGoogleDrivePicker();
+    initAndroidBackButton();
 
     // Rendered immediately, before anything else -- including the lock
     // screen below. This is what's actually underneath the lock screen the
@@ -6510,32 +6718,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             fileSystem = folderReq.result.value;
         } else {
             fileSystem = {
-                "REMELT": {
-                    "FURNACE 1": {},
-                    "FURNACE 2": {},
-                    "FURNACE 3": {},
-                    "FURNACE 4": {},
-                    "FURNACE 5": {},
-                    "ACD": {},
-                    "DBF": {},
-                    "ROD FEEDER": {},
-                    "LAUNDER HEATERS": {},
-                    "LAUNDER PANEL": {},
-                    "HPU 1": {},
-                    "HPU 2": {},
-                    "A": {},
-                    "B": {},
-                    "C": {},
-                    "D": {},
-                    "E": {},
-                },
-                "CASTER": {},
-                "HRM": {},
-                "CRM": {},
-                "ANNEALING": {},
-                "TLL": {},
-                "SLITTER": {},
-                "UTILITY": {}
+                "Personal": {},
+                "Work": {},
+                "Finance & Bills": {},
+                "Education": {},
+                "Health & Medical": {},
+                "ID & Legal": {},
+                "Home & Property": {},
+                "Others": {}
             };
             saveFolderStructure();
         }
