@@ -2,7 +2,6 @@
 // DOCMAN - Document Manager
 // Version: 1.0.0
 // ============================================================
-alert("APP.JS TEST v163 LOADED");
 
 const APP_VERSION = '1.0.2';
 
@@ -40,14 +39,14 @@ function highlightMatch(text, query) {
 }
 
 const DEPT_COLOR_PALETTE = [
-    'linear-gradient(135deg, #3f5cda, #2c3fa0)',
-    'linear-gradient(135deg, #4ea384, #2f6e58)',
-    'linear-gradient(135deg, #7f33c7, #4e1d7c)',
-    'linear-gradient(135deg, #b6337f, #7c2154)',
-    'linear-gradient(135deg, #bf5b2a, #8a3f1a)',
-    'linear-gradient(135deg, #b99233, #856419)',
-    'linear-gradient(135deg, #43815c, #2a5c3f)',
-    'linear-gradient(135deg, #304bc0, #1e2f80)'
+    'linear-gradient(135deg, #2048f9, #142fb7)',
+    'linear-gradient(135deg, #3db388, #227a5b)',
+    'linear-gradient(135deg, #7f15e4, #4e098f)',
+    'linear-gradient(135deg, #d01883, #8e0e56)',
+    'linear-gradient(135deg, #dc500c, #a03703)',
+    'linear-gradient(135deg, #d39d18, #9a6c03)',
+    'linear-gradient(135deg, #368d59, #20663d)',
+    'linear-gradient(135deg, #1339dc, #0a2293)'
 ];
 let deptColorCycleIndex = 0;
 function getRandomGradient() {
