@@ -3402,9 +3402,9 @@ overflow: hidden;
 .dept-pill-icon .dept-count { font-size: 12px; }
 .dept-pill-icon .dept-count-label { font-size: 5.5px; }
 .dept-pill-center-icon i { font-size: 1rem; }
-.dept-pill-name { font-size: 11px; letter-spacing: 0.6px; } 
+.dept-pill-name { font-size: 11px; letter-spacing: 0.3px; } 
 .dept-node { width: 7px; height: 7px; } 
-.dept-oval { min-height: 44px; flex: 0 0 65%; }
+.dept-oval { min-height: 44px; flex: 1 1 0; min-width: 0; }
 
 .dept-hub {
     width: 140px !important;
