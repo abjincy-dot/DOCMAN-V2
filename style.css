@@ -1304,7 +1304,6 @@ z-index: 3000;
 align-items: center; 
 justify-content: center; 
 padding: 24px; 
-perspective: 600px;
 transition: background 0.32s ease, backdrop-filter 0.32s ease; 
 } 
 #deptInfoModal.show { 
@@ -1322,32 +1321,28 @@ backdrop-filter: blur(10px);
 @keyframes deptInfoFlyIn { 
 0% { 
 opacity: 0; 
-transform: rotateX(-92deg) translateY(-40px) scale(0.85); 
-} 
-55% { 
-opacity: 1; 
-transform: rotateX(18deg) translateY(4px) scale(1.02); 
+transform: scale(0.6); 
 } 
 100% { 
 opacity: 1; 
-transform: rotateX(0deg) translateY(0) scale(1); 
+transform: scale(1); 
 } 
 }
 
 @keyframes deptInfoFlyOut { 
 0% { 
 opacity: 1; 
-transform: rotateX(0deg) translateY(0) scale(1); 
+transform: scale(1); 
 } 
 100% { 
 opacity: 0; 
-transform: rotateX(80deg) translateY(30px) scale(0.85); 
+transform: scale(0.6); 
 } 
 }
 
 .dept-info-card { 
 background: linear-gradient(160deg, #16283c 0%, #0e1a2a 55%, #0a1420 100%); 
-border: 4px solid lime; 
+border: 1px solid rgba(255, 140, 40, 0.4); 
 border-radius: 22px; 
 width: 100%; 
 max-width: 520px; 
@@ -1355,9 +1350,7 @@ max-height: 82vh;
 padding: 28px 24px 24px; 
 box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(255, 140, 40, 0.15); 
 position: relative; 
-transform-origin: center top;
-transform-style: preserve-3d;
-animation: deptInfoFlyIn 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; 
+animation: deptInfoFlyIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; 
 display: flex;
 flex-direction: column;
 }
