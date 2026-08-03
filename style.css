@@ -5510,6 +5510,12 @@ body.light-mode .cf-part-current {
   box-shadow: inset 0 2px 4px rgba(255,255,255,0.16), inset 0 -3px 6px rgba(0,0,0,0.55);
   color: #ffffff;
 }
+.recyclebin-icon-img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  pointer-events: none;
+}
 
 .recycle-empty-btn {
   margin-left: auto;
