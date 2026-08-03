@@ -1352,7 +1352,7 @@ background: linear-gradient(160deg, #16283c 0%, #0e1a2a 55%, #0a1420 100%);
 border: 1px solid rgba(255, 140, 40, 0.4); 
 border-radius: 22px; 
 width: 100%; 
-max-width: 340px; 
+max-width: 520px; 
 max-height: 82vh;
 padding: 28px 24px 24px; 
 box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(255, 140, 40, 0.15); 
