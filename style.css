@@ -3404,7 +3404,7 @@ overflow: hidden;
 .dept-pill-center-icon i { font-size: 1rem; }
 .dept-pill-name { font-size: 11px; letter-spacing: 0.3px; } 
 .dept-node { width: 7px; height: 7px; } 
-.dept-oval { min-height: 44px; flex: 1 1 0; min-width: 0; }
+.dept-oval { min-height: 44px; flex: 0 1 65%; min-width: 0; }
 
 .dept-hub {
     width: 140px !important;
