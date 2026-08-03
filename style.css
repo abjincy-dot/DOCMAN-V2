@@ -1304,7 +1304,7 @@ z-index: 3000;
 align-items: center; 
 justify-content: center; 
 padding: 24px; 
-perspective: 1200px;
+perspective: 600px;
 transition: background 0.32s ease, backdrop-filter 0.32s ease; 
 } 
 #deptInfoModal.show { 
@@ -1322,11 +1322,11 @@ backdrop-filter: blur(10px);
 @keyframes deptInfoFlyIn { 
 0% { 
 opacity: 0; 
-transform: rotateX(-85deg) translateY(-30px) scale(0.92); 
+transform: rotateX(-92deg) translateY(-40px) scale(0.85); 
 } 
-60% { 
+55% { 
 opacity: 1; 
-transform: rotateX(8deg) translateY(2px) scale(1.01); 
+transform: rotateX(18deg) translateY(4px) scale(1.02); 
 } 
 100% { 
 opacity: 1; 
@@ -1341,7 +1341,7 @@ transform: rotateX(0deg) translateY(0) scale(1);
 } 
 100% { 
 opacity: 0; 
-transform: rotateX(70deg) translateY(20px) scale(0.9); 
+transform: rotateX(80deg) translateY(30px) scale(0.85); 
 } 
 }
 
