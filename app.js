@@ -2,6 +2,7 @@
 // DOCMAN - Document Manager
 // Version: 1.0.0
 // ============================================================
+alert("APP.JS TEST v163 LOADED");
 
 const APP_VERSION = '1.0.2';
 
