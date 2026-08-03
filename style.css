@@ -1767,7 +1767,7 @@ font-size: 13px;
 font-weight: 700; 
 color: #fff; 
 text-transform: uppercase; 
-letter-spacing: 1.2px; 
+letter-spacing: 0.4px; 
 text-shadow: 0 1px 6px rgba(0,0,0,0.5); 
 line-height: 1.2; 
 white-space: nowrap; 
@@ -3439,7 +3439,7 @@ width: 100%;
 }
 
 .app { 
-padding-top: max(20px, env(safe-area-inset-top)); 
+padding-top: max(2px, env(safe-area-inset-top)); 
 padding-bottom: max(40px, env(safe-area-inset-bottom)); 
 padding-left: max(16px, env(safe-area-inset-left)); 
 padding-right: max(16px, env(safe-area-inset-right)); 
@@ -3447,7 +3447,7 @@ padding-right: max(16px, env(safe-area-inset-right));
 
 @supports (padding-top: env(safe-area-inset-top)) { 
 .app { 
-padding-top: calc(16px + env(safe-area-inset-top)); 
+padding-top: calc(2px + env(safe-area-inset-top)); 
 padding-bottom: calc(40px + env(safe-area-inset-bottom)); 
 padding-left: calc(16px + env(safe-area-inset-left)); 
 padding-right: calc(16px + env(safe-area-inset-right)); 
