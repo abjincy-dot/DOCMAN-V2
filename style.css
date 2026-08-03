@@ -1793,6 +1793,15 @@ text-overflow: ellipsis;
 
 .dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]) .dept-pill-bg { background: linear-gradient(135deg, #2a52e0, #3a6af0); }
 
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+1) .dept-pill-bg { background: linear-gradient(135deg, #3f5cda, #2c3fa0); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+2) .dept-pill-bg { background: linear-gradient(135deg, #4ea384, #2f6e58); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+3) .dept-pill-bg { background: linear-gradient(135deg, #7f33c7, #4e1d7c); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+4) .dept-pill-bg { background: linear-gradient(135deg, #b6337f, #7c2154); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+5) .dept-pill-bg { background: linear-gradient(135deg, #bf5b2a, #8a3f1a); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+6) .dept-pill-bg { background: linear-gradient(135deg, #b99233, #856419); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+7) .dept-pill-bg { background: linear-gradient(135deg, #43815c, #2a5c3f); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+8) .dept-pill-bg { background: linear-gradient(135deg, #304bc0, #1e2f80); }
+
 
 .content { 
 display: flex; 
@@ -2892,7 +2901,7 @@ font-size: 0.72rem !important;
 .stat-item { gap: 6px !important; } 
 .stat-number { font-size: 0.92rem; } 
 .stat-data label { font-size: 0.5rem; } 
-.fav-pill-btn { min-width: 92px !important; height: 70px !important; position: relative !important; top: 4px !important; }
+.fav-pill-btn { min-width: 92px !important; height: 30px !important; position: relative !important; top: 4px !important; }
 .close-viewer-btn { padding: 8px 16px; font-size: 0.85rem; } 
 }
 
@@ -5847,7 +5856,7 @@ body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(2
     flex: 0 1 26% !important;
     min-width: 92px !important;
     max-width: 130px !important;
-    height: 70px !important;
+    height: 30px !important;
     overflow: hidden !important;
 }
 .fav-pill-img-btn {
