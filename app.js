@@ -38,12 +38,21 @@ function highlightMatch(text, query) {
     return `${before}<mark class="search-highlight">${match}</mark>${after}`;
 }
 
+const DEPT_COLOR_PALETTE = [
+    'linear-gradient(135deg, #3f5cda, #2c3fa0)',
+    'linear-gradient(135deg, #4ea384, #2f6e58)',
+    'linear-gradient(135deg, #7f33c7, #4e1d7c)',
+    'linear-gradient(135deg, #b6337f, #7c2154)',
+    'linear-gradient(135deg, #bf5b2a, #8a3f1a)',
+    'linear-gradient(135deg, #b99233, #856419)',
+    'linear-gradient(135deg, #43815c, #2a5c3f)',
+    'linear-gradient(135deg, #304bc0, #1e2f80)'
+];
+let deptColorCycleIndex = 0;
 function getRandomGradient() {
-    const hue = Math.floor(Math.random() * 360);
-    const sat = 40 + Math.random() * 20;
-    const light1 = 30 + Math.random() * 10;
-    const light2 = light1 - 5;
-    return `linear-gradient(100deg, hsl(${hue}, ${sat}%, ${light1}%), hsl(${hue}, ${sat}%, ${light2}%))`;
+    const color = DEPT_COLOR_PALETTE[deptColorCycleIndex % DEPT_COLOR_PALETTE.length];
+    deptColorCycleIndex++;
+    return color;
 }
 
 function getFileIcon(fileName) {
@@ -6734,6 +6743,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         deptColorsReq.onsuccess = () => {
             if (deptColorsReq.result) {
                 deptColors = deptColorsReq.result.value;
+            }
+            // One-time migration: reassign existing custom department
+            // colors to the new fixed palette (was random before).
+            if (!deptColors.__migratedFixedPalette) {
+                const knownDeptsMigrate = ['Personal', 'Work', 'Finance & Bills', 'Education', 'Health & Medical', 'ID & Legal', 'Home & Property', 'Others'];
+                const customDeptKeys = Object.keys(fileSystem).filter(k => !knownDeptsMigrate.includes(k));
+                deptColorCycleIndex = 0;
+                customDeptKeys.forEach(k => {
+                    deptColors[k] = getRandomGradient();
+                });
+                deptColors.__migratedFixedPalette = true;
+                saveDeptColors();
             }
         };
 
