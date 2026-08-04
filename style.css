@@ -1182,9 +1182,8 @@ display: flex;
 flex-direction: row; 
 align-items: center; 
 position: relative; 
-width: calc(100% + 27px); 
+width: calc(100% + 15px); 
 margin-left: -15px; 
-margin-right: -12px; 
 gap: 0; 
 padding: 8px 0; 
 overflow: visible; 
@@ -1204,7 +1203,7 @@ min-width: 0;
 
 .dept-hub { 
 flex-shrink: 0; 
-width: 175px; 
+width: 160px; 
 align-self: stretch; 
 display: flex; 
 align-items: center; 
@@ -1212,6 +1211,7 @@ justify-content: flex-end;
 position: relative; 
 z-index: 1; 
 overflow: visible; 
+margin-right: -9px; 
 }
 .dept-hub, .dept-hub * {
 user-select: none;
@@ -3337,8 +3337,8 @@ padding: 10px 12px !important;
 }
 
 .departments-wrapper { 
-width: calc(100% + 27px); 
-max-width: calc(100% + 27px); 
+width: calc(100% + 15px); 
+max-width: calc(100% + 15px); 
 overflow: visible; 
 box-sizing: border-box; 
 } 
@@ -3377,8 +3377,9 @@ overflow: hidden;
 .dept-oval { min-height: 44px; flex: 0 1 calc(65% + 8px); min-width: 0; }
 
 .dept-hub {
-    width: 140px !important;
+    width: 130px !important;
     justify-content: flex-end !important;
+    margin-right: -9px !important;
 }
 
 .dept-hub-circle {
