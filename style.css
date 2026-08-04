@@ -1182,7 +1182,9 @@ display: flex;
 flex-direction: row; 
 align-items: center; 
 position: relative; 
-width: 100%; 
+width: calc(100% + 27px); 
+margin-left: -15px; 
+margin-right: -12px; 
 gap: 0; 
 padding: 8px 0; 
 overflow: visible; 
@@ -1321,7 +1323,7 @@ backdrop-filter: blur(10px);
 @keyframes deptInfoFlyIn { 
 0% { 
 opacity: 0; 
-transform: scale(0.6); 
+transform: scale(0.85); 
 } 
 100% { 
 opacity: 1; 
@@ -1336,7 +1338,7 @@ transform: scale(1);
 } 
 100% { 
 opacity: 0; 
-transform: scale(0.6); 
+transform: scale(0.9); 
 } 
 }
 
@@ -1350,7 +1352,7 @@ max-height: 82vh;
 padding: 28px 24px 24px; 
 box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(255, 140, 40, 0.15); 
 position: relative; 
-animation: deptInfoFlyIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; 
+animation: deptInfoFlyIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; 
 display: flex;
 flex-direction: column;
 }
@@ -1368,7 +1370,7 @@ display: none;
 }
 
 .dept-info-card.fly-out { 
-animation: deptInfoFlyOut 0.08s ease-in both; 
+animation: deptInfoFlyOut 0.25s ease-in both; 
 } 
 .dept-info-close { 
 position: absolute; 
@@ -3335,8 +3337,8 @@ padding: 10px 12px !important;
 }
 
 .departments-wrapper { 
-width: 100%; 
-max-width: 100%; 
+width: calc(100% + 27px); 
+max-width: calc(100% + 27px); 
 overflow: visible; 
 box-sizing: border-box; 
 } 
