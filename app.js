@@ -2424,19 +2424,19 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
 
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
-    document.getElementById('ctxFav').addEventListener('click', () => { close();
+    document.getElementById('ctxFav').addEventListener('click', () => { haptic.press(); close();
         onFav(); });
     const lockEl = document.getElementById('ctxLock');
-    if (lockEl) lockEl.addEventListener('click', () => { close();
+    if (lockEl) lockEl.addEventListener('click', () => { haptic.press(); close();
         onLock(); });
     const renameEl = document.getElementById('ctxRename');
-    if (renameEl) renameEl.addEventListener('click', () => { close();
+    if (renameEl) renameEl.addEventListener('click', () => { haptic.press(); close();
         onRename(); });
     const shareEl = document.getElementById('ctxShare');
-    if (shareEl) shareEl.addEventListener('click', () => { close();
+    if (shareEl) shareEl.addEventListener('click', () => { haptic.press(); close();
         onShare(); });
     const deleteEl = document.getElementById('ctxDelete');
-    if (deleteEl) deleteEl.addEventListener('click', () => { close();
+    if (deleteEl) deleteEl.addEventListener('click', () => { haptic.press(); close();
         onDelete(); });
 }
 
@@ -2922,6 +2922,7 @@ function createCard(title, onClick, isFolder = false, fullPath = null) {
 // ============================================================
 
 function renameCurrentFolder() {
+    haptic.press();
     if (!currentPath.length) return;
     const old = currentPath[currentPath.length - 1];
     showPromptModal('Rename folder:', old, async (newName) => {
@@ -2968,6 +2969,7 @@ function renameCurrentFolder() {
 }
 
 function deleteCurrentFolder() {
+    haptic.press();
     if (!currentPath.length) return;
     const name = currentPath[currentPath.length - 1];
     showConfirmModal(`Move "<b>${escapeHtml(name)}</b>" and all its contents to Recycle Bin?`, async (confirmed) => {
@@ -2982,6 +2984,7 @@ function deleteCurrentFolder() {
 }
 
 function addNewFolder() {
+    haptic.press();
     showPromptModal('New folder name:', '', (name) => {
         if (name && name.trim()) {
             const cur = getCurrentFolderObject();
@@ -2995,6 +2998,7 @@ function addNewFolder() {
 }
 
 function addNewDepartment() {
+    haptic.press();
     showPromptModal('New department name:', '', (name) => {
         if (name && name.trim()) {
             const trimmed = name.trim();
@@ -3696,7 +3700,6 @@ function drawDeptConnectors() {
     sorted.forEach((d, si) => {
         const y2 = n === 1 ? hubCenterY : hubStartY + hubStep * si;
         const dy = y2 - d.y1;
-        const safeCr = Math.min(cr, Math.abs(dy) / 2);
         let pathD;
         const segments = [];
 
@@ -3710,7 +3713,15 @@ function drawDeptConnectors() {
         segments.push(`M ${d.x1} ${d.y1}`);
         const exitX = d.x1 + 6;
         segments.push(`L ${exitX} ${d.y1}`);
-        const channelX = lineEndX - 35;
+        // Channel sits midway between the badge's exit point and the hub dot,
+        // and the arc radius (safeCr) is capped to half that same gap so the
+        // curve's bulge (channelX ± safeCr) never crosses back past exitX —
+        // previously a fixed 35px/25px assumed a wide badge-to-hub gap and
+        // routed straight through the badge circle when the hub sat close/small.
+        const totalGap = Math.max(4, lineEndX - exitX);
+        const channelX = exitX + totalGap / 2;
+        const maxCr = Math.max(2, totalGap / 2 - 2);
+        const safeCr = Math.min(cr, Math.abs(dy) / 2, maxCr);
 
         if (dy > 8) {
             segments.push(`L ${channelX - safeCr} ${d.y1}`);
@@ -5790,7 +5801,20 @@ function initSettingsPage() {
     });
 
     document.getElementById('settingsPage').addEventListener('click', (e) => {
-        if (e.target.id === 'settingsPage') closeSettingsPage();
+        if (e.target.id === 'settingsPage') { closeSettingsPage();
+            return; }
+        // Every tappable control inside settings (nav items, back/close
+        // buttons, stepper +/-, radio dots, danger actions, theme cards)
+        // is a <button> or a .settings-radio-dot -- one delegated listener
+        // covers all of them instead of wiring haptic into each handler.
+        if (e.target.closest('button, .settings-radio-dot')) haptic.press();
+    });
+
+    // Toggle switches (checkbox inputs) don't route through the click
+    // delegation above cleanly (label-forwarded clicks would double-fire),
+    // so give them their own single 'change' based haptic.
+    document.getElementById('settingsPage').addEventListener('change', (e) => {
+        if (e.target.matches('input[type="checkbox"]')) haptic.press();
     });
 
     // Appearance
@@ -6057,8 +6081,13 @@ function showInfo() {
 
 function closeDeptInfo() {
     const modal = document.getElementById('deptInfoModal');
+    const card = modal.querySelector('.dept-info-card');
     modal.classList.remove('show');
-    setTimeout(() => { modal.style.display = 'none'; }, 80);
+    if (card) card.classList.add('fly-out');
+    setTimeout(() => {
+        modal.style.display = 'none';
+        if (card) card.classList.remove('fly-out');
+    }, 250);
 }
 
 // ============================================================
@@ -6184,6 +6213,8 @@ function initAndroidBackButton() {
     let lastBackPressAt = 0;
 
     App.addListener('backButton', () => {
+        haptic.press();
+
         // Never let back-button navigation bypass the lock screen.
         const lockScreen = document.getElementById('appLockScreen');
         if (lockScreen) { App.exitApp(); return; }
