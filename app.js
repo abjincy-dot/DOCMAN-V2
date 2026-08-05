@@ -3517,7 +3517,7 @@ function render() {
         const actionDiv = document.createElement('div');
         actionDiv.className = 'folder-toolbar';
         actionDiv.innerHTML = `
-            <button class="ft-zone" onclick="goBack()" aria-label="Back"></button>
+            <button class="ft-zone" onclick="haptic.press(); goBack()" aria-label="Back"></button>
             <button class="ft-zone" onclick="addNewFolder()" aria-label="Add Subfolder"></button>
             <button class="ft-zone" onclick="renameCurrentFolder()" aria-label="Rename"></button>
             <button class="ft-zone" onclick="deleteCurrentFolder()" aria-label="Delete"></button>`;
@@ -3713,15 +3713,21 @@ function drawDeptConnectors() {
         segments.push(`M ${d.x1} ${d.y1}`);
         const exitX = d.x1 + 6;
         segments.push(`L ${exitX} ${d.y1}`);
-        // Channel sits midway between the badge's exit point and the hub dot,
-        // and the arc radius (safeCr) is capped to half that same gap so the
-        // curve's bulge (channelX ± safeCr) never crosses back past exitX —
-        // previously a fixed 35px/25px assumed a wide badge-to-hub gap and
-        // routed straight through the badge circle when the hub sat close/small.
-        const totalGap = Math.max(4, lineEndX - exitX);
-        const channelX = exitX + totalGap / 2;
-        const maxCr = Math.max(2, totalGap / 2 - 2);
-        const safeCr = Math.min(cr, Math.abs(dy) / 2, maxCr);
+        // Channel sits midway between the badge's exit point and the hub dot.
+        // channelX is clamped to stay strictly inside [exitX, lineEndX], and
+        // safeCr is derived from the actual (clamped) distance on each side —
+        // not a floored/assumed gap — so the curve's bulge (channelX ± safeCr)
+        // can never cross back past either endpoint, no matter how tight the
+        // badge-to-hub spacing gets. (A fixed 35px/25px previously assumed a
+        // wide gap; an earlier adaptive attempt still overshot when the gap
+        // was very small because its minimum corner radius could exceed the
+        // available half-gap.)
+        const realGap = lineEndX - exitX;
+        const totalGap = Math.max(2, realGap);
+        let channelX = exitX + totalGap / 2;
+        channelX = Math.max(exitX + 1, Math.min(lineEndX - 1, channelX));
+        const halfGap = Math.max(0, Math.min(channelX - exitX, lineEndX - channelX));
+        const safeCr = Math.min(cr, Math.abs(dy) / 2, Math.max(0, halfGap - 1));
 
         if (dy > 8) {
             segments.push(`L ${channelX - safeCr} ${d.y1}`);
