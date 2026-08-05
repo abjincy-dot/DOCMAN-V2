@@ -1,5 +1,55 @@
 /* DOCMAN application styles */
 
+@font-face {
+    font-family: 'Inter';
+    src: url('Fonts/Inter-300.woff2') format('woff2');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Inter';
+    src: url('Fonts/Inter-400.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Inter';
+    src: url('Fonts/Inter-500.woff2') format('woff2');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Inter';
+    src: url('Fonts/Inter-600.woff2') format('woff2');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Inter';
+    src: url('Fonts/Inter-700.woff2') format('woff2');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Inter';
+    src: url('Fonts/Inter-800.woff2') format('woff2');
+    font-weight: 800;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Inter';
+    src: url('Fonts/Inter-900.woff2') format('woff2');
+    font-weight: 900;
+    font-style: normal;
+    font-display: swap;
+}
+
 * { 
 margin: 0; 
 padding: 0; 
@@ -154,8 +204,9 @@ animation: childReveal 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both;
     flex-direction: column;
     gap: 4px;
     margin-bottom: 4px;
-    margin-left: 0;
-    margin-right: 0;
+    margin-left: -12px;
+    margin-right: -10px;
+    width: calc(100% + 22px);
     padding: 10px 14px;
     border-radius: 24px;
     position: relative;
@@ -1182,8 +1233,8 @@ display: flex;
 flex-direction: row; 
 align-items: center; 
 position: relative; 
-width: calc(100% + 15px); 
-margin-left: -15px; 
+width: calc(100% + 14px); 
+margin-left: -14px; 
 gap: 0; 
 padding: 8px 0; 
 overflow: visible; 
@@ -1203,7 +1254,7 @@ min-width: 0;
 
 .dept-hub { 
 flex-shrink: 0; 
-width: 160px; 
+width: 95px; 
 align-self: stretch; 
 display: flex; 
 align-items: center; 
@@ -1211,7 +1262,7 @@ justify-content: flex-end;
 position: relative; 
 z-index: 1; 
 overflow: visible; 
-margin-right: -9px; 
+margin-right: 3px; 
 }
 .dept-hub, .dept-hub * {
 user-select: none;
@@ -1222,8 +1273,8 @@ user-select: none;
 
 
 .dept-hub-circle { 
-width: 150px; 
-height: 150px; 
+width: 134px; 
+height: 134px; 
 border-radius: 50%; 
 background: 
 radial-gradient(circle at 38% 32%, 
@@ -3337,8 +3388,8 @@ padding: 10px 12px !important;
 }
 
 .departments-wrapper { 
-width: calc(100% + 15px); 
-max-width: calc(100% + 15px); 
+width: calc(100% + 14px); 
+max-width: calc(100% + 14px); 
 overflow: visible; 
 box-sizing: border-box; 
 } 
@@ -3374,17 +3425,17 @@ overflow: hidden;
 .dept-pill-center-icon i { font-size: 1rem; }
 .dept-pill-name { font-size: 11px; letter-spacing: 0.3px; } 
 .dept-node { width: 7px; height: 7px; } 
-.dept-oval { min-height: 44px; flex: 0 1 calc(65% + 8px); min-width: 0; }
+.dept-oval { min-height: 44px; flex: 0 1 calc(65% - 9px); min-width: 0; }
 
 .dept-hub {
-    width: 130px !important;
+    width: 70px !important;
     justify-content: flex-end !important;
-    margin-right: -9px !important;
+    margin-right: 2px !important;
 }
 
 .dept-hub-circle {
-    width: 110px !important;
-    height: 110px !important;
+    width: 94px !important;
+    height: 94px !important;
     border-radius: 50% !important;
     right: 2px !important;
     left: auto !important;
@@ -5783,7 +5834,8 @@ body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(2
         0 0 0 0.6px rgba(255, 130, 20, 0.65),
         0 20px 44px rgba(0, 0, 0, 0.55) !important;
     padding: 14px 18px 16px !important;
-    margin-right: 0 !important;
+    margin-left: -12px !important;
+    margin-right: -10px !important;
     overflow: hidden !important;
 }
 .top-panel::before {
