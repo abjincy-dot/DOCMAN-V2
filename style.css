@@ -4970,6 +4970,7 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     pointer-events: none;
     user-select: none;
     -webkit-user-drag: none;
+    filter: drop-shadow(0 3px 6px rgba(0,0,0,0.35)) drop-shadow(0 1px 0 rgba(255,255,255,0.10));
 }
 
 .fav-pill-img {
