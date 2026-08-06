@@ -5686,25 +5686,37 @@ body.lock-active .shimmer {
 .folder-toolbar {
     display: flex !important;
     flex-direction: row !important;
-    align-items: center !important;
-    justify-content: space-around !important;
+    align-items: stretch !important;
     width: calc(100% + 26px) !important;
     box-sizing: border-box !important;
     margin: 3px -13px 3px -13px !important;
-    padding: 16px 10px !important;
-    border-radius: 20px !important;
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
-    box-shadow: 
-        0 3px 8px rgba(0,0,0,0.30), 
-        inset 0 1px 0 rgba(255,255,255,0.07), 
-        inset 0 -1px 0 rgba(0,0,0,0.20) !important;
+    padding: 0 !important;
+    aspect-ratio: 1668 / 362;
+    border-radius: 0 !important;
+    background-image: url('Images/folder-toolbar-bg.png') !important;
+    background-size: 100% 100% !important;
+    background-repeat: no-repeat !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
     overflow: visible !important;
     position: relative;
 }
 body.light-mode .folder-toolbar {
-    background: rgba(0,0,0,0.03) !important;
-    border: 1px solid rgba(0,0,0,0.08) !important;
+    background-image: url('Images/folder-toolbar-bg-light.png') !important;
+}
+
+.ft-zone {
+    -webkit-tap-highlight-color: transparent;
+    flex: 1 1 0;
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+}
+.ft-zone:active {
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .ft-item {
