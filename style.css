@@ -3330,7 +3330,7 @@ gap: 10px;
 padding: 14px 14px !important; 
 margin: 12px 0 16px 0 !important; 
 border-radius: 20px !important; 
-background: #1a2140; 
+background: #0c1120; 
 -webkit-backdrop-filter: blur(20px);
 backdrop-filter: blur(20px); 
 width: 100%; 
@@ -3339,10 +3339,6 @@ align-items: center;
 position: relative; 
 overflow: visible; 
 border: 1px solid rgba(255, 255, 255, 0.42) !important; 
-box-shadow: 
-    0 6px 16px rgba(0,0,0,0.45), 
-    inset 0 1px 0 rgba(255,255,255,0.09), 
-    inset 0 -1px 0 rgba(0,0,0,0.28) !important; 
 }
 
 .action-bar::before{ 
@@ -5904,7 +5900,7 @@ body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(2
     object-fit: contain !important;
 }
 .stats-bar {
-    background: #0c0f1c !important;
+    background: #1a2140 !important;
     border: 1px solid rgba(255, 255, 255, 0.16) !important;
     border-radius: 12px !important;
     padding: 10px 12px !important;
@@ -5912,6 +5908,10 @@ body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(2
     justify-content: space-between !important;
     gap: 8px !important;
     align-items: center !important;
+    box-shadow: 
+        0 6px 16px rgba(0,0,0,0.45), 
+        inset 0 1px 0 rgba(255,255,255,0.09), 
+        inset 0 -1px 0 rgba(0,0,0,0.28) !important;
 }
 
 /* Logo box — real icon image carries its own styling, no extra frame */
