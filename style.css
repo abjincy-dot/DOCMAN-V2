@@ -1804,28 +1804,28 @@ width: 100%;
 .dept-info     { display: none; }
 
 
-.dept-card[data-dept="Personal"]         .dept-pill-bg { background: linear-gradient(165deg, #2f5bff, #0f1f8f); } 
-.dept-card[data-dept="Work"]             .dept-pill-bg { background: linear-gradient(165deg, #14c98a, #0f5c3f); } 
-.dept-card[data-dept="Finance & Bills"]  .dept-pill-bg { background: linear-gradient(165deg, #9a2bff, #3d0470); } 
-.dept-card[data-dept="Education"]        .dept-pill-bg { background: linear-gradient(165deg, #ff1f8f, #6b0a3d); } 
-.dept-card[data-dept="Health & Medical"] .dept-pill-bg { background: linear-gradient(165deg, #ff6a1a, #7a2600); } 
-.dept-card[data-dept="ID & Legal"]       .dept-pill-bg { background: linear-gradient(165deg, #ffbe2e, #7a5200); } 
-.dept-card[data-dept="Home & Property"]  .dept-pill-bg { background: linear-gradient(165deg, #22b56a, #0f4a2a); } 
-.dept-card[data-dept="Others"]           .dept-pill-bg { background: linear-gradient(165deg, #2450ff, #081766); }
+.dept-card[data-dept="Personal"]         .dept-pill-bg { background: linear-gradient(165deg, #1634ba, #061975); } 
+.dept-card[data-dept="Work"]             .dept-pill-bg { background: linear-gradient(165deg, #4b9466, #235230); } 
+.dept-card[data-dept="Finance & Bills"]  .dept-pill-bg { background: linear-gradient(165deg, #5f16a5, #2d0659); } 
+.dept-card[data-dept="Education"]        .dept-pill-bg { background: linear-gradient(165deg, #ac2659, #701330); } 
+.dept-card[data-dept="Health & Medical"] .dept-pill-bg { background: linear-gradient(165deg, #c95524, #712911); } 
+.dept-card[data-dept="ID & Legal"]       .dept-pill-bg { background: linear-gradient(165deg, #c28932, #764e1a); } 
+.dept-card[data-dept="Home & Property"]  .dept-pill-bg { background: linear-gradient(165deg, #427844, #204b20); } 
+.dept-card[data-dept="Others"]           .dept-pill-bg { background: linear-gradient(165deg, #193abd, #081661); }
 
 .dept-card .dept-pill-center-icon i { filter: drop-shadow(0 1px 4px rgba(0,0,0,0.55)); }
 
 
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]) .dept-pill-bg { background: linear-gradient(165deg, #2f5bff, #0f1f8f); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]) .dept-pill-bg { background: linear-gradient(165deg, #1634ba, #061975); }
 
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+1) .dept-pill-bg { background: linear-gradient(165deg, #2f5bff, #0f1f8f); }
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+2) .dept-pill-bg { background: linear-gradient(165deg, #14c98a, #0f5c3f); }
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+3) .dept-pill-bg { background: linear-gradient(165deg, #9a2bff, #3d0470); }
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+4) .dept-pill-bg { background: linear-gradient(165deg, #ff1f8f, #6b0a3d); }
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+5) .dept-pill-bg { background: linear-gradient(165deg, #ff6a1a, #7a2600); }
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+6) .dept-pill-bg { background: linear-gradient(165deg, #ffbe2e, #7a5200); }
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+7) .dept-pill-bg { background: linear-gradient(165deg, #22b56a, #0f4a2a); }
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+8) .dept-pill-bg { background: linear-gradient(165deg, #2450ff, #081766); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+1) .dept-pill-bg { background: linear-gradient(165deg, #1634ba, #061975); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+2) .dept-pill-bg { background: linear-gradient(165deg, #4b9466, #235230); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+3) .dept-pill-bg { background: linear-gradient(165deg, #5f16a5, #2d0659); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+4) .dept-pill-bg { background: linear-gradient(165deg, #ac2659, #701330); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+5) .dept-pill-bg { background: linear-gradient(165deg, #c95524, #712911); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+6) .dept-pill-bg { background: linear-gradient(165deg, #c28932, #764e1a); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+7) .dept-pill-bg { background: linear-gradient(165deg, #427844, #204b20); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+8) .dept-pill-bg { background: linear-gradient(165deg, #193abd, #081661); }
 
 
 .content { 
