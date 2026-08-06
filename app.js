@@ -3517,10 +3517,29 @@ function render() {
         const actionDiv = document.createElement('div');
         actionDiv.className = 'folder-toolbar';
         actionDiv.innerHTML = `
-            <button class="ft-zone" onclick="haptic.press(); goBack()" aria-label="Back"></button>
-            <button class="ft-zone" onclick="addNewFolder()" aria-label="Add Subfolder"></button>
-            <button class="ft-zone" onclick="renameCurrentFolder()" aria-label="Rename"></button>
-            <button class="ft-zone" onclick="deleteCurrentFolder()" aria-label="Delete"></button>`;
+            <button class="ft-item ft-rename" onclick="renameCurrentFolder()" aria-label="Rename">
+                <span class="ft-icon"><i class="fas fa-pen"></i></span>
+                <span class="ft-label">Rename</span>
+                <span class="ft-underline"></span>
+            </button>
+            <span class="ft-sep"></span>
+            <button class="ft-item ft-delete" onclick="deleteCurrentFolder()" aria-label="Delete">
+                <span class="ft-icon"><i class="fas fa-trash"></i></span>
+                <span class="ft-label">Delete</span>
+                <span class="ft-underline"></span>
+            </button>
+            <span class="ft-sep"></span>
+            <button class="ft-item ft-back" onclick="haptic.press(); goBack()" aria-label="Back">
+                <span class="ft-icon"><i class="fas fa-arrow-left"></i></span>
+                <span class="ft-label">Back</span>
+                <span class="ft-underline"></span>
+            </button>
+            <span class="ft-sep"></span>
+            <button class="ft-item ft-add" onclick="addNewFolder()" aria-label="Add Subfolder">
+                <span class="ft-icon"><i class="fas fa-plus"></i></span>
+                <span class="ft-label">Add Subfolder</span>
+                <span class="ft-underline"></span>
+            </button>`;
 
         const folderCardInDom = contentDiv.querySelector('.current-folder-card');
         if (folderCardInDom) {
