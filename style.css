@@ -3330,7 +3330,7 @@ gap: 10px;
 padding: 14px 14px !important; 
 margin: 12px 0 16px 0 !important; 
 border-radius: 20px !important; 
-background: #0c1120; 
+background: #1a2140; 
 -webkit-backdrop-filter: blur(20px);
 backdrop-filter: blur(20px); 
 width: 100%; 
@@ -3340,9 +3340,9 @@ position: relative;
 overflow: visible; 
 border: 1px solid rgba(255, 255, 255, 0.42) !important; 
 box-shadow: 
-    0 4px 10px rgba(0,0,0,0.32), 
-    inset 0 1px 0 rgba(255,255,255,0.06), 
-    inset 0 -1px 0 rgba(0,0,0,0.22) !important; 
+    0 6px 16px rgba(0,0,0,0.45), 
+    inset 0 1px 0 rgba(255,255,255,0.09), 
+    inset 0 -1px 0 rgba(0,0,0,0.28) !important; 
 }
 
 .action-bar::before{ 
