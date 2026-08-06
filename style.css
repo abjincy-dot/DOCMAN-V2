@@ -57,10 +57,10 @@ box-sizing: border-box;
 }
 
 :root { 
---bg-deep: #0a0e2e; 
+--bg-deep: #0d1220; 
 --bg-secondary: #220f38; 
 --bg-tertiary: #2a1240; 
---app-wallpaper: url('Images/bg-main-theme.jpg');
+--app-wallpaper: none;
 --glass-bg: rgba(40, 15, 55, 0.52); 
 --glass-bg-hover: rgba(50, 20, 68, 0.72); 
 --glass-border: rgba(255,255,255,0.22); 
