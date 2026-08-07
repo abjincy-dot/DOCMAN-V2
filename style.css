@@ -5900,7 +5900,7 @@ body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(2
     object-fit: contain !important;
 }
 .stats-bar {
-    background: #070b12 !important;
+    background: #0d1320 !important;
     border: 1px solid rgba(255,255,255,0.12) !important;
     border-radius: 12px !important;
     padding: 10px 12px !important;
@@ -5908,9 +5908,6 @@ body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(2
     justify-content: space-between !important;
     gap: 8px !important;
     align-items: center !important;
-    box-shadow: 
-        0 10px 24px rgba(0,0,0,0.6), 
-        inset 0 1px 0 rgba(255,255,255,0.08) !important;
 }
 
 /* Logo box — real icon image carries its own styling, no extra frame */
