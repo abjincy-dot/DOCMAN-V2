@@ -6408,7 +6408,7 @@ body.light-mode .logo-doc {
 }
 body.light-mode .doc-tag {
     color: #f2f4f8 !important;
-    background: rgba(255,158,68,0.12) !important;
+    background: rgba(255,158,68,0.12u) !important;
 }
 body.light-mode #searchInput {
     color: #f5f6f8 !important;
