@@ -1,5 +1,5 @@
 const APP_VERSION = '1.0.9';
-const CACHE = 'docman-v154';
+const CACHE = 'docman-v155';
 // Small, critical-path files: install fails if any of these can't be cached
 // (they're tiny, so a failure here means something is actually wrong).
 // (EmbedPDF/PDFium WASM vendor assets removed — PDFs render via the native
