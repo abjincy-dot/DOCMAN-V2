@@ -2522,8 +2522,15 @@ function createFileCard(file, folderPath, opts = {}) {
                         showToast(newLocked ? '🔒 Locked' : 'Unlocked');
                     };
 
-                    if (f.locked) { applyLock(false);
-                        return; }
+                    if (f.locked) {
+                        // Unlocking must require the PIN too -- otherwise
+                        // long-press > Unlock is a bypass that skips the
+                        // very check the lock exists to enforce.
+                        showPinVerifyModal('Enter PIN to unlock:', (ok) => {
+                            if (ok) applyLock(false);
+                        });
+                        return;
+                    }
                     ensurePinExistsForLock(() => applyLock(true));
                 },
             });
@@ -2694,8 +2701,12 @@ function createNoteCard(note, folderPath, opts = {}) {
                         showToast(newLocked ? '🔒 Locked' : 'Unlocked');
                     };
 
-                    if (n.locked) { applyLock(false);
-                        return; }
+                    if (n.locked) {
+                        showPinVerifyModal('Enter PIN to unlock:', (ok) => {
+                            if (ok) applyLock(false);
+                        });
+                        return;
+                    }
                     ensurePinExistsForLock(() => applyLock(true));
                 },
             });
@@ -2826,6 +2837,86 @@ function createCard(title, onClick, isFolder = false, fullPath = null) {
         showToast(meta.favourite ? '⭐ Added to favourites' : 'Removed from favourites');
     };
 
+    // Rename/Delete here act ONLY on this specific subfolder (fullPath),
+    // never on whatever folder happens to be currently open -- distinct
+    // from the folder-toolbar's Rename/Delete buttons, which act on
+    // currentPath (the folder you've navigated INTO). Long-pressing a
+    // particular subfolder card and choosing Delete here removes just
+    // that one subfolder and its own contents, not its parent.
+    const renameThisFolder = () => {
+        const pathArr = fullPath.split('/');
+        const old = pathArr[pathArr.length - 1];
+        showPromptModal('Rename folder:', old, async (newName) => {
+            if (newName && newName !== old && newName.trim()) {
+                const parentPathArr = pathArr.slice(0, -1);
+                const parent = parentPathArr.length ? parentPathArr.reduce((o, p) => o?.[p], fileSystem) : fileSystem;
+                if (!parent || !parent[old]) return;
+
+                const rebuilt = {};
+                for (const key of Object.keys(parent)) {
+                    if (key === old) rebuilt[newName] = parent[old];
+                    else rebuilt[key] = parent[key];
+                }
+                for (const key of Object.keys(parent)) delete parent[key];
+                for (const key of Object.keys(rebuilt)) parent[key] = rebuilt[key];
+
+                const oldPath = fullPath;
+                const newPath = [...parentPathArr, newName].join('/');
+                if (allFiles[oldPath]) {
+                    allFiles[newPath] = allFiles[oldPath];
+                    delete allFiles[oldPath];
+                    await Promise.all(allFiles[newPath].map(async f => {
+                        if (f.fsPath) {
+                            const newFsPath = fsPathFor(newPath, f.name);
+                            const ok = await moveFileInFS(f.fsPath, newFsPath);
+                            if (ok) f.fsPath = newFsPath;
+                        } else {
+                            await renameBlobInDB(oldPath, f.name, newPath, f.name);
+                        }
+                    }));
+                }
+                if (allNotes[oldPath]) { allNotes[newPath] = allNotes[oldPath];
+                    delete allNotes[oldPath]; }
+
+                migrateFolderMetaPath(oldPath, newPath);
+                await saveFolderMeta();
+
+                // If we're currently browsing inside the renamed subfolder
+                // (or a descendant of it), keep currentPath pointing at the
+                // right place instead of silently going stale.
+                if (currentPath.length >= pathArr.length &&
+                    pathArr.every((seg, i) => currentPath[i] === seg)) {
+                    currentPath = [...newPath.split('/'), ...currentPath.slice(pathArr.length)];
+                }
+
+                saveFolderStructure();
+                saveAllFilesToDB();
+                saveAllNotesToDB();
+                render();
+            }
+        });
+    };
+
+    const deleteThisFolder = () => {
+        const pathArr = fullPath.split('/');
+        const name = pathArr[pathArr.length - 1];
+        showConfirmModal(`Move "<b>${escapeHtml(name)}</b>" and all its contents to Recycle Bin?`, async (confirmed) => {
+            if (confirmed) {
+                await moveFolderToRecycleBin(pathArr);
+                // If we were browsing inside the deleted subfolder (or a
+                // descendant of it), back out to its parent instead of
+                // rendering a now-nonexistent path.
+                if (currentPath.length >= pathArr.length &&
+                    pathArr.every((seg, i) => currentPath[i] === seg)) {
+                    currentPath = pathArr.slice(0, -1);
+                }
+                render();
+                updateStats();
+                showToast('Moved to Recycle Bin');
+            }
+        });
+    };
+
     const startPress = (e) => {
         const touch = e.touches ? e.touches[0] : e;
         touchStartTime = Date.now();
@@ -2855,10 +2946,16 @@ function createCard(title, onClick, isFolder = false, fullPath = null) {
                         showToast(newLocked ? '🔒 Folder locked' : 'Folder unlocked');
                     };
 
-                    if (meta.locked) { applyLock(false);
-                        return; }
+                    if (meta.locked) {
+                        showPinVerifyModal('Enter PIN to unlock:', (ok) => {
+                            if (ok) applyLock(false);
+                        });
+                        return;
+                    }
                     ensurePinExistsForLock(() => applyLock(true));
-                }
+                },
+                onRename: renameThisFolder,
+                onDelete: deleteThisFolder
             });
         }, 500);
     };
@@ -3514,32 +3611,29 @@ function render() {
     }
 
     if (!isRoot) {
+        // Rename/Delete no longer live here -- acting on whatever folder
+        // happens to be open was too easy to trigger by accident. Both are
+        // now long-press actions on the specific folder card itself (see
+        // createCard's onRename/onDelete). The Favourite slot here reuses
+        // the old stats-bar pill's own job -- opening the full favourites
+        // list -- rather than toggling just this one folder.
         const actionDiv = document.createElement('div');
         actionDiv.className = 'folder-toolbar';
         actionDiv.innerHTML = `
-            <button class="ft-item ft-rename" onclick="renameCurrentFolder()" aria-label="Rename">
-                <span class="ft-icon"><i class="fas fa-edit"></i></span>
-                <span class="ft-label">Rename</span>
-                <span class="ft-underline"></span>
-            </button>
-            <span class="ft-sep"></span>
-            <button class="ft-item ft-delete" onclick="deleteCurrentFolder()" aria-label="Delete">
-                <span class="ft-icon"><i class="fas fa-trash"></i></span>
-                <span class="ft-label">Delete</span>
-                <span class="ft-underline"></span>
-            </button>
-            <span class="ft-sep"></span>
-            <button class="ft-item ft-back" onclick="haptic.press(); goBack()" aria-label="Back">
-                <span class="ft-icon"><i class="fas fa-arrow-left"></i></span>
-                <span class="ft-label">Back</span>
-                <span class="ft-underline"></span>
-            </button>
-            <span class="ft-sep"></span>
-            <button class="ft-item ft-add" onclick="addNewFolder()" aria-label="Add Subfolder">
-                <span class="ft-icon"><i class="fas fa-plus"></i></span>
-                <span class="ft-label">Add Subfolder</span>
-                <span class="ft-underline"></span>
-            </button>`;
+            <div class="ft-icon-col">
+                <button class="ft-icon-btn ft-back" onclick="haptic.press(); goBack()" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+                <span class="ft-icon-label">Back</span>
+            </div>
+            <div class="ft-icon-col">
+                <button class="ft-icon-btn ft-add" onclick="addNewFolder()" aria-label="Add Subfolder"><i class="fas fa-plus"></i></button>
+                <span class="ft-icon-label">Add Subfolder</span>
+            </div>
+            <div class="ft-icon-col">
+                <button id="ftFavBtn" class="ft-icon-btn ft-fav-icon-btn" aria-label="Favourite">
+                    <img src="Images/favorite-icon.png" alt="Favourite" class="ft-fav-icon-img" draggable="false">
+                </button>
+                <span class="ft-icon-label">Favourite</span>
+            </div>`;
 
         const folderCardInDom = contentDiv.querySelector('.current-folder-card');
         if (folderCardInDom) {
@@ -3547,6 +3641,29 @@ function render() {
         } else {
             contentDiv.appendChild(actionDiv);
         }
+
+        // touchend-primary, click-fallback (same technique used elsewhere in
+        // this file, e.g. the PIN pad) -- a plain 'click' listener alone
+        // waits on the browser's tap-vs-gesture disambiguation, which on
+        // Android WebView can feel like the button isn't responding at all.
+        // touchend fires immediately and preventDefault stops the trailing
+        // synthetic click from firing the action a second time.
+        const ftFavBtn = actionDiv.querySelector('#ftFavBtn');
+        let ftFavFiredByTouch = false;
+        const ftFavAction = () => {
+            haptic.press();
+            openFavouritesView();
+        };
+        ftFavBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            ftFavFiredByTouch = true;
+            ftFavAction();
+            setTimeout(() => { ftFavFiredByTouch = false; }, 400);
+        }, { passive: false });
+        ftFavBtn.addEventListener('click', () => {
+            if (ftFavFiredByTouch) return;
+            ftFavAction();
+        });
     }
 
     if (!isRoot && hasSubfolders) {
@@ -3839,8 +3956,72 @@ function attachDepartmentPressEffects() {
                         showToast(newLocked ? '🔒 Department locked' : 'Department unlocked');
                     };
 
-                    if (meta.locked) { applyLock(false); return; }
+                    if (meta.locked) {
+                        showPinVerifyModal('Enter PIN to unlock:', (ok) => {
+                            if (ok) applyLock(false);
+                        });
+                        return;
+                    }
                     ensurePinExistsForLock(() => applyLock(true));
+                },
+                onRename: () => {
+                    const old = dept;
+                    showPromptModal('Rename department:', old, async (newName) => {
+                        if (!newName || newName === old || !newName.trim()) return;
+                        if (fileSystem[newName]) { showToast('Already exists', true); return; }
+
+                        const rebuilt = {};
+                        for (const key of Object.keys(fileSystem)) {
+                            if (key === old) rebuilt[newName] = fileSystem[old];
+                            else rebuilt[key] = fileSystem[key];
+                        }
+                        for (const key of Object.keys(fileSystem)) delete fileSystem[key];
+                        for (const key of Object.keys(rebuilt)) fileSystem[key] = rebuilt[key];
+
+                        if (allFiles[old]) {
+                            allFiles[newName] = allFiles[old];
+                            delete allFiles[old];
+                            await Promise.all(allFiles[newName].map(async f => {
+                                if (f.fsPath) {
+                                    const newFsPath = fsPathFor(newName, f.name);
+                                    const ok = await moveFileInFS(f.fsPath, newFsPath);
+                                    if (ok) f.fsPath = newFsPath;
+                                } else {
+                                    await renameBlobInDB(old, f.name, newName, f.name);
+                                }
+                            }));
+                        }
+                        if (allNotes[old]) { allNotes[newName] = allNotes[old];
+                            delete allNotes[old]; }
+
+                        migrateFolderMetaPath(old, newName);
+                        await saveFolderMeta();
+
+                        if (deptColors[old]) {
+                            deptColors[newName] = deptColors[old];
+                            delete deptColors[old];
+                            await saveDeptColors();
+                        }
+
+                        if (currentPath[0] === old) currentPath = [newName, ...currentPath.slice(1)];
+
+                        saveFolderStructure();
+                        saveAllFilesToDB();
+                        saveAllNotesToDB();
+                        render();
+                    });
+                },
+                onDelete: () => {
+                    showConfirmModal(`Move "<b>${escapeHtml(dept)}</b>" and all its contents to Recycle Bin?`, async (confirmed) => {
+                        if (!confirmed) return;
+                        await moveFolderToRecycleBin([dept]);
+                        if (deptColors[dept]) { delete deptColors[dept];
+                            await saveDeptColors(); }
+                        if (currentPath[0] === dept) currentPath = [];
+                        render();
+                        updateStats();
+                        showToast('Moved to Recycle Bin');
+                    });
                 }
             });
         };
@@ -4020,6 +4201,7 @@ function openFavouritesView() {
                     if (folderMeta[path]) folderMeta[path].favourite = false;
                     await saveFolderMeta();
                     updateStats();
+                    render();
                     row.classList.add('fav-row-removing');
                     setTimeout(() => { row.remove();
                         checkFavEmpty(list); }, 280);
@@ -5206,12 +5388,26 @@ function showPinVerifyModal(title, callback) {
         }
     }
 
+    // Same trailing-synthetic-click problem the backdrop guard below
+    // handles, but landing squarely on a keypad digit instead of the
+    // backdrop: the tap that opened this locked folder can generate a
+    // click a moment after this modal has already been created, and if
+    // that click lands on whichever key button happens to sit at that
+    // same screen position, it silently registers as a real keypress --
+    // showing up as the first PIN dot already filled in before the user
+    // has touched anything. Ignoring key presses within the same 400ms
+    // window used for the backdrop absorbs that ghost click too.
+    const overlayCreatedAt = Date.now();
+
     overlay.querySelectorAll('.pvKey').forEach(btn => {
         if (btn.dataset.key === '') return;
         btn.addEventListener('pointerdown', () => { btn.style.background = 'rgba(255,255,255,0.14)'; });
         btn.addEventListener('pointerup', () => { btn.style.background = 'rgba(255,255,255,0.06)'; });
         btn.addEventListener('pointercancel', () => { btn.style.background = 'rgba(255,255,255,0.06)'; });
-        bindTap(btn, () => handleKeyPress(btn.dataset.key));
+        bindTap(btn, () => {
+            if (Date.now() - overlayCreatedAt < 400) return;
+            handleKeyPress(btn.dataset.key);
+        });
     });
 
     const cancelBtn = document.getElementById('pvCancel');
@@ -5228,7 +5424,6 @@ function showPinVerifyModal(title, callback) {
     // instant it appears. Ignoring backdrop-dismiss for a brief window
     // after creation absorbs that leftover click without blocking a
     // genuine, deliberate tap-outside-to-cancel a moment later.
-    const overlayCreatedAt = Date.now();
     overlay.addEventListener('click', (e) => {
         if (e.target !== overlay) return;
         if (Date.now() - overlayCreatedAt < 400) return;
@@ -5916,6 +6111,12 @@ function initSettingsPage() {
         docmanSettings.showFavorites = showFavoritesToggle.checked;
         saveSettings();
     };
+
+    // The old stats-bar Favorite pill used to open this; now that the pill
+    // is gone (replaced by a per-folder Favourite toggle on the folder
+    // toolbar), this Settings entry keeps the full favourites list reachable.
+    const openFavBtn = document.getElementById('openFavouritesFromSettings');
+    if (openFavBtn) openFavBtn.onclick = () => { haptic.press(); openFavouritesView(); };
 
     const recentsLimitVal = document.getElementById('recentsLimitVal');
     recentsLimitVal.textContent = docmanSettings.recentsLimit;
@@ -6783,14 +6984,54 @@ document.addEventListener('DOMContentLoaded', async () => {
             fileSystem = folderReq.result.value;
         } else {
             fileSystem = {
-                "Personal": {},
-                "Work": {},
-                "Finance & Bills": {},
-                "Education": {},
-                "Health & Medical": {},
-                "ID & Legal": {},
-                "Home & Property": {},
-                "Others": {}
+                "Personal": {
+                    "IDs & Certificates": {},
+                    "Photos": {},
+                    "Personal Notes": {},
+                    "Travel Documents": {}
+                },
+                "Work": {
+                    "Contracts": {},
+                    "Reports": {},
+                    "Meeting Notes": {},
+                    "Projects": {}
+                },
+                "Finance & Bills": {
+                    "Bank Statements": {},
+                    "Tax Documents": {},
+                    "Receipts": {},
+                    "Utility Bills": {}
+                },
+                "Education": {
+                    "Certificates": {},
+                    "Transcripts": {},
+                    "Assignments": {},
+                    "Course Materials": {}
+                },
+                "Health & Medical": {
+                    "Prescriptions": {},
+                    "Lab Reports": {},
+                    "Insurance": {},
+                    "Vaccination Records": {}
+                },
+                "ID & Legal": {
+                    "Passport": {},
+                    "ID Proof": {},
+                    "Agreements": {},
+                    "Licenses": {}
+                },
+                "Home & Property": {
+                    "Rental Agreement": {},
+                    "Property Documents": {},
+                    "Utility Setup": {},
+                    "Maintenance": {}
+                },
+                "Others": {
+                    "Miscellaneous": {},
+                    "Archive": {},
+                    "Backup": {},
+                    "Drafts": {}
+                }
             };
             saveFolderStructure();
         }
