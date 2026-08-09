@@ -20,7 +20,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/inter/inter.css">
-<link rel="stylesheet" href="style.css?v=162">
+<link rel="stylesheet" href="style.css?v=171">
 
 </head>
 <body>
@@ -421,29 +421,30 @@ border: 1px solid rgba(255,255,255,0.2);
       <span id="notesCount">0</span>
     </div>
 
+    <!-- favCount kept alive (hidden) purely so updateStats() keeps working;
+         the Favorite pill button itself was removed -- that action now
+         lives as a Favourite button on the folder-toolbar instead, and the
+         full favourites list is reachable from Settings > Favorites & Recents. -->
     <div class="fav-count-hidden"><span id="favCount">0</span></div>
 
-    <button id="favStatItem" class="fav-pill-btn">
-      <img src="Images/favorite-btn.png" alt="Favorite" class="fav-pill-img-btn">
-    </button>
     <div class="stat-icon-col">
       <button id="recentStatItem" class="stat-icon-btn stat-icon-btn-recent" title="Recent" aria-label="Recent Documents"><i class="fas fa-clock-rotate-left"></i></button>
-      <span class="stat-icon-underline stat-icon-underline-recent"></span>
+      <span class="stat-icon-label">Recent</span>
     </div>
     <span class="stats-bar-divider"></span>
     <div class="stat-icon-col">
       <button id="sortBtn" class="stat-icon-btn stat-icon-btn-sort" aria-label="Sort" title="Sort"><i class="fas fa-sort"></i></button>
-      <span class="stat-icon-underline stat-icon-underline-sort"></span>
+      <span class="stat-icon-label">Sort</span>
     </div>
     <span class="stats-bar-divider"></span>
     <div class="stat-icon-col">
       <button id="dashboardStatItem" class="stat-icon-btn stat-icon-btn-dashboard" title="Storage Dashboard" aria-label="Storage Dashboard"><i class="fas fa-chart-pie"></i></button>
-      <span class="stat-icon-underline stat-icon-underline-dashboard"></span>
+      <span class="stat-icon-label">Dashboard</span>
     </div>
     <span class="stats-bar-divider"></span>
     <div class="stat-icon-col">
       <button id="recycleBinStatItem" class="stat-icon-btn stat-icon-btn-recyclebin" title="Recycle Bin" aria-label="Recycle Bin"><img src="Images/recyclebin-icon.png" alt="Recycle Bin" class="recyclebin-icon-img"></button>
-      <span class="stat-icon-underline stat-icon-underline-recyclebin"></span>
+      <span class="stat-icon-label">Recycle Bin</span>
     </div>
   </div> <!-- stats-bar close -->
   </div> <!-- top-panel close -->
@@ -746,6 +747,14 @@ border: 1px solid rgba(255,255,255,0.2);
         <div class="settings-item-text"><span class="settings-item-title">Show Favorites Section</span><span class="settings-item-sub">Display starred/pinned items</span></div>
         <label class="settings-switch"><input type="checkbox" id="showFavoritesToggle" checked><span class="settings-switch-slider"></span></label>
       </div>
+    </div>
+    <div class="settings-group-title">Browse</div>
+    <div class="settings-card">
+      <button id="openFavouritesFromSettings" class="settings-item">
+        <div class="settings-item-icon settings-icon-favorites"><i class="fas fa-star"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">View All Favourites</span><span class="settings-item-sub">Every starred file, note &amp; folder</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
     </div>
     <div class="settings-group-title">Recent Files Limit</div>
     <div class="settings-card">
@@ -1081,7 +1090,7 @@ border: 1px solid rgba(255,255,255,0.2);
 <script src="vendor/jszip/jszip.min.js"></script>
 <script src="vendor/mammoth/mammoth.browser.min.js"></script>
 <script src="vendor/xlsx/xlsx.full.min.js"></script>
-<script src="app.js?v=175"></script>
+<script src="app.js?v=181"></script>
 
 
 <script>
