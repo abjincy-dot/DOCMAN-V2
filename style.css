@@ -57,10 +57,10 @@ box-sizing: border-box;
 }
 
 :root { 
---bg-deep: #10182c; 
+--bg-deep: #1d222c; 
 --bg-secondary: #220f38; 
 --bg-tertiary: #2a1240; 
---app-wallpaper: none;
+--app-wallpaper: url('Images/bg-main-theme.jpg');
 --glass-bg: rgba(40, 15, 55, 0.52); 
 --glass-bg-hover: rgba(50, 20, 68, 0.72); 
 --glass-border: rgba(255,255,255,0.22); 
@@ -1686,9 +1686,9 @@ content: '';
 position: absolute; 
 inset: 0; 
 background: linear-gradient(180deg, 
-rgba(255,255,255,0.30) 0%, 
-rgba(255,255,255,0.05) 45%, 
-rgba(0,0,0,0.30) 100% 
+rgba(255,255,255,0.20) 0%, 
+rgba(255,255,255,0.04) 45%, 
+rgba(0,0,0,0.20) 100% 
 ); 
 z-index: 1; 
 pointer-events: none; 
@@ -1804,28 +1804,28 @@ width: 100%;
 .dept-info     { display: none; }
 
 
-.dept-card[data-dept="Personal"]         .dept-pill-bg { background: linear-gradient(165deg, #1634ba, #061975); } 
-.dept-card[data-dept="Work"]             .dept-pill-bg { background: linear-gradient(165deg, #4b9466, #235230); } 
-.dept-card[data-dept="Finance & Bills"]  .dept-pill-bg { background: linear-gradient(165deg, #5f16a5, #2d0659); } 
-.dept-card[data-dept="Education"]        .dept-pill-bg { background: linear-gradient(165deg, #ac2659, #701330); } 
-.dept-card[data-dept="Health & Medical"] .dept-pill-bg { background: linear-gradient(165deg, #c95524, #712911); } 
-.dept-card[data-dept="ID & Legal"]       .dept-pill-bg { background: linear-gradient(165deg, #c28932, #764e1a); } 
-.dept-card[data-dept="Home & Property"]  .dept-pill-bg { background: linear-gradient(165deg, #427844, #204b20); } 
-.dept-card[data-dept="Others"]           .dept-pill-bg { background: linear-gradient(165deg, #193abd, #081661); }
+.dept-card[data-dept="Personal"]         .dept-pill-bg { background: linear-gradient(135deg, #2048f9, #142fb7); } 
+.dept-card[data-dept="Work"]             .dept-pill-bg { background: linear-gradient(135deg, #3db388, #227a5b); } 
+.dept-card[data-dept="Finance & Bills"]  .dept-pill-bg { background: linear-gradient(135deg, #7f15e4, #4e098f); } 
+.dept-card[data-dept="Education"]        .dept-pill-bg { background: linear-gradient(135deg, #d01883, #8e0e56); } 
+.dept-card[data-dept="Health & Medical"] .dept-pill-bg { background: linear-gradient(135deg, #dc500c, #a03703); } 
+.dept-card[data-dept="ID & Legal"]       .dept-pill-bg { background: linear-gradient(135deg, #d39d18, #9a6c03); } 
+.dept-card[data-dept="Home & Property"]  .dept-pill-bg { background: linear-gradient(135deg, #368d59, #20663d); } 
+.dept-card[data-dept="Others"]           .dept-pill-bg { background: linear-gradient(135deg, #1339dc, #0a2293); }
 
 .dept-card .dept-pill-center-icon i { filter: drop-shadow(0 1px 4px rgba(0,0,0,0.55)); }
 
 
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]) .dept-pill-bg { background: linear-gradient(165deg, #1634ba, #061975); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]) .dept-pill-bg { background: linear-gradient(135deg, #2a52e0, #3a6af0); }
 
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+1) .dept-pill-bg { background: linear-gradient(165deg, #1634ba, #061975); }
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+2) .dept-pill-bg { background: linear-gradient(165deg, #4b9466, #235230); }
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+3) .dept-pill-bg { background: linear-gradient(165deg, #5f16a5, #2d0659); }
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+4) .dept-pill-bg { background: linear-gradient(165deg, #ac2659, #701330); }
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+5) .dept-pill-bg { background: linear-gradient(165deg, #c95524, #712911); }
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+6) .dept-pill-bg { background: linear-gradient(165deg, #c28932, #764e1a); }
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+7) .dept-pill-bg { background: linear-gradient(165deg, #427844, #204b20); }
-.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+8) .dept-pill-bg { background: linear-gradient(165deg, #193abd, #081661); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+1) .dept-pill-bg { background: linear-gradient(135deg, #2048f9, #142fb7); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+2) .dept-pill-bg { background: linear-gradient(135deg, #3db388, #227a5b); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+3) .dept-pill-bg { background: linear-gradient(135deg, #7f15e4, #4e098f); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+4) .dept-pill-bg { background: linear-gradient(135deg, #d01883, #8e0e56); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+5) .dept-pill-bg { background: linear-gradient(135deg, #dc500c, #a03703); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+6) .dept-pill-bg { background: linear-gradient(135deg, #d39d18, #9a6c03); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+7) .dept-pill-bg { background: linear-gradient(135deg, #368d59, #20663d); }
+.dept-card:not([data-dept="Personal"]):not([data-dept="Work"]):not([data-dept="Finance & Bills"]):not([data-dept="Education"]):not([data-dept="Health & Medical"]):not([data-dept="ID & Legal"]):not([data-dept="Home & Property"]):not([data-dept="Others"]):nth-of-type(8n+8) .dept-pill-bg { background: linear-gradient(135deg, #1339dc, #0a2293); }
 
 
 .content { 
@@ -4966,7 +4966,6 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     pointer-events: none;
     user-select: none;
     -webkit-user-drag: none;
-    filter: drop-shadow(0 3px 6px rgba(0,0,0,0.35)) drop-shadow(0 1px 0 rgba(255,255,255,0.10));
 }
 
 .fav-pill-img {
@@ -5650,25 +5649,24 @@ body.lock-active .shimmer {
   animation-play-state: paused;
 }
 
-/* Subfolder card — blue ribbon style (matches reference image) */
+/* Subfolder card — rainbow-ring pill outline (CSS conic-gradient border,
+   adapts correctly to the card's actual thin/wide aspect ratio, unlike
+   stretching the flat reference PNG which squished into a solid block) */
 .card.glow-folder {
-  background: linear-gradient(90deg, #1e3a8a 0%, #3b5bdb 15%, #4361ee 50%, #3b5bdb 85%, #2947a8 100%) !important;
-  border: none !important;
-  border-radius: 4px 999px 999px 4px !important;
-  box-shadow: 0 8px 16px rgba(30, 58, 138, 0.35) !important;
+  background:
+    linear-gradient(#1d222c, #1d222c) padding-box,
+    conic-gradient(from 0deg at 50% 50%,
+      #7c5cff 0%, #3a7bfd 12%, #22d3ee 25%, #22d3ee 37%,
+      #22c55e 50%, #eab308 62%, #f97316 75%, #ef4444 85%,
+      #ec4899 93%, #7c5cff 100%) border-box !important;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
   position: relative;
 }
 
 .card.glow-folder::before {
-  content: '';
-  position: absolute;
-  top: -6px;
-  left: 0;
-  width: 14px;
-  height: 14px;
-  background: #16215c;
-  clip-path: polygon(0 0, 100% 0, 0 100%);
-  z-index: 2;
+  display: none !important;
 }
 
 .card.glow-folder::after {
@@ -5676,32 +5674,88 @@ body.lock-active .shimmer {
 }
 
 /* ============================================================
-   Folder Toolbar (Rename / Delete / Back / Add Subfolder)
-   Single-row dark bar with icon-circle buttons, matching
-   requested reference design.
+   Folder Toolbar (Back / Add Subfolder / Favourite)
+   Rename & Delete moved to long-press on the folder card itself
+   (too easy to hit by accident when they sat in this persistent
+   toolbar, acting on whichever folder happened to be open).
+   Same icon-circle-with-label language as the stats-bar.
    ============================================================ */
 .folder-toolbar {
     display: flex !important;
     flex-direction: row !important;
     align-items: center !important;
-    justify-content: space-around !important;
+    justify-content: space-between !important;
+    gap: 6px !important;
     width: calc(100% + 26px) !important;
     box-sizing: border-box !important;
     margin: 3px -13px 3px -13px !important;
-    padding: 16px 10px !important;
-    border-radius: 20px !important;
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
-    box-shadow: 
-        0 3px 8px rgba(0,0,0,0.30), 
-        inset 0 1px 0 rgba(255,255,255,0.07), 
-        inset 0 -1px 0 rgba(0,0,0,0.20) !important;
+    padding: 8px 10px !important;
+    border-radius: 12px !important;
+    background: linear-gradient(180deg, #172040 0%, #10182e 40%, #0b1120 100%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    box-shadow: 0 12px 26px rgba(0,0,0,0.6), 0 2px 0 rgba(255,255,255,0.1) inset, 0 -3px 6px rgba(0,0,0,0.5) inset, 0 1px 0 rgba(255,255,255,0.06) !important;
     overflow: visible !important;
     position: relative;
 }
 body.light-mode .folder-toolbar {
-    background: rgba(0,0,0,0.03) !important;
-    border: 1px solid rgba(0,0,0,0.08) !important;
+    background: #eee7dc !important;
+    border: 1px solid rgba(0, 0, 0, 0.12) !important;
+}
+
+.ft-icon-col {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex: 0 0 auto !important;
+}
+.ft-icon-btn {
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 0.85rem !important;
+    color: #fff !important;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    box-shadow: inset 0 2px 4px rgba(255,255,255,0.16), inset 0 -3px 6px rgba(0,0,0,0.55) !important;
+}
+.ft-icon-btn:active { transform: scale(0.94); }
+.ft-icon-label {
+    font-size: 0.68rem;
+    color: #c7cde0;
+    font-weight: 500;
+}
+.ft-icon-underline {
+    width: 22px;
+    height: 3px;
+    border-radius: 3px;
+}
+.ft-back { border: 2px solid rgba(74,222,128,0.95); background: radial-gradient(circle at 32% 26%, rgba(255,255,255,0.16) 0%, rgba(8,20,10,0.92) 48%, rgba(4,10,5,0.96) 100%); }
+.ft-back-u { background: linear-gradient(90deg, #4ade80, #22c55e); }
+.ft-add { border: 2px solid rgba(59,130,246,0.95); background: radial-gradient(circle at 32% 26%, rgba(255,255,255,0.16) 0%, rgba(8,14,22,0.92) 48%, rgba(4,7,10,0.96) 100%); }
+.ft-add-u { background: linear-gradient(90deg, #60a5fa, #3b82f6); }
+
+/* Favourite slot now uses the ring-heart icon artwork, same circle-plus-
+   label footprint as Back/Add Subfolder -- the artwork already has its
+   own ring baked in, so this button carries no extra background/border
+   of its own (avoids a double ring). */
+.ft-fav-icon-btn {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+.ft-fav-icon-btn:active { transform: scale(0.94); }
+.ft-fav-icon-img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    -webkit-user-drag: none !important;
+    -webkit-touch-callout: none !important;
+    user-select: none !important;
+    pointer-events: none !important;
 }
 
 .ft-zone {
@@ -5879,6 +5933,17 @@ body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(2
 .stat-icon-underline-dashboard   { background: linear-gradient(90deg, #6ee7b7, #34d399); }
 .stat-icon-underline-recyclebin  { background: linear-gradient(90deg, #fb7185, #f43f5e); }
 
+/* Text label under each stats-bar icon (Favorite pill removed, so these
+   4 icons now carry their own labels instead of relying on the pill's
+   own visible "Favorite" text to anchor the row). */
+.stat-icon-label {
+    font-size: 0.68rem;
+    color: #c7cde0;
+    font-weight: 500;
+    order: 1;
+}
+.stat-icon-underline { order: 2; }
+
 .stats-bar-divider {
     width: 1px;
     align-self: stretch;
@@ -5900,14 +5965,15 @@ body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(2
     object-fit: contain !important;
 }
 .stats-bar {
-    background: #0d1320 !important;
-    border: 1px solid rgba(255,255,255,0.12) !important;
+    background: linear-gradient(180deg, #172040 0%, #10182e 40%, #0b1120 100%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
     border-radius: 12px !important;
-    padding: 10px 12px !important;
+    padding: 8px 12px !important;
     margin-top: 4px !important;
     justify-content: space-between !important;
     gap: 8px !important;
     align-items: center !important;
+    box-shadow: 0 12px 26px rgba(0,0,0,0.6), 0 2px 0 rgba(255,255,255,0.1) inset, 0 -3px 6px rgba(0,0,0,0.5) inset, 0 1px 0 rgba(255,255,255,0.06) !important;
 }
 
 /* Logo box — real icon image carries its own styling, no extra frame */
@@ -6064,15 +6130,20 @@ body.light-mode .doc-tag { color: #f2f4f8 !important; }
    the original blue glass look.
    ============================================================ */
 .current-folder-card {
-    background: var(--toolbar-bg-header) !important;
-    border: 1px solid rgba(255, 195, 60, 0.65) !important;
-    border-radius: var(--radius-lg) !important;
-    box-shadow: var(--shadow-sm) !important;
+    background: url('Images/folder-card-bg.png') !important;
+    background-size: 100% 100% !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    width: calc(100% + 26px) !important;
+    height: 53px !important;
+    border: none !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
     box-sizing: border-box !important;
-    padding: 12px 60px 12px 16px !important;
-    margin: 10px 0 !important;
-    min-height: 64px;
-    overflow: visible !important;
+    padding: 2px 56px 2px 14px !important;
+    margin: 3px -13px 3px -13px !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
     position: relative !important;
     display: flex !important;
     flex-direction: column !important;
@@ -6082,16 +6153,7 @@ body.light-mode .doc-tag { color: #f2f4f8 !important; }
     display: none !important;
 }
 .current-folder-card::after {
-    content: "\f07b";
-    font-family: "Font Awesome 5 Free";
-    font-weight: 900;
-    position: absolute;
-    right: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 1.7rem;
-    color: #ff8c28;
-    text-shadow: 0 2px 6px rgba(255, 140, 40, 0.4);
+    display: none !important;
 }
 .cf-path-row,
 .cf-bottom-row {
@@ -6138,14 +6200,21 @@ body.light-mode .doc-tag { color: #f2f4f8 !important; }
     border: 1px solid rgba(111, 168, 216, 0.6) !important;
 }
 
-/* Subfolder pill rows inside the folder — warm theme instead of blue */
+/* Subfolder pill rows inside the folder — rainbow-ring pill (overrides
+   the warm-theme rule above, since this one comes later in cascade order) */
 .card.glow-folder {
-    background: linear-gradient(90deg, #1a1330 0%, #2c1b3d 20%, #7a3a14 60%, #d1701f 85%, #a8511a 100%) !important;
-    box-shadow: 0 8px 16px rgba(200, 90, 20, 0.32) !important;
-    border: 1.5px solid rgba(255, 195, 130, 0.5) !important;
+    background:
+      linear-gradient(#1d222c, #1d222c) padding-box,
+      conic-gradient(from 0deg at 50% 50%,
+        #7c5cff 0%, #3a7bfd 12%, #22d3ee 25%, #22d3ee 37%,
+        #22c55e 50%, #eab308 62%, #f97316 75%, #ef4444 85%,
+        #ec4899 93%, #7c5cff 100%) border-box !important;
+    border: 1px solid transparent !important;
+    border-radius: 999px !important;
+    box-shadow: none !important;
 }
 .card.glow-folder::before {
-    background: #1a1330 !important;
+    display: none !important;
 }
 .card-icon {
     background: linear-gradient(135deg, rgba(255, 150, 60, 0.18), rgba(255, 100, 30, 0.08)) !important;
