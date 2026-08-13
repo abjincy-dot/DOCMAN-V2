@@ -306,7 +306,7 @@ flex-wrap: wrap;
 }
 
 
-body.light-mode .doc-tag { color: #1e293b; }
+body.light-mode .doc-tag { color: #000000; }
 
 body.light-mode .header-title h1 { 
 background: linear-gradient(135deg, #1e293b, #334155, #475569); 
@@ -730,8 +730,9 @@ transform: translateY(-50%) scale(1.1);
 }
 
 body.light-mode .search-container { 
-background: rgba(206, 209, 213, 0.92); 
-}
+background: rgba(206, 209, 213, 0.92) !important; 
+border-color: rgba(0,0,0,0.15) !important;
+} 
 
 body.light-mode .search-container::before { 
 background: linear-gradient(90deg, #a855f7 0%, #ff8c42 50%, #ff6b4a 100%); 
@@ -757,9 +758,11 @@ box-shadow:
 } 
 }
 
-body.light-mode #searchInput { color: var(--text-primary); } 
-body.light-mode #searchInput::placeholder { color: rgba(30, 41, 59, 0.36); } 
-body.light-mode .search-container > i { color: rgba(30, 41, 59, 0.38); } 
+body.light-mode #searchInput { color: var(--text-primary) !important; } 
+body.light-mode #searchInput::placeholder { color: rgba(30, 41, 59, 0.36) !important; } 
+body.light-mode .search-container > i { color: rgba(30, 41, 59, 0.38) !important; } 
+body.light-mode .search-icon-svg { color: rgba(30, 41, 59, 0.5) !important; }
+body.light-mode #clearSearchBtn { background: rgba(0,0,0,0.06) !important; border-color: rgba(0,0,0,0.15) !important; color: #334155 !important; }
 body.light-mode #clearSearchBtn { 
 background: rgba(255, 107, 74, 0.1); 
 border-color: rgba(255, 107, 74, 0.3); 
@@ -2465,6 +2468,29 @@ color: white;
 
 
 #searchInfo { margin: 0 0 16px 0; padding: 10px 18px; font-size: 0.85rem; font-weight: 500; background: var(--glass-bg); border-radius: var(--radius-full); border: 1px solid var(--glass-border); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); display: inline-flex; align-items: center; gap: 10px; }
+#searchInfo button {
+    border: 1px solid #ff8c28;
+    background: transparent;
+    color: #ff8c28;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 6px 14px 6px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+#searchInfo button::before {
+    content: "\2715";
+    font-size: 0.7rem;
+}
+#searchInfo button:active {
+    background: #ff8c28;
+    color: #1a0e00;
+}
 
 
 .toast { 
@@ -2722,6 +2748,11 @@ background: none !important;
 body.light-mode .stats-bar { 
 background: var(--toolbar-bg-stats) !important; 
 border-color: var(--toolbar-border-stats) !important; 
+box-shadow:
+    0 16px 30px rgba(0,0,0,0.18),
+    0 8px 14px rgba(0,0,0,0.10),
+    0 1.5px 0 rgba(255,255,255,0.5) inset,
+    0 -4px 10px rgba(0,0,0,0.08) inset !important;
 } 
 body.light-mode .stat-icon-btn {
     background: rgba(0,0,0,0.05) !important;
@@ -5895,7 +5926,7 @@ body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(2
 .top-panel {
     background:
         radial-gradient(ellipse 160px 140px at 100% 0%, rgba(255, 90, 40, 0.38) 0%, rgba(255, 80, 30, 0.14) 35%, transparent 60%),
-        #0c0f1c;
+        #191835;
     border: none !important;
     box-shadow:
         0 0 0 0.6px rgba(255, 130, 20, 0.65),
@@ -5924,6 +5955,13 @@ body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(2
     display: none !important;
 }
 .top-panel > * { position: relative; z-index: 1; }
+/* .top-bar (search box + its suggestions dropdown) must stack above its
+   sibling .stats-bar -- otherwise, even though .search-suggestions has
+   z-index:500, that only matters within .top-bar's own stacking context;
+   .stats-bar (same z-index:1, but later in the DOM) would still render
+   in front of the whole .top-bar stacking context, hiding the dropdown
+   behind it. */
+.top-panel > .top-bar { z-index: 3; }
 
 /* Stats-bar icon buttons — colour underline accents added below each,
    dimensions/corners of .stat-icon-btn itself are untouched. */
@@ -5976,15 +6014,15 @@ body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(2
     object-fit: contain !important;
 }
 .stats-bar {
-    background: linear-gradient(180deg, #172040 0%, #10182e 40%, #0b1120 100%) !important;
-    border: 1px solid rgba(255, 255, 255, 0.14) !important;
-    border-radius: 12px !important;
+    background: linear-gradient(180deg, #232a4d 0%, #141a33 45%, #0a0e1e 100%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    border-radius: 14px !important;
     padding: 8px 12px !important;
     margin-top: 4px !important;
     justify-content: space-between !important;
     gap: 8px !important;
     align-items: center !important;
-    box-shadow: 0 12px 26px rgba(0,0,0,0.6), 0 2px 0 rgba(255,255,255,0.1) inset, 0 -3px 6px rgba(0,0,0,0.5) inset, 0 1px 0 rgba(255,255,255,0.06) !important;
+    box-shadow: 0 16px 30px rgba(0,0,0,0.75), 0 8px 14px rgba(0,0,0,0.45), 0 1.5px 0 rgba(255,255,255,0.22) inset, 0 -4px 10px rgba(0,0,0,0.6) inset !important;
 }
 
 /* Logo box — real icon image carries its own styling, no extra frame */
@@ -6022,9 +6060,12 @@ body.light-mode .logo-doc { color: #14161b !important; }
     color: #f2f4f8 !important;
     border: 1px solid #ff8c28 !important;
 }
+body.light-mode .doc-tag {
+    color: #000000 !important;
+}
 .doc-tag::before { display: none !important; }
 .doc-tag i { color: #f2f4f8 !important; }
-body.light-mode .doc-tag { color: #f2f4f8 !important; }
+body.light-mode .doc-tag i { color: #000000 !important; }
 
 /* Settings gear — real icon image already has its own glow ring */
 .header-gear-btn {
