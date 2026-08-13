@@ -270,7 +270,7 @@ box-shadow: none;
     display: flex !important;
     flex-direction: column !important;
     gap: 2px !important;
-    margin-left: 18px;
+    margin-left: 24px;
     align-items: flex-start !important;
     position: relative !important;
     left: auto !important;
