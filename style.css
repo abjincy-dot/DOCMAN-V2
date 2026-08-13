@@ -94,8 +94,8 @@ box-sizing: border-box;
 
 
 body.light-mode { 
---bg-deep: #8a7864; 
---app-wallpaper: url('Images/bg-theme-sunset.jpg'); 
+--bg-deep: #ece0c8; 
+--app-wallpaper: none; 
 --glass-bg: rgba(209, 212, 216, 0.92); 
 --glass-bg-hover: rgba(198, 201, 205, 0.96); 
 --glass-border: rgba(0, 0, 0, 0.12); 
@@ -125,7 +125,7 @@ background-image: var(--app-wallpaper);
 background-position: center center;
 background-size: cover;
 background-repeat: no-repeat;
-background-attachment: fixed;
+background-attachment: scroll; /* 'fixed' has known rendering glitches on Android WebView (banding/artifacts at scroll boundaries) -- 'scroll' keeps the same cover/center look without that risk */
 color: var(--text-primary); 
 overflow-x: hidden; 
 line-height: 1.5; 
@@ -149,7 +149,7 @@ background-image: var(--app-wallpaper);
 background-position: center center;
 background-size: cover; 
 background-repeat: no-repeat;
-background-attachment: fixed;
+background-attachment: scroll;
 z-index: -3; 
 pointer-events: none;
 }
@@ -1022,49 +1022,28 @@ font-size: 1.35rem;
 
 /* Favourites full view */
 .favourites-view {
-    position: fixed;
+    position: absolute;
     inset: 0;
-    z-index: 3000;
-    background: rgba(0,0,0,0);
-    -webkit-backdrop-filter: blur(0px);
-    backdrop-filter: blur(0px);
+    z-index: 50;
+    background: var(--bg-deep);
     display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 14px;
-    transition: background 0.32s ease, backdrop-filter 0.32s ease;
+    flex-direction: column;
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity 0.14s ease, transform 0.14s ease;
     pointer-events: none;
 }
 .favourites-view.fav-view-visible {
-    background: rgba(0,0,0,0.75);
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-    pointer-events: all;
-}
-.fav-view-card {
-    background: linear-gradient(160deg, #16283c 0%, #0e1a2a 55%, #0a1420 100%);
-    border: 1px solid rgba(255, 140, 40, 0.4);
-    border-radius: 22px;
-    width: 100%;
-    max-width: 480px;
-    max-height: 92vh;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(255, 140, 40, 0.15);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    opacity: 0;
-    transform: scale(0.9);
-    transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.favourites-view.fav-view-visible .fav-view-card {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0);
+    pointer-events: all;
 }
 .fav-view-header {
     display: flex;
     align-items: center;
     gap: 14px;
     padding: 18px 18px 14px;
+    padding-top: max(18px, calc(env(safe-area-inset-top) + 10px));
     border-bottom: 1px solid var(--glass-border);
     flex-shrink: 0;
 }
@@ -2731,10 +2710,8 @@ background: rgba(206, 209, 213, 0.92);
 
 
 body.light-mode .top-panel { 
-background:
-        radial-gradient(ellipse 160px 140px at 100% 0%, rgba(255, 90, 40, 0.38) 0%, rgba(255, 80, 30, 0.14) 35%, transparent 60%),
-        #0c0f1c !important; 
-border-color: transparent !important; 
+background: var(--toolbar-bg-header) !important; 
+border-color: var(--toolbar-border-header) !important; 
 } 
 body.light-mode .header { 
 background: none !important; 
@@ -5749,6 +5726,7 @@ body.light-mode .folder-toolbar {
     color: #c7cde0;
     font-weight: 500;
 }
+body.light-mode .ft-icon-label { color: #3a3226 !important; }
 .ft-icon-underline {
     width: 22px;
     height: 3px;
@@ -6459,43 +6437,17 @@ body.light-mode .type-btn:not(.active) { color: rgba(200, 200, 210, 0.75) !impor
 }
 
 /* ============================================================
-   FINAL FORCE OVERRIDE — top panel must look identical in
-   light mode and dark mode. Placed at the very end of the file
-   with maximum specificity + !important on every box property
-   to guarantee nothing upstream can win.
+   Search box + stats row deliberately stay dark in light mode
+   (an intentional accent against the now-light top header) --
+   the top-panel/header/title/doc-tag force-dark rules that used
+   to live here were removed so the header can actually follow
+   the light theme (see the .top-panel rule near line 2712).
    ============================================================ */
-body.light-mode .top-panel,
-body.light-mode.light-mode .top-panel {
-    background:
-        radial-gradient(ellipse 160px 140px at 100% 0%, rgba(255, 90, 40, 0.38) 0%, rgba(255, 80, 30, 0.14) 35%, transparent 60%),
-        #0c0f1c !important;
-    background-color: #0b0c11 !important;
-    border: none !important;
-    box-shadow:
-        0 0 0 0.6px rgba(255, 130, 20, 0.65),
-        0 0 34px rgba(255, 130, 20, 0.14),
-        0 20px 44px rgba(0, 0, 0, 0.55) !important;
-}
-body.light-mode .header,
-body.light-mode .top-bar {
-    background: transparent !important;
-    background-color: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-}
 body.light-mode .stats-bar {
     background: #0c0f1c !important;
     background-color: #0e0f14 !important;
     border: 1px solid rgba(255, 255, 255, 0.07) !important;
     box-shadow: none !important;
-}
-body.light-mode .header-title h1,
-body.light-mode .logo-doc {
-    color: #ffffff !important;
-}
-body.light-mode .doc-tag {
-    color: #f2f4f8 !important;
-    background: rgba(255,158,68,0.12) !important;
 }
 body.light-mode #searchInput {
     color: #f5f6f8 !important;
