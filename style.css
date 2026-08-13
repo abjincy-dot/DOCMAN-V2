@@ -2720,8 +2720,20 @@ body.light-mode .top-bar {
 background: none !important; 
 } 
 body.light-mode .stats-bar { 
-background: #0c0f1c !important; 
+background: var(--toolbar-bg-stats) !important; 
+border-color: var(--toolbar-border-stats) !important; 
 } 
+body.light-mode .stat-icon-btn {
+    background: rgba(0,0,0,0.05) !important;
+    border-color: rgba(0,0,0,0.12) !important;
+    color: #334155 !important;
+}
+body.light-mode .stat-icon-label {
+    color: #3a3226 !important;
+}
+body.light-mode .stats-bar-divider {
+    background: rgba(0, 0, 0, 0.12) !important;
+}
 body.light-mode .stat-item { 
 background: transparent !important; 
 } 
@@ -6436,29 +6448,7 @@ body.light-mode .type-btn:not(.active) { color: rgba(200, 200, 210, 0.75) !impor
     transform: scale(0.97) !important;
 }
 
-/* ============================================================
-   Search box + stats row deliberately stay dark in light mode
-   (an intentional accent against the now-light top header) --
-   the top-panel/header/title/doc-tag force-dark rules that used
-   to live here were removed so the header can actually follow
-   the light theme (see the .top-panel rule near line 2712).
-   ============================================================ */
-body.light-mode .stats-bar {
-    background: #0c0f1c !important;
-    background-color: #0e0f14 !important;
-    border: 1px solid rgba(255, 255, 255, 0.07) !important;
-    box-shadow: none !important;
-}
-body.light-mode #searchInput {
-    color: #f5f6f8 !important;
-}
-body.light-mode #searchInput::placeholder {
-    color: rgba(255,255,255,0.4) !important;
-}
-body.light-mode .search-container {
-    background: #101216 !important;
-    background-color: #101216 !important;
-}
-body.light-mode .search-container > i {
-    color: rgba(255,255,255,0.35) !important;
-}
+/* Search box + stats-bar force-dark overrides removed here --
+   both now follow the light theme via their earlier rules
+   (search-container/#searchInput near line 732, .stats-bar near
+   line 2722), consistent with the top header. */
