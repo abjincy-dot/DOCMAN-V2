@@ -5883,7 +5883,7 @@ body.light-mode .ft-icon { background: radial-gradient(circle at 32% 28%, rgba(2
 .top-panel {
     background:
         radial-gradient(ellipse 160px 140px at 100% 0%, rgba(255, 90, 40, 0.38) 0%, rgba(255, 80, 30, 0.14) 35%, transparent 60%),
-        #0c0f1c !important;
+        #0c0f1c;
     border: none !important;
     box-shadow:
         0 0 0 0.6px rgba(255, 130, 20, 0.65),
