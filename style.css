@@ -241,7 +241,7 @@ box-shadow: none;
 
 
 .logo-inner { 
-margin-left: -8px;
+margin-left: -10px;
 width: 100%; 
 height: 100%; 
 background: none;
@@ -270,6 +270,7 @@ box-shadow: none;
     display: flex !important;
     flex-direction: column !important;
     gap: 2px !important;
+    margin-left: 40px;
     align-items: flex-start !important;
     position: relative !important;
     left: auto !important;
@@ -4339,55 +4340,20 @@ transition: var(--transition-fast);
 .settings-action-row:active { transform: scale(0.98); } 
 .settings-action-danger .settings-item-title { color: #f87171; } 
 
-/* "Add Department" button -- glowing pill with a real cropped glossy
-   icon image (from the reference design), matched as closely as CSS
-   gradients alone couldn't get. */
-.add-dept-btn {
-    background: linear-gradient(180deg, #17191f 0%, #0d0e12 100%) !important;
-    border: 1.5px solid #ff8c28 !important;
-    border-radius: 999px !important;
-    padding: 8px 20px 8px 8px !important;
-    box-shadow:
-        0 0 0 1px rgba(255,140,40,0.25),
-        0 0 20px rgba(255,140,40,0.35),
-        0 0 40px rgba(255,110,20,0.15),
-        inset 0 1px 0 rgba(255,255,255,0.06),
-        0 10px 24px rgba(0,0,0,0.5) !important;
+/* "Add Department" button -- his exact reference image used whole,
+   not CSS-recreated, for a true pixel match. Button chrome (background/
+   border/padding) is stripped since the image already contains all of
+   that; only sizing/tap-target concerns are handled here. */
+.add-dept-btn-img {
+    background: none !important;
+    border: none !important;
+    padding: 0 !important;
+    display: block !important;
 }
-.add-dept-icon {
-    width: 54px;
-    height: 54px;
-    flex-shrink: 0;
-    background-image: url('Images/add-dept-plus-icon.png');
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-}
-.add-dept-divider {
-    width: 1.5px;
-    align-self: stretch;
-    margin: 6px 0;
-    background: rgba(255,255,255,0.15);
-    flex-shrink: 0;
-}
-.add-dept-btn .settings-item-title {
-    font-size: 1.05rem;
-    font-weight: 800;
-    letter-spacing: 0.02em;
-    color: #ffffff;
-    text-transform: uppercase;
-}
-.add-dept-btn .settings-item-sub {
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    color: #ff8c28;
-    text-transform: uppercase;
-}
-.add-dept-arrow {
-    color: #ff8c28;
-    font-size: 1.2rem;
-    flex-shrink: 0;
+.add-dept-full-img {
+    display: block;
+    width: 100%;
+    height: auto;
 }
 .settings-card .settings-action-row { margin: 0; border: none; border-bottom: 1px solid var(--glass-border); border-radius: 0; } 
 .settings-card .settings-action-row:last-child { border-bottom: none; }
