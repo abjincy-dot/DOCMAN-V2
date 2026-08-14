@@ -1613,11 +1613,47 @@ border: 2px dashed rgba(148,163,184,0.4);
 
 .dept-add-footer { 
 display: flex; 
-justify-content: center; 
+justify-content: flex-end; 
 align-items: center; 
-padding: 24px 0 32px; 
+padding: 24px 0 calc(32px + env(safe-area-inset-bottom)); 
 width: 100%; 
 } 
+.dept-add-fab {
+    position: relative;
+    height: 78px;
+    width: 78px;
+    overflow: hidden;
+    border-radius: 999px 0 0 999px;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: width 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dept-add-fab.dept-add-fab-expanded {
+    width: 280px;
+}
+.dept-add-fab-collapsed,
+.dept-add-fab-full {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 100%;
+    width: auto;
+    display: block;
+    transition: opacity 0.25s ease;
+}
+.dept-add-fab-full {
+    opacity: 0;
+    transition: opacity 0.3s ease 0.1s;
+}
+.dept-add-fab-expanded .dept-add-fab-collapsed {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+.dept-add-fab-expanded .dept-add-fab-full {
+    opacity: 1;
+}
 .dept-add-btn { 
 display: flex; 
 align-items: center; 
@@ -4340,21 +4376,6 @@ transition: var(--transition-fast);
 .settings-action-row:active { transform: scale(0.98); } 
 .settings-action-danger .settings-item-title { color: #f87171; } 
 
-/* "Add Department" button -- his exact reference image used whole,
-   not CSS-recreated, for a true pixel match. Button chrome (background/
-   border/padding) is stripped since the image already contains all of
-   that; only sizing/tap-target concerns are handled here. */
-.add-dept-btn-img {
-    background: none !important;
-    border: none !important;
-    padding: 0 !important;
-    display: block !important;
-}
-.add-dept-full-img {
-    display: block;
-    width: 100%;
-    height: auto;
-}
 .settings-card .settings-action-row { margin: 0; border: none; border-bottom: 1px solid var(--glass-border); border-radius: 0; } 
 .settings-card .settings-action-row:last-child { border-bottom: none; }
 
