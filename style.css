@@ -1635,6 +1635,16 @@ width: 100%;
     padding: 0;
     cursor: pointer;
     transition: width 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+    /* Forces its own GPU compositing layer. Without this, Android WebView
+       can momentarily flicker/hide fixed-position elements during active
+       scroll (repaints them only once scrolling settles) -- only became
+       noticeable once the taller footer spacer made the list actually
+       scrollable. transform: translateZ(0) fixes it without affecting the
+       width-expand transition above. */
+    transform: translateZ(0);
+    will-change: transform;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
 }
 .dept-add-fab.dept-add-fab-expanded {
     width: 280px;
