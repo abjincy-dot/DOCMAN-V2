@@ -1612,14 +1612,20 @@ border: 2px dashed rgba(148,163,184,0.4);
 
 
 .dept-add-footer { 
-display: flex; 
-justify-content: flex-end; 
-align-items: center; 
-padding: 24px 0 calc(32px + env(safe-area-inset-bottom)); 
+/* Generous clearance so the last department row (and its item-count
+   badge, which sits at the row's own height) never sits underneath the
+   fixed-position "Add Department" FAB while scrolling. FAB footprint is
+   78px tall, floating 24px above the safe-area bottom -- previously only
+   a 32px buffer was added on top of that, which wasn't enough on some
+   screens/scroll positions. Bumped to a 110px buffer for real clearance. */
+height: calc(78px + 24px + 110px + env(safe-area-inset-bottom)); 
 width: 100%; 
 } 
 .dept-add-fab {
-    position: relative;
+    position: fixed;
+    right: 4px;
+    bottom: calc(24px + env(safe-area-inset-bottom));
+    z-index: 40;
     height: 78px;
     width: 78px;
     overflow: hidden;
