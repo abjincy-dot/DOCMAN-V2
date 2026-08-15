@@ -3,7 +3,7 @@
 // Version: 1.0.0
 // ============================================================
 
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.0.0';
 
 const SETTINGS_KEY = 'docman_settings_v2';
 const RECENTS_KEY = 'docman_recents_v1';
@@ -558,22 +558,44 @@ async function restoreRecycleBinItem(id) {
 
 // Secure Delete — the only path in the whole app that actually removes a
 // file's blob/fsPath data once it's in the recycle bin. Irreversible.
+//
+// The native/blob deletions are explicitly awaited (Promise.all for a
+// folder's many files) BEFORE the recycle-bin entry itself is removed and
+// saved. Previously these were fire-and-forget: the function could return
+// (and the recycle-bin entry disappear) before the underlying delete
+// actually completed. If the app was killed in that window, the native
+// file/blob would leak forever as a true orphan -- with no recycle-bin
+// entry left to even know it needed cleaning up. Waiting for completion
+// first, and only then committing the recycle-bin removal, means a kill
+// mid-operation leaves the item still in the recycle bin (safe to retry),
+// never a silently orphaned file with no record of it anywhere.
 async function permanentlyDeleteRecycleBinItem(id, { silent = false } = {}) {
     const idx = recycleBin.findIndex(r => r.id === id);
     if (idx === -1) return;
     const item = recycleBin[idx];
 
+    let failures = 0;
     if (item.kind === 'file') {
         const f = item.payload;
-        if (f.fsPath) deleteFileFromFS(f.fsPath);
-        else deleteBlobFromDB(item.folderPath, f.name);
+        const ok = f.fsPath ? await deleteFileFromFS(f.fsPath) : await deleteBlobFromDB(item.folderPath, f.name);
+        if (!ok) {
+            console.warn('Secure Delete: failed to remove file data', f.name);
+            failures++;
+        }
     } else if (item.kind === 'folder') {
+        const deletions = [];
         for (const k of Object.keys(item.payload.filesSnapshot || {})) {
             for (const f of item.payload.filesSnapshot[k]) {
-                if (f.fsPath) deleteFileFromFS(f.fsPath);
-                else deleteBlobFromDB(k, f.name);
+                deletions.push((async () => {
+                    const ok = f.fsPath ? await deleteFileFromFS(f.fsPath) : await deleteBlobFromDB(k, f.name);
+                    if (!ok) {
+                        console.warn('Secure Delete: failed to remove file data', f.name);
+                        failures++;
+                    }
+                })());
             }
         }
+        await Promise.all(deletions);
     }
     // Notes carry no separate blob -- their content lives entirely in the
     // recycle bin entry itself, nothing extra to purge.
@@ -583,7 +605,13 @@ async function permanentlyDeleteRecycleBinItem(id, { silent = false } = {}) {
     if (!silent) {
         render();
         updateStats();
-        showToast('Permanently deleted');
+        if (failures) {
+            showToast('Deleted, but ' + failures + ' file(s) could not be fully removed — check console', true);
+        } else {
+            showToast('Permanently deleted');
+        }
+    } else if (failures) {
+        console.warn('Secure Delete (silent): completed with', failures, 'failure(s) for item', id);
     }
 }
 
@@ -711,6 +739,10 @@ async function saveFilesForFolder(folderPath) {
 
 // Removes a single file's blob. Call this whenever a file is actually
 // deleted (not just renamed/favourited) so blobs don't leak forever.
+// Returns true on success (including "already gone" -- nothing left to
+// clean up counts as success for the caller), false only on a genuine
+// unexpected error, so callers that need to know can actually find out
+// instead of this being silently swallowed.
 async function deleteBlobFromDB(folderPath, fileName) {
     try {
         const tx = db.transaction('blobs', 'readwrite');
@@ -719,8 +751,10 @@ async function deleteBlobFromDB(folderPath, fileName) {
             tx.oncomplete = resolve;
             tx.onerror = () => reject(tx.error);
         });
+        return true;
     } catch (e) {
         console.warn('Failed to delete blob:', e);
+        return false;
     }
 }
 
@@ -1049,11 +1083,51 @@ function blobToBase64(blob) {
     });
 }
 
+// Single choke point for turning a display filename into a safe native
+// filesystem path segment. Filenames come from the OS file picker, camera,
+// or Google Drive -- all of which hand back whatever name the source file
+// actually has, which is NOT trustworthy input. A crafted name containing
+// '..' or '/' could otherwise let a native write escape the app's own
+// docs/ directory (path traversal) into other files this app's private
+// storage happens to contain (e.g. its own IndexedDB/cache files).
+// The display name (f.name, shown in the UI) is left completely
+// untouched -- only the physical path actually written to disk is
+// sanitized, so this never changes what the user sees.
+function sanitizePathSegment(segment) {
+    let s = String(segment == null ? '' : segment).trim();
+    if (/^\.*$/.test(s)) return '_'; // empty or all-dots ('', '.', '..', '...') -> safe placeholder
+    s = s
+        .replace(/[\/\\]/g, '_')      // no path separators
+        .replace(/\.\./g, '_')        // no traversal sequences
+        .replace(/[\x00-\x1f]/g, ''); // no control characters
+    if (!s || /^\.*$/.test(s)) s = '_'; // re-check in case replacements left nothing but dots
+    if (s.length > 150) s = s.slice(0, 150); // stay well under typical 255-byte filesystem limits
+    return s;
+}
 function fsPathFor(folderPath, fileName) {
-    // Filesystem paths can't safely contain the same characters a display
-    // name might; folderPath is already made of internal path segments so
-    // it's safe as-is, filenames are used as leaf segments verbatim.
-    return 'docs/' + folderPath + '/' + fileName;
+    const safeFolder = (folderPath || '').split('/').map(sanitizePathSegment).join('/');
+    const safeName = sanitizePathSegment(fileName);
+    return 'docs/' + safeFolder + '/' + safeName;
+}
+
+// Folder/department names become tree keys that are joined/split on '/'
+// throughout the app (folderPath = [...segments].join('/')) -- unlike file
+// names, a folder name containing '/' or '\\' would silently corrupt
+// navigation by injecting extra tree levels that don't actually exist as
+// separate folder objects, not just a native-storage risk. This is the
+// single validation point for every folder/department name the user can
+// type: New Folder, New Department, and every rename entry point.
+function isValidFolderName(name) {
+    if (!name || !name.trim()) return false;
+    const trimmed = name.trim();
+    if (trimmed.length > 100) return false;
+    if (/^\.+$/.test(trimmed)) return false; // '.', '..', '...' etc -- not a meaningful name
+    // Allowlist, not a blocklist: English letters, digits, spaces, and a
+    // small set of basic punctuation. An allowlist is safer here -- with
+    // the earlier blocklist approach a single escaping slip let backslash
+    // through unnoticed, whereas anything not explicitly allowed here is
+    // simply rejected, so there's no character that can be missed.
+    return /^[A-Za-z0-9 _\-().&]+$/.test(trimmed);
 }
 
 // Writes a blob to native storage. Returns the fsPath on success, or null
@@ -1109,26 +1183,21 @@ async function readBlobFromFS(fsPath) {
     return null;
 }
 
+// Returns true on success, false on a genuine failure -- callers that only
+// want best-effort cleanup can ignore the return value (same as before);
+// callers that need to know whether data was actually removed (Erase All
+// Data, Restore, Secure Delete) can now check it instead of always
+// silently assuming success.
 async function deleteFileFromFS(fsPath) {
     const Filesystem = getFilesystemPlugin();
-    if (!Filesystem || !fsPath) return;
+    if (!Filesystem || !fsPath) return false;
     try {
         await Filesystem.deleteFile({ path: fsPath, directory: 'DATA' });
-    } catch (e) {
-        // File may already be gone — not fatal.
-        console.warn('Native file delete failed (may not exist):', e);
-    }
-}
-
-async function moveFileInFS(oldPath, newPath) {
-    const Filesystem = getFilesystemPlugin();
-    if (!Filesystem || !oldPath) return false;
-    if (oldPath === newPath) return true;
-    try {
-        await Filesystem.rename({ from: oldPath, to: newPath, directory: 'DATA', toDirectory: 'DATA' });
         return true;
     } catch (e) {
-        console.warn('Native file rename failed:', e);
+        // File may already be gone — not fatal, but still reported as a
+        // non-success so callers that count failures see it if it matters.
+        console.warn('Native file delete failed (may not exist):', e);
         return false;
     }
 }
@@ -1605,17 +1674,20 @@ function deleteFileFromFolder(folderPath, fileName) {
     });
 }
 
+// Renaming a file only ever changes its display name -- the underlying
+// native fsPath (an explicit stored field, never recomputed from name
+// elsewhere) is deliberately left untouched. Same reasoning as
+// migrateFilesAndNotesPath: zero native I/O on rename means zero risk to
+// the file. Only IndexedDB-blob-stored files (no fsPath) need their
+// storage key actually moved, since that key IS reconstructed from
+// folderPath+name elsewhere.
 async function renameFileInFolder(folderPath, oldName, newName) {
     if (!newName?.trim()) return showToast("Name empty", true);
     if (allFiles[folderPath]) {
         const idx = allFiles[folderPath].findIndex(f => f.name === oldName);
         if (idx !== -1) {
             const entry = allFiles[folderPath][idx];
-            if (entry.fsPath) {
-                const newFsPath = fsPathFor(folderPath, newName);
-                const ok = await moveFileInFS(entry.fsPath, newFsPath);
-                if (ok) entry.fsPath = newFsPath;
-            } else {
+            if (!entry.fsPath) {
                 await renameBlobInDB(folderPath, oldName, folderPath, newName);
             }
             entry.name = newName;
@@ -2847,7 +2919,9 @@ function createCard(title, onClick, isFolder = false, fullPath = null) {
         const pathArr = fullPath.split('/');
         const old = pathArr[pathArr.length - 1];
         showPromptModal('Rename folder:', old, async (newName) => {
-            if (newName && newName !== old && newName.trim()) {
+            if (newName === null || newName === old) return;
+            if (!isValidFolderName(newName)) { showToast("Folder name can only use letters, numbers, spaces, and - _ ( ) . &", true); return; }
+            {
                 const parentPathArr = pathArr.slice(0, -1);
                 const parent = parentPathArr.length ? parentPathArr.reduce((o, p) => o?.[p], fileSystem) : fileSystem;
                 if (!parent || !parent[old]) return;
@@ -2862,22 +2936,11 @@ function createCard(title, onClick, isFolder = false, fullPath = null) {
 
                 const oldPath = fullPath;
                 const newPath = [...parentPathArr, newName].join('/');
-                if (allFiles[oldPath]) {
-                    allFiles[newPath] = allFiles[oldPath];
-                    delete allFiles[oldPath];
-                    await Promise.all(allFiles[newPath].map(async f => {
-                        if (f.fsPath) {
-                            const newFsPath = fsPathFor(newPath, f.name);
-                            const ok = await moveFileInFS(f.fsPath, newFsPath);
-                            if (ok) f.fsPath = newFsPath;
-                        } else {
-                            await renameBlobInDB(oldPath, f.name, newPath, f.name);
-                        }
-                    }));
-                }
-                if (allNotes[oldPath]) { allNotes[newPath] = allNotes[oldPath];
-                    delete allNotes[oldPath]; }
 
+                // Prefix-aware: also migrates every subfolder under oldPath,
+                // and never touches native fsPath files (see
+                // migrateFilesAndNotesPath for why that's the safe choice).
+                await migrateFilesAndNotesPath(oldPath, newPath);
                 migrateFolderMetaPath(oldPath, newPath);
                 await saveFolderMeta();
 
@@ -3018,12 +3081,62 @@ function createCard(title, onClick, isFolder = false, fullPath = null) {
 // FOLDER OPERATIONS
 // ============================================================
 
+// Renames a file/note path key from oldPath to newPath, handling BOTH the
+// folder itself and every descendant subfolder path (oldPath/..., matching
+// the same prefix rule migrateFolderMetaPath already uses for folderMeta).
+// Without the prefix pass, renaming a parent folder would silently orphan
+// every subfolder's allFiles/allNotes entries under a path string the
+// folder tree no longer has -- the data survives on disk/IndexedDB but
+// becomes unreachable through normal navigation.
+//
+// IMPORTANT: this deliberately does NOT touch native fsPath files at all.
+// A file's fsPath is an explicit stored field that is never recomputed
+// from its folderPath anywhere else in the app (reads always go through
+// the stored fsPath string directly) -- so there is no functional need to
+// move the underlying native file when its folder is renamed, and every
+// attempt to do so here (via Filesystem.rename, and later via a manual
+// verified read/write/delete) turned out to have Android/WebView edge
+// cases that could delete the source file. Leaving native files exactly
+// where they physically are, and only moving the *metadata* key, is both
+// simpler and strictly safer -- zero native I/O, zero risk to the file.
+//
+// IndexedDB-blob-stored files (no fsPath) are different: their storage key
+// (blobId) is reconstructed as folderPath+'/'+fileName everywhere it's
+// read, so those genuinely must be moved via renameBlobInDB or they'd
+// become unreadable after the rename.
+async function migrateFilesAndNotesPath(oldPath, newPath) {
+    const prefix = oldPath + '/';
+    const matchingFileKeys = Object.keys(allFiles).filter(k => k === oldPath || k.startsWith(prefix));
+    for (const k of matchingFileKeys) {
+        const newKey = k === oldPath ? newPath : newPath + k.slice(oldPath.length);
+        const files = allFiles[k];
+        delete allFiles[k];
+        allFiles[newKey] = files;
+        await Promise.all(files.map(async f => {
+            if (!f.fsPath) {
+                await renameBlobInDB(k, f.name, newKey, f.name);
+            }
+            // fsPath files: nothing to do -- see note above, the native
+            // file stays exactly where it is.
+        }));
+    }
+
+    const matchingNoteKeys = Object.keys(allNotes).filter(k => k === oldPath || k.startsWith(prefix));
+    for (const k of matchingNoteKeys) {
+        const newKey = k === oldPath ? newPath : newPath + k.slice(oldPath.length);
+        allNotes[newKey] = allNotes[k];
+        delete allNotes[k];
+    }
+}
+
 function renameCurrentFolder() {
     haptic.press();
     if (!currentPath.length) return;
     const old = currentPath[currentPath.length - 1];
     showPromptModal('Rename folder:', old, async (newName) => {
-        if (newName && newName !== old && newName.trim()) {
+        if (newName === null || newName === old) return;
+        if (!isValidFolderName(newName)) { showToast("Folder name can only use letters, numbers, spaces, and - _ ( ) . &", true); return; }
+        {
             const parent = currentPath.slice(0, -1).reduce((o, p) => o[p], fileSystem);
 
             const rebuilt = {};
@@ -3037,22 +3150,11 @@ function renameCurrentFolder() {
 
             const oldPath = currentPath.join('/');
             const newPath = [...currentPath.slice(0, -1), newName].join('/');
-            if (allFiles[oldPath]) {
-                allFiles[newPath] = allFiles[oldPath];
-                delete allFiles[oldPath];
-                await Promise.all(allFiles[newPath].map(async f => {
-                    if (f.fsPath) {
-                        const newFsPath = fsPathFor(newPath, f.name);
-                        const ok = await moveFileInFS(f.fsPath, newFsPath);
-                        if (ok) f.fsPath = newFsPath;
-                    } else {
-                        await renameBlobInDB(oldPath, f.name, newPath, f.name);
-                    }
-                }));
-            }
-            if (allNotes[oldPath]) { allNotes[newPath] = allNotes[oldPath];
-                delete allNotes[oldPath]; }
 
+            // Prefix-aware: renames oldPath itself AND every subfolder under
+            // it (oldPath/...), so nested subfolders keep their files/notes
+            // reachable after the rename instead of being silently orphaned.
+            await migrateFilesAndNotesPath(oldPath, newPath);
             migrateFolderMetaPath(oldPath, newPath);
             saveFolderMeta();
 
@@ -3083,21 +3185,62 @@ function deleteCurrentFolder() {
 function addNewFolder() {
     haptic.press();
     showPromptModal('New folder name:', '', (name) => {
-        if (name && name.trim()) {
-            const cur = getCurrentFolderObject();
-            if (cur && !cur[name]) { cur[name] = {};
-                folderMeta[[...currentPath, name].join('/')] = { createdAt: Date.now() };
-                saveFolderMeta();
-                saveFolderStructure();
-                render(); } else showToast('Already exists', true);
-        }
+        if (name === null) return;
+        if (!isValidFolderName(name)) { showToast("Folder name can only use letters, numbers, spaces, and - _ ( ) . &", true); return; }
+        const cur = getCurrentFolderObject();
+        if (cur && !cur[name.trim()]) { cur[name.trim()] = {};
+            folderMeta[[...currentPath, name.trim()].join('/')] = { createdAt: Date.now() };
+            saveFolderMeta();
+            saveFolderStructure();
+            render(); } else showToast('Already exists', true);
     });
+}
+
+// Home-screen "Add Department" FAB: expands from a half-pill "+" icon into
+// the full "ADD DEPARTMENT" pill on tap, then opens the New Department
+// dialog once the expand animation has had a moment to play. If a
+// department actually gets created, the next render() rebuilds this
+// button from scratch (naturally back in its collapsed state) -- but if
+// the dialog is cancelled, no render() happens, so a timed safety net
+// below collapses it back manually after a few seconds either way.
+// Keeps the "Add Department" FAB (a body-level element outside .app, see
+// index.html) visible only on the true home/root department list --
+// hidden while inside a folder, in search mode, or while any of the four
+// full-screen overlay views (Favourites/Recent/Dashboard/Recycle Bin) are
+// open, since "Add Department" doesn't make sense in any of those places.
+function updateDeptAddFabVisibility() {
+    const fab = document.getElementById('deptAddFab');
+    if (!fab) return;
+    const anyOverlayOpen = !!document.querySelector('.favourites-view.fav-view-visible');
+    const atHomeRoot = currentPath.length === 0 && !isSearchMode;
+    fab.classList.toggle('hidden', anyOverlayOpen || !atHomeRoot);
+}
+
+function onDeptAddFabTap() {
+    const fab = document.getElementById('deptAddFab');
+    if (fab) fab.classList.add('dept-add-fab-expanded');
+    // Delay matches the .dept-add-fab width transition (0.42s in style.css)
+    // plus a small buffer, so the expand animation is fully visible before
+    // the dialog opens on top of it. Previously this was 260ms, shorter
+    // than the 420ms CSS transition, so the dialog interrupted the
+    // animation mid-flight -- the half-expanded pill briefly clipped over
+    // whatever department card sat underneath it, and the popup felt like
+    // it appeared with zero delay.
+    setTimeout(() => {
+        addNewDepartment();
+        setTimeout(() => {
+            const f = document.getElementById('deptAddFab');
+            if (f) f.classList.remove('dept-add-fab-expanded');
+        }, 4000);
+    }, 450);
 }
 
 function addNewDepartment() {
     haptic.press();
     showPromptModal('New department name:', '', (name) => {
-        if (name && name.trim()) {
+        if (name === null) return;
+        if (!isValidFolderName(name)) { showToast("Department name can only use letters, numbers, spaces, and - _ ( ) . &", true); return; }
+        {
             const trimmed = name.trim();
             if (!fileSystem[trimmed]) {
                 fileSystem[trimmed] = {};
@@ -3112,8 +3255,6 @@ function addNewDepartment() {
             } else {
                 showToast('Department already exists', true);
             }
-        } else if (name !== null && name.trim() === '') {
-            showToast('Department name cannot be empty', true);
         }
     });
 }
@@ -3447,6 +3588,7 @@ function render() {
         const contentDiv = document.getElementById('content');
         contentDiv.innerHTML = '';
         document.getElementById('homeBtn').classList.remove('hidden');
+        updateDeptAddFabVisibility();
         document.getElementById('uploadBtn').classList.add('hidden');
         document.getElementById('newNoteBtn').classList.add('hidden');
         document.getElementById('departmentsSection').innerHTML = '';
@@ -3485,6 +3627,7 @@ function render() {
         render(); return; }
 
     document.getElementById('homeBtn').classList.toggle('hidden', currentPath.length === 0);
+    updateDeptAddFabVisibility();
     const isRoot = currentPath.length === 0;
 
     if (isRoot) {
@@ -3539,15 +3682,11 @@ function render() {
             </div>`;
         }
 
-        html += `<div class="dept-add-footer">
-            <button class="dept-add-btn" onclick="addNewDepartment()">
-                <span class="dept-add-btn-icon"><i class="fas fa-plus"></i></span>
-                <span class="dept-add-btn-label">Add Department</span>
-            </button>
-        </div>`;
+        html += `<div class="dept-add-footer"></div>`;
 
         document.getElementById('departmentsSection').innerHTML = html;
         document.getElementById('homeBtn').classList.add('hidden');
+        updateDeptAddFabVisibility();
         document.getElementById('uploadBtn').classList.add('hidden');
         document.getElementById('newNoteBtn').classList.add('hidden');
 
@@ -3967,7 +4106,8 @@ function attachDepartmentPressEffects() {
                 onRename: () => {
                     const old = dept;
                     showPromptModal('Rename department:', old, async (newName) => {
-                        if (!newName || newName === old || !newName.trim()) return;
+                        if (newName === null || newName === old) return;
+                        if (!isValidFolderName(newName)) { showToast("Department name can only use letters, numbers, spaces, and - _ ( ) . &", true); return; }
                         if (fileSystem[newName]) { showToast('Already exists', true); return; }
 
                         const rebuilt = {};
@@ -3978,22 +4118,10 @@ function attachDepartmentPressEffects() {
                         for (const key of Object.keys(fileSystem)) delete fileSystem[key];
                         for (const key of Object.keys(rebuilt)) fileSystem[key] = rebuilt[key];
 
-                        if (allFiles[old]) {
-                            allFiles[newName] = allFiles[old];
-                            delete allFiles[old];
-                            await Promise.all(allFiles[newName].map(async f => {
-                                if (f.fsPath) {
-                                    const newFsPath = fsPathFor(newName, f.name);
-                                    const ok = await moveFileInFS(f.fsPath, newFsPath);
-                                    if (ok) f.fsPath = newFsPath;
-                                } else {
-                                    await renameBlobInDB(old, f.name, newName, f.name);
-                                }
-                            }));
-                        }
-                        if (allNotes[old]) { allNotes[newName] = allNotes[old];
-                            delete allNotes[old]; }
-
+                        // Prefix-aware: also migrates every subfolder under
+                        // this department, and never touches native fsPath
+                        // files (see migrateFilesAndNotesPath for why).
+                        await migrateFilesAndNotesPath(old, newName);
                         migrateFolderMetaPath(old, newName);
                         await saveFolderMeta();
 
@@ -4301,6 +4429,7 @@ function openFavouritesView() {
     const favView = document.getElementById('favouritesView');
     favView.classList.remove('hidden');
     requestAnimationFrame(() => favView.classList.add('fav-view-visible'));
+    updateDeptAddFabVisibility();
 
     const favBackBtn = document.getElementById('favViewBackBtn');
     // Bound directly to touchend (with preventDefault to stop the follow-up
@@ -4333,6 +4462,7 @@ function closeFavouritesView() {
     // the delay: forcing a full layout/paint recompute of a blur-heavy
     // subtree from scratch. Just hide the overlay itself, instantly.
     favView.classList.remove('fav-view-visible');
+    updateDeptAddFabVisibility();
     favView.classList.add('hidden');
 }
 
@@ -4480,6 +4610,7 @@ function openRecentsView() {
     const view = document.getElementById('recentsView');
     view.classList.remove('hidden');
     requestAnimationFrame(() => view.classList.add('fav-view-visible'));
+    updateDeptAddFabVisibility();
 
     document.querySelectorAll('#recentsSubtabRow .subtab-btn').forEach(btn => {
         btn.onclick = () => { haptic.press();
@@ -4497,6 +4628,7 @@ function openRecentsView() {
 function closeRecentsView() {
     const view = document.getElementById('recentsView');
     view.classList.remove('fav-view-visible');
+    updateDeptAddFabVisibility();
     view.classList.add('hidden');
 }
 
@@ -4588,6 +4720,7 @@ function openDashboardView() {
     const view = document.getElementById('dashboardView');
     view.classList.remove('hidden');
     requestAnimationFrame(() => view.classList.add('fav-view-visible'));
+    updateDeptAddFabVisibility();
 
     const backBtn = document.getElementById('dashboardViewBackBtn');
     const backAction = (e) => { if (e) e.preventDefault();
@@ -4600,6 +4733,7 @@ function openDashboardView() {
 function closeDashboardView() {
     const view = document.getElementById('dashboardView');
     view.classList.remove('fav-view-visible');
+    updateDeptAddFabVisibility();
     view.classList.add('hidden');
 }
 
@@ -4659,6 +4793,7 @@ function openRecycleBinView() {
     const view = document.getElementById('recycleBinView');
     view.classList.remove('hidden');
     requestAnimationFrame(() => view.classList.add('fav-view-visible'));
+    updateDeptAddFabVisibility();
 
     const backBtn = document.getElementById('recycleBinViewBackBtn');
     const backAction = (e) => { if (e) e.preventDefault();
@@ -4683,6 +4818,7 @@ function openRecycleBinView() {
 function closeRecycleBinView() {
     const view = document.getElementById('recycleBinView');
     view.classList.remove('fav-view-visible');
+    updateDeptAddFabVisibility();
     view.classList.add('hidden');
 }
 
@@ -5580,6 +5716,7 @@ async function exportBackupData() {
             fileSystem,
             allNotes,
             deptColors,
+            folderMeta,
             exportedAt: new Date().toISOString(),
             version: APP_VERSION,
             format: 'docman-zip-v1'
@@ -5593,6 +5730,7 @@ async function exportBackupData() {
                     type: f.type,
                     uploadedAt: f.uploadedAt,
                     favourite: f.favourite || false,
+                    locked: f.locked || false,
                     size: f.size || 0
                 }));
             }
@@ -5639,20 +5777,56 @@ function importBackupData(file) {
             const manifest = JSON.parse(await manifestEntry.async('string'));
             if (!manifest.fileSystem) { showToast('Invalid backup file', true); return; }
 
-            showConfirmModal('This will <b>replace all current data</b> with the backup. Continue?', async (ok) => {
+            showConfirmModal('This will <b>replace all current data</b> (including the Recycle Bin) with the backup. Continue?', async (ok) => {
                 if (!ok) return;
 
                 showToast('Restoring backup…');
 
-                fileSystem = manifest.fileSystem || {};
-                allNotes = manifest.allNotes || {};
-                deptColors = manifest.deptColors || {};
-                allFiles = {};
+                // ------------------------------------------------------------
+                // STAGED RESTORE: build the new in-memory state from the zip
+                // FIRST, without touching anything currently on disk. Only
+                // once the new state is fully built and persisted do we go
+                // back and remove the OLD native files it replaces. This way
+                // a failure partway through parsing/staging never destroys
+                // data we haven't successfully replaced yet.
+                // ------------------------------------------------------------
 
+                // Every native fsPath the CURRENT data (files + recycle bin,
+                // both of which this restore is about to fully replace)
+                // still points at. These become orphans the moment we swap
+                // in the backup's metadata below, since restored files are
+                // staged as fresh Blobs with no fsPath of their own -- so
+                // every one of these must be explicitly removed, not just
+                // "left behind and hopefully unreferenced".
+                const oldFsPaths = new Set();
+                for (const path in allFiles) {
+                    for (const f of (allFiles[path] || [])) {
+                        if (f && f.fsPath) oldFsPaths.add(f.fsPath);
+                    }
+                }
+                for (const item of recycleBin) {
+                    if (item.kind === 'file' && item.payload?.fsPath) {
+                        oldFsPaths.add(item.payload.fsPath);
+                    } else if (item.kind === 'folder' && item.payload?.filesSnapshot) {
+                        for (const k of Object.keys(item.payload.filesSnapshot)) {
+                            for (const f of item.payload.filesSnapshot[k]) {
+                                if (f && f.fsPath) oldFsPaths.add(f.fsPath);
+                            }
+                        }
+                    }
+                }
+
+                const stagedFileSystem = manifest.fileSystem || {};
+                const stagedNotes = manifest.allNotes || {};
+                const stagedDeptColors = manifest.deptColors || {};
+                const stagedFolderMeta = manifest.folderMeta || {};
+                const stagedFiles = {};
+
+                let readFailures = 0;
                 if (manifest.fileMetadata) {
                     for (const path in manifest.fileMetadata) {
                         if (!manifest.fileMetadata[path]) continue;
-                        allFiles[path] = [];
+                        stagedFiles[path] = [];
                         for (const f of manifest.fileMetadata[path]) {
                             const zipEntry = zip.file('files/' + path + '/' + f.name);
                             let fileData = null;
@@ -5661,13 +5835,20 @@ function importBackupData(file) {
                                     fileData = await zipEntry.async('blob');
                                 } catch (e) {
                                     console.warn('Failed to read file from backup:', path, f.name, e);
+                                    readFailures++;
                                 }
+                            } else {
+                                // Metadata references a file the zip doesn't actually
+                                // contain -- surface this rather than silently
+                                // restoring a phantom entry with no content.
+                                readFailures++;
                             }
-                            allFiles[path].push({
+                            stagedFiles[path].push({
                                 name: f.name,
                                 type: f.type || 'application/octet-stream',
                                 uploadedAt: f.uploadedAt || Date.now(),
                                 favourite: f.favourite || false,
+                                locked: f.locked || false,
                                 size: f.size || (fileData ? fileData.size : 0),
                                 fileData: fileData,
                                 _hasData: !!fileData,
@@ -5677,16 +5858,54 @@ function importBackupData(file) {
                     }
                 }
 
+                // Commit the staged state -- this is the point of no return,
+                // now that every zip entry has been read successfully (or the
+                // failure counted above, without corrupting anything).
+                fileSystem = stagedFileSystem;
+                allNotes = stagedNotes;
+                deptColors = stagedDeptColors;
+                folderMeta = stagedFolderMeta;
+                allFiles = stagedFiles;
+                // Recycle Bin is explicitly NOT carried over -- the confirm
+                // dialog above tells the user everything is being replaced,
+                // so leaving old trash entries around (pointing at fsPaths
+                // we're about to delete) would be a lie and a dangling
+                // reference. A restore starts with an empty Recycle Bin.
+                recycleBin = [];
+
                 await saveFolderStructure();
                 await saveDeptColors();
+                await saveFolderMeta();
+                await saveRecycleBin();
                 await saveAllNotesToDB();
                 await saveAllFilesToDB(true);
                 await loadAllFileMetadata();
 
+                // Now that the new state is safely persisted, remove the
+                // native files it replaced. Best-effort per file; failures
+                // are tracked and reported rather than assumed away.
+                let deleteFailures = 0;
+                for (const fsPath of oldFsPaths) {
+                    const ok = await deleteFileFromFS(fsPath);
+                    if (!ok) {
+                        console.warn('Restore: failed to remove obsolete native file', fsPath);
+                        deleteFailures++;
+                    }
+                }
+
                 currentPath = [];
                 closeSettingsPage();
                 render();
-                showToast('Data imported successfully');
+
+                if (readFailures || deleteFailures) {
+                    showToast(
+                        'Backup restored, but ' + readFailures + ' file(s) could not be read from the backup and ' +
+                        deleteFailures + ' old file(s) could not be cleaned up — check console',
+                        true
+                    );
+                } else {
+                    showToast('Data imported successfully');
+                }
             });
         } catch (err) {
             console.error('Backup import failed:', err);
@@ -5699,22 +5918,114 @@ function importBackupData(file) {
 // CLEAR ALL DATA
 // ============================================================
 
+// Erases the CONTENTS of every department/folder -- all files, notes,
+// and the Recycle Bin (including its native files) -- while explicitly
+// KEEPING the department/folder tree itself, dept colors, and folder
+// metadata (creation dates) intact. Only the documents/notes living
+// inside folders and the native bytes backing them are removed; folders
+// stay exactly where they were, empty.
+//
+// Also removes every native document file this app has ever written
+// under Directory.DATA/docs/ -- including files still sitting in the
+// recycle bin (their native bytes are not touched until Secure Delete,
+// so without this step they would silently survive an erase).
+//
+// Strategy: (1) collect every known fsPath from allFiles + recycleBin and
+// delete them individually, (2) as a belt-and-suspenders pass, recursively
+// remove the whole docs/ directory to catch any orphaned native files that
+// metadata lost track of, (3) only then clear the files/notes/recycle-bin
+// state (folder tree, dept colors, folder metadata untouched).
+// Partial native-delete failures are tracked and surfaced -- this never
+// silently reports success if something could not be removed.
 async function doEraseAllData() {
-    fileSystem = {};
+    const failures = [];
+
+    // 1) Delete every native file referenced by current metadata.
+    const fsPaths = new Set();
+    for (const folderPath of Object.keys(allFiles)) {
+        for (const f of (allFiles[folderPath] || [])) {
+            if (f && f.fsPath) fsPaths.add(f.fsPath);
+        }
+    }
+    // ...and every native file still parked in the recycle bin (files +
+    // files nested inside recycled folders) -- these are real bytes on
+    // disk that "Clear All Data" must also remove.
+    for (const item of recycleBin) {
+        if (item.kind === 'file' && item.payload && item.payload.fsPath) {
+            fsPaths.add(item.payload.fsPath);
+        } else if (item.kind === 'folder' && item.payload && item.payload.filesSnapshot) {
+            for (const k of Object.keys(item.payload.filesSnapshot)) {
+                for (const f of item.payload.filesSnapshot[k]) {
+                    if (f && f.fsPath) fsPaths.add(f.fsPath);
+                }
+            }
+        }
+    }
+    for (const fsPath of fsPaths) {
+        const ok = await deleteFileFromFS(fsPath);
+        if (!ok) {
+            console.warn('Erase All Data: failed to delete native file', fsPath);
+            failures.push(fsPath);
+        }
+    }
+
+    // 2) Belt-and-suspenders: remove the entire docs/ directory so any
+    // native file NOT referenced by metadata (a true orphan) is also gone,
+    // and the app starts from a genuinely clean native storage state.
+    const Filesystem = getFilesystemPlugin();
+    if (Filesystem) {
+        try {
+            await Filesystem.rmdir({ path: 'docs', directory: 'DATA', recursive: true });
+        } catch (e) {
+            // ENOENT (directory never existed / already empty) is fine and
+            // expected -- only treat this as a real failure if the
+            // directory demonstrably still has content afterwards.
+            try {
+                const check = await Filesystem.readdir({ path: 'docs', directory: 'DATA' });
+                if (check && check.files && check.files.length) {
+                    console.warn('Erase All Data: docs/ directory could not be fully removed', e);
+                    failures.push('docs/ (directory)');
+                }
+            } catch (e2) { /* directory genuinely gone -- fine */ }
+        }
+    }
+
+    // 3) Clear only files/notes/recycle-bin state. Folder tree (fileSystem),
+    // dept colors, and folder metadata (creation dates) are deliberately
+    // left untouched -- departments and subfolders must survive this,
+    // empty, exactly as the user left them.
     allFiles = {};
     allNotes = {};
-    deptColors = {};
-    await saveFolderStructure();
-    await saveDeptColors();
-    const tx = db.transaction(['files', 'notes', 'blobs'], 'readwrite');
-    tx.objectStore('files').clear();
-    tx.objectStore('notes').clear();
-    tx.objectStore('blobs').clear();
-    tx.commit();
+    recycleBin = [];
+
+    await saveRecycleBin();
+
+    await new Promise((resolve, reject) => {
+        const tx = db.transaction(['files', 'notes', 'blobs'], 'readwrite');
+        tx.objectStore('files').clear();
+        tx.objectStore('notes').clear();
+        tx.objectStore('blobs').clear();
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+    }).catch(e => {
+        console.warn('Erase All Data: IndexedDB clear failed', e);
+        failures.push('IndexedDB (files/notes/blobs)');
+    });
+
+    // Recents + search history are DOCMAN-specific local metadata too.
+    try { localStorage.removeItem(ACTIVITY_KEY); } catch (e) { failures.push('recents'); }
+    try { localStorage.removeItem(SEARCH_HISTORY_KEY); } catch (e) { failures.push('search history'); }
+
     currentPath = [];
     closeSettingsPage();
     render();
-    showToast('All data erased');
+
+    if (failures.length) {
+        console.warn('Erase All Data: completed with failures:', failures);
+        showToast('Data erased, but ' + failures.length + ' item(s) could not be removed — check console', true);
+    } else {
+        showToast('All data erased');
+    }
 }
 
 function clearAllAppData() {
@@ -5722,7 +6033,7 @@ function clearAllAppData() {
     if (hasPin) {
         showPinVerifyModal('Erase All Data', (verified) => {
             if (!verified) return;
-            showConfirmModal('This will permanently delete <b>all files, notes and departments</b>. This cannot be undone. Continue?', async (confirmed) => {
+            showConfirmModal('This will permanently delete <b>all files and notes inside every department/folder</b> (folders themselves will be kept, but emptied). This cannot be undone. Continue?', async (confirmed) => {
                 if (!confirmed) return;
                 await doEraseAllData();
             });
@@ -5736,7 +6047,7 @@ function clearAllAppData() {
             showToast('PIN saved. Enter it again to confirm erase.');
             showPinVerifyModal('Confirm Erase All Data', (verified) => {
                 if (!verified) return;
-                showConfirmModal('This will permanently delete <b>all files, notes and departments</b>. This cannot be undone. Continue?', async (confirmed) => {
+                showConfirmModal('This will permanently delete <b>all files and notes inside every department/folder</b> (folders themselves will be kept, but emptied). This cannot be undone. Continue?', async (confirmed) => {
                     if (!confirmed) return;
                     await doEraseAllData();
                 });
@@ -6174,13 +6485,6 @@ function initSettingsPage() {
         });
     };
 
-    // Departments
-    document.getElementById('settingsAddDeptBtn').onclick = () => {
-        addNewDepartment();
-        setTimeout(renderDepartmentsManagePanel, 50);
-        setTimeout(refreshSettingsListSubtitles, 50);
-    };
-
     // Security
     const appLockToggle = document.getElementById('appLockToggle');
     appLockToggle.onchange = () => {
@@ -6263,7 +6567,18 @@ function initSettingsPage() {
     };
 
     // About
-    document.getElementById('checkUpdatesBtn').onclick = () => showToast("You're on the latest version ✓");
+    // Never claim to have checked for an update when nothing was actually
+    // checked -- this used to unconditionally show "You're on the latest
+    // version" regardless of reality. There's no update-check server for
+    // this app, so the honest action is opening the Play Store listing,
+    // where the real answer (and an Update button, if one exists) lives.
+    // window.open(url, '_system') is the standard Capacitor convention for
+    // handing a URL off to the OS as an external Intent (handled by the
+    // default BridgeWebViewClient, unmodified in this app) -- this is how
+    // market:// gets routed to the Play Store app itself.
+    document.getElementById('checkUpdatesBtn').onclick = () => {
+        window.open('market://details?id=com.oarcel.docman', '_system');
+    };
 
     applyTheme(docmanSettings.theme || 'dark');
     applyAnimations();
@@ -6372,16 +6687,32 @@ function addDepthEffect(element, event) {
 // HANDLE FILES UPLOAD
 // ============================================================
 
+// One bad file must never silently abort the rest of a multi-file import.
+// Previously this had no try/catch around addFileToCurrentFolder -- an
+// IndexedDB error partway through a batch (e.g. storage quota exceeded,
+// a genuinely corrupted file) would throw uncaught, stop the loop dead,
+// and drop every remaining file in the batch with no error shown at all.
+// Now each file is isolated: a failure is counted and reported, but never
+// stops the rest of the batch from being attempted.
 async function handleFiles(files) {
+    let failures = 0;
     for (let f of files) {
         const fileType = getFileType(f.name);
         if (['image', 'pdf', 'word', 'word-legacy', 'excel'].includes(fileType)) {
-            await addFileToCurrentFolder(f);
+            try {
+                await addFileToCurrentFolder(f);
+            } catch (e) {
+                console.warn('Import failed for', f.name, e);
+                failures++;
+            }
         } else {
             showToast('Skipped: ' + f.name + ' (not supported)', true);
         }
     }
     render();
+    if (failures) {
+        showToast(failures + ' file(s) could not be imported — check console', true);
+    }
 }
 
 function triggerUpload() {
@@ -6392,33 +6723,6 @@ function triggerUpload() {
 function triggerNewNote() {
     openNewNoteModal();
 }
-
-// ============================================================
-// GOOGLE DRIVE PICKER (hosted web page + custom URL scheme callback)
-// ============================================================
-
-// The hosted page (drive-picker.html) does the Google sign-in and shows
-// the Picker UI -- Google's Picker widget has to run in a real browser,
-// not inside the app's WebView. Once a file is chosen, that page redirects
-// to docman://oauth-callback, which AndroidManifest.xml routes back into
-// this app; the listener below catches that and downloads the file.
-//
-// SECURITY NOTE: custom URL schemes like "docman://" are not exclusive to
-// this app on Android -- another app could in principle register the same
-// scheme and receive this callback (with the Drive access token in it)
-// instead of DOCMAN. The `state` nonce below defends against a *forged*
-// callback being accepted by this app, but it can't stop a malicious app
-// from being the one that *receives* the genuine redirect in the first
-// place. Closing that fully requires switching to a verified Android App
-// Link (a real https:// domain with a hosted assetlinks.json) instead of
-// a custom scheme -- that requires control over the drive-picker.html
-// domain, which is out of scope here.
-const DRIVE_PICKER_URL = 'https://abjincy-dot.github.io/docman-drive-picker/drive-picker.html';
-
-// One-time nonce for the in-flight Drive picker request, so a stray/late
-// callback can't be replayed against a later request. Cleared as soon as
-// it's consumed (success, mismatch, or cancellation).
-let pendingDriveState = null;
 
 // ============================================================
 // ANDROID HARDWARE BACK BUTTON
@@ -6487,62 +6791,6 @@ function initAndroidBackButton() {
         } else {
             lastBackPressAt = now;
             showToast('Press back again to exit');
-        }
-    });
-}
-
-function initGoogleDrivePicker() {
-    const App = window.Capacitor?.Plugins?.App;
-    if (!App) return; // Web/PWA build -- Drive picker is native-app only.
-
-    App.addListener('appUrlOpen', async (data) => {
-        const url = data?.url || '';
-        if (!url.startsWith('docman://oauth-callback')) return;
-
-        const Browser = window.Capacitor?.Plugins?.Browser;
-        if (Browser) { try { await Browser.close(); } catch (e) { /* already closed */ } }
-
-        let params;
-        try { params = new URL(url).searchParams; } catch (e) { return; }
-
-        const expectedState = pendingDriveState;
-        pendingDriveState = null; // one-time use regardless of outcome below
-
-        if (params.get('cancelled')) return;
-
-        // Backward-compatible check: only enforce if the picker page is
-        // actually echoing state back. Once drive-picker.html is updated
-        // to always include &state=..., this becomes a hard requirement.
-        const returnedState = params.get('state');
-        if (returnedState !== null && returnedState !== expectedState) {
-            console.warn('[DOCMAN-DRIVE] state mismatch, ignoring callback');
-            showToast('Google Drive selection failed', true);
-            return;
-        }
-        if (returnedState === null) {
-            console.warn('[DOCMAN-DRIVE] picker page did not echo state -- update drive-picker.html to close the replay gap');
-        }
-
-        const fileId = params.get('fileId');
-        const fileName = params.get('fileName') || 'drive-file';
-        const accessToken = params.get('accessToken');
-        if (!fileId || !accessToken) {
-            showToast('Google Drive selection failed', true);
-            return;
-        }
-
-        showToast('Importing from Google Drive…');
-        try {
-            const res = await fetch(
-                `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-                { headers: { Authorization: `Bearer ${accessToken}` } }
-            );
-            if (!res.ok) throw new Error('Drive download failed: ' + res.status);
-            const blob = await res.blob();
-            const file = new File([blob], fileName, { type: blob.type });
-            await handleFiles([file]);
-        } catch (err) {
-            showToast('Could not import from Google Drive', true);
         }
     });
 }
@@ -6645,17 +6893,24 @@ function showUploadOptions() {
         haptic.press();
         openFilePicker({ accept: '.pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,.doc,.docx,.xls,.xlsx,.csv', capture: null, multiple: true });
     });
-    document.getElementById('optGoogleDrive').addEventListener('click', async () => {
+    document.getElementById('optGoogleDrive').addEventListener('click', () => {
         close();
         haptic.press();
-        const Browser = window.Capacitor?.Plugins?.Browser;
-        if (!Browser) {
-            showToast('Google Drive import needs the native app', true);
-            return;
-        }
-        pendingDriveState = (crypto?.randomUUID?.() || String(Date.now()) + Math.random().toString(36).slice(2));
-        const pickerUrl = DRIVE_PICKER_URL + '?state=' + encodeURIComponent(pendingDriveState);
-        await Browser.open({ url: pickerUrl });
+        // Uses Android's native document picker, targeted directly at the
+        // Google Drive app (DocmanWebChromeClient.java recognises the
+        // 'x-docman/google-drive' marker and launches
+        // com.google.android.apps.docs directly via ACTION_OPEN_DOCUMENT).
+        // No OAuth, no browser, no custom URL scheme, no Google app
+        // verification screen -- the Drive app itself is already signed
+        // in and just hands back a content:// URI like any other picked
+        // file, which flows through the exact same handleFiles() path as
+        // "Choose Files". If the Drive app isn't installed, the native
+        // side falls back to the general chooser automatically.
+        openFilePicker({
+            accept: 'x-docman/google-drive,.pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,.doc,.docx,.xls,.xlsx,.csv',
+            capture: null,
+            multiple: true
+        });
     });
 }
 window.showUploadOptions = showUploadOptions;
@@ -6843,8 +7098,29 @@ function initElasticOverscroll() {
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-    initGoogleDrivePicker();
     initAndroidBackButton();
+
+    // "Add Department" FAB -- bound via touchend (not inline onclick) for
+    // the same reason as favBackBtn elsewhere in this file: it skips the
+    // browser's tap-vs-gesture disambiguation step, which is the fix
+    // that's already proven necessary for reliable touch response on
+    // specific custom-positioned elements in this WebView.
+    const deptAddFabEl = document.getElementById('deptAddFab');
+    if (deptAddFabEl) {
+        // Guards against touchend + the browser's synthetic click firing
+        // back-to-back on the same tap, which would call onDeptAddFabTap()
+        // twice in quick succession.
+        let deptFabBusy = false;
+        const deptAddFabAction = (e) => {
+            if (e) e.preventDefault();
+            if (deptFabBusy) return;
+            deptFabBusy = true;
+            onDeptAddFabTap();
+            setTimeout(() => { deptFabBusy = false; }, 700);
+        };
+        deptAddFabEl.ontouchend = deptAddFabAction;
+        deptAddFabEl.onclick = deptAddFabAction; // fallback for mouse/non-touch testing
+    }
 
     // Rendered immediately, before anything else -- including the lock
     // screen below. This is what's actually underneath the lock screen the
@@ -7165,6 +7441,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.deleteCurrentFolder = deleteCurrentFolder;
     window.addNewFolder = addNewFolder;
     window.addNewDepartment = addNewDepartment;
+    window.onDeptAddFabTap = onDeptAddFabTap;
     window.openFile = openFile;
     window.openNote = openNote;
     window.closeNoteModal = closeNoteModal;
