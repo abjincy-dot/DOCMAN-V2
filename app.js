@@ -77,6 +77,7 @@ function getFileIcon(fileName) {
 function getFileType(fileName) {
     const ext = fileName.split('.').pop().toLowerCase();
     if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return 'image';
+    if (['heic', 'heif'].includes(ext)) return 'heic'; // needs conversion -- browsers can't decode these natively
     if (['pdf'].includes(ext)) return 'pdf';
     if (['docx'].includes(ext)) return 'word';
     if (['doc'].includes(ext)) return 'word-legacy';
@@ -131,10 +132,17 @@ function computeFolderSizeBytes(folderObj, pathArr) {
 
 const haptic = (() => {
     const cap = () => window.Capacitor?.Plugins?.Haptics;
-    // Everything routes through a single gentle vibration now — no more
-    // Medium/Heavy impact styles, and the fallback duration is short
-    // regardless of which action triggered it.
-    const imp = () => cap()?.impact({ style: 'Light' }) ?? navigator.vibrate?.(10);
+    // vibrate() with an explicit short duration is reliably supported on
+    // both platforms (unlike selectionChanged, which is mostly an iOS
+    // concept and silently no-ops on many Android Haptics plugin
+    // implementations -- and since it still returns a Promise, the "??"
+    // fallback below never even fired when that happened, so it felt
+    // like haptics had gone completely silent).
+    const imp = () => {
+        const h = cap();
+        if (h?.vibrate) { h.vibrate({ duration: 8 }); return; }
+        navigator.vibrate?.(8);
+    };
     return {
         press:     () => imp(),
         longPress: () => imp(),
@@ -224,6 +232,38 @@ function showPromptModal(message, defaultVal, callback) {
 
 function showConfirmModal(message, callback, opts = {}) {
     showModal({ type: 'confirm', message, callback, okLabel: opts.okLabel, okColor: opts.okColor });
+}
+
+// Date-picker modal for Expiry Date -- callback receives an ISO date
+// string ('YYYY-MM-DD'), or null if cleared/cancelled. Separate from
+// showModal since that one only supports a plain text input.
+function showDateModal(message, defaultVal, callback) {
+    const existing = document.getElementById('customDateModal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'customDateModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
+    overlay.innerHTML = `
+        <div style="background:#1a1a1a;border:1px solid rgba(245,158,11,0.35);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:16px;font-family:Inter,sans-serif;line-height:1.5;">${message}</p>
+            <input id="dateModalInput" type="date" value="${defaultVal || ''}" style="width:100%;box-sizing:border-box;padding:12px 16px;border-radius:12px;border:1px solid rgba(245,158,11,0.4);background:rgba(255,255,255,0.06);color:#ffffff;font-size:16px;font-family:Inter,sans-serif;outline:none;margin-bottom:20px;color-scheme:dark;">
+            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+                ${defaultVal ? `<button id="dateModalClear" style="padding:10px 18px;border-radius:40px;border:1px solid rgba(239,68,68,0.4);background:transparent;color:#f87171;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Clear</button>` : ''}
+                <button id="dateModalCancel" style="padding:10px 22px;border-radius:40px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#ffffff;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
+                <button id="dateModalOk" style="padding:10px 22px;border-radius:40px;border:none;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">Save</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const input = overlay.querySelector('#dateModalInput');
+    const close = (val) => { overlay.remove(); callback(val); };
+
+    overlay.querySelector('#dateModalOk').onclick = () => close(input.value || null);
+    overlay.querySelector('#dateModalCancel').onclick = () => close(undefined); // undefined = no change
+    const clearBtn = overlay.querySelector('#dateModalClear');
+    if (clearBtn) clearBtn.onclick = () => close(null); // null = explicitly cleared
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(undefined); });
 }
 
 // ============================================================
@@ -648,7 +688,8 @@ function serializeFileEntry(folderPath, f, blobStore) {
             favourite: f.favourite || false,
             locked: f.locked || false,
             size: f.size || 0,
-            fsPath: f.fsPath
+            fsPath: f.fsPath,
+            expiryDate: f.expiryDate || null
         };
     }
     if (f.fileData instanceof Blob) {
@@ -660,7 +701,8 @@ function serializeFileEntry(folderPath, f, blobStore) {
             uploadedAt: f.uploadedAt || Date.now(),
             favourite: f.favourite || false,
             locked: f.locked || false,
-            size: f.fileData.size || 0
+            size: f.fileData.size || 0,
+            expiryDate: f.expiryDate || null
         };
     }
     if (f.dataUrl) {
@@ -671,7 +713,8 @@ function serializeFileEntry(folderPath, f, blobStore) {
             uploadedAt: f.uploadedAt || Date.now(),
             favourite: f.favourite || false,
             locked: f.locked || false,
-            size: f.size || 0
+            size: f.size || 0,
+            expiryDate: f.expiryDate || null
         };
     }
     return {
@@ -680,7 +723,8 @@ function serializeFileEntry(folderPath, f, blobStore) {
         uploadedAt: f.uploadedAt || Date.now(),
         favourite: f.favourite || false,
         locked: f.locked || false,
-        size: f.size || 0
+        size: f.size || 0,
+        expiryDate: f.expiryDate || null
     };
 }
 
@@ -905,7 +949,8 @@ async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
                     uploadedAt: existingEntry?.uploadedAt || Date.now(),
                     favourite: existingEntry?.favourite || false,
                     locked: existingEntry?.locked || false,
-                    size: blob.size
+                    size: blob.size,
+                    expiryDate: existingEntry?.expiryDate || null
                 };
                 fileStore.put(result);
             }
@@ -927,6 +972,7 @@ async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
                     favourite: existingEntry?.favourite || false,
                     locked: existingEntry?.locked || false,
                     size: blob.size,
+                    expiryDate: existingEntry?.expiryDate || null,
                     _hasData: true,
                     _isBase64: false
                 };
@@ -936,6 +982,160 @@ async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
         console.warn('Failed to cache file as blob:', e);
     }
 }
+
+// Overwrites an existing file's content in place (same name, same folder)
+// with a new blob -- used by the image editor's "Replace Original" action.
+// Mirrors the native-fsPath vs IndexedDB-blob split used everywhere else
+// in this file: try the fast native path first, fall back to the
+// IndexedDB blob cache if there's no fsPath or the native write fails.
+async function replaceFileContent(folderPath, fileName, newBlob) {
+    const meta = allFiles[folderPath]?.find(f => f.name === fileName);
+    if (meta?.fsPath) {
+        const fsPath = await writeFileToFS(folderPath, fileName, newBlob);
+        if (fsPath) {
+            meta.fsPath = fsPath;
+            meta.size = newBlob.size;
+            meta.type = newBlob.type || meta.type;
+            await saveFilesForFolder(folderPath);
+            trackActivity('modified', { name: fileName, folderPath, kind: 'file' });
+            return true;
+        }
+        // Native write failed -- fall through to IndexedDB so the edit
+        // isn't silently lost.
+    }
+    await cacheFileAsBlob(folderPath, fileName, newBlob, meta);
+    trackActivity('modified', { name: fileName, folderPath, kind: 'file' });
+    return true;
+}
+
+// Days before expiry to treat a document as "soon" (badge/dashboard
+// threshold) -- separate from the two native-notification lead times.
+const EXPIRY_SOON_DAYS = 7;
+
+// Returns null if the file has no expiry date, otherwise
+// { status: 'overdue'|'soon'|'ok', days } where days is how many days
+// remain (negative if already overdue). 'ok' means it has a date set
+// but it's further out than EXPIRY_SOON_DAYS -- not shown as a badge,
+// but still listed if the caller wants every file with a date.
+function getExpiryStatus(file) {
+    if (!file.expiryDate) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const expiry = new Date(file.expiryDate + 'T00:00:00');
+    if (isNaN(expiry.getTime())) return null;
+    const days = Math.round((expiry - today) / 86400000);
+    const status = days < 0 ? 'overdue' : (days <= EXPIRY_SOON_DAYS ? 'soon' : 'ok');
+    return { status, days };
+}
+
+// Scans every folder for files with an expiry date within
+// thresholdDays (or already overdue). Returns an array of
+// { file, folderPath, status, days }, sorted soonest/most-overdue first.
+function getAllExpiringFiles(thresholdDays = EXPIRY_SOON_DAYS) {
+    const results = [];
+    for (const folderPath in allFiles) {
+        const files = allFiles[folderPath];
+        if (!files) continue;
+        for (const file of files) {
+            const info = getExpiryStatus(file);
+            if (info && info.days <= thresholdDays) {
+                results.push({ file, folderPath, status: info.status, days: info.days });
+            }
+        }
+    }
+    results.sort((a, b) => a.days - b.days);
+    return results;
+}
+
+// Sets (or clears, if dateStr is null) a file's expiry date, persists
+// it, refreshes the UI, and (re)schedules the native reminder
+// notifications for it.
+async function setFileExpiryDate(folderPath, fileName, dateStr) {
+    const files = allFiles[folderPath];
+    if (!files) return;
+    const f = files.find(x => x.name === fileName);
+    if (!f) return;
+
+    f.expiryDate = dateStr || null;
+    await saveFilesForFolder(folderPath);
+    await imgScheduleExpiryNotification(folderPath, fileName, dateStr);
+    render();
+    showToast(dateStr ? `Expiry date set: ${dateStr}` : 'Expiry date cleared');
+}
+
+// Native local notifications for expiry reminders (3 days before, and
+// on the day itself). Requires @capacitor/local-notifications to be
+// installed and synced in the native project -- if it isn't, this is a
+// silent no-op (the in-app badge/dashboard/summary-popup reminders
+// still work regardless, since those don't depend on this plugin).
+function imgNotificationIdFor(folderPath, fileName, offset) {
+    // Deterministic small-int ID from the path+file+offset so the same
+    // document always maps to the same notification IDs (lets us
+    // cancel/reschedule cleanly).
+    let hash = 0;
+    const s = `${folderPath}/${fileName}/${offset}`;
+    for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+    return hash % 2000000000;
+}
+
+async function imgScheduleExpiryNotification(folderPath, fileName, dateStr) {
+    const plugin = window.Capacitor?.Plugins?.LocalNotifications;
+    if (!plugin) return; // plugin not installed -- in-app reminders still work
+
+    const idThreeDay = imgNotificationIdFor(folderPath, fileName, 3);
+    const idOnDay = imgNotificationIdFor(folderPath, fileName, 0);
+
+    try {
+        await plugin.cancel({ notifications: [{ id: idThreeDay }, { id: idOnDay }] });
+    } catch (e) { /* nothing scheduled yet -- fine */ }
+
+    if (!dateStr) return;
+
+    const expiry = new Date(dateStr + 'T09:00:00'); // 9am local
+    const threeDayBefore = new Date(expiry.getTime() - 3 * 86400000);
+    const notifications = [];
+    if (threeDayBefore > new Date()) {
+        notifications.push({
+            id: idThreeDay,
+            title: 'Document expiring soon',
+            body: `${fileName} expires in 3 days`,
+            schedule: { at: threeDayBefore },
+        });
+    }
+    if (expiry > new Date()) {
+        notifications.push({
+            id: idOnDay,
+            title: 'Document expires today',
+            body: `${fileName} expires today`,
+            schedule: { at: expiry },
+        });
+    }
+    if (notifications.length) {
+        try {
+            const perm = await plugin.checkPermissions();
+            if (perm.display !== 'granted') await plugin.requestPermissions();
+            await plugin.schedule({ notifications });
+        } catch (e) {
+            console.warn('Could not schedule expiry notification:', e);
+        }
+    }
+}
+
+// Shown once per app session (see DOMContentLoaded) if any documents
+// are expiring soon or overdue.
+function checkExpiringDocumentsOnLoad() {
+    const expiring = getAllExpiringFiles(EXPIRY_SOON_DAYS);
+    if (!expiring.length) return;
+    const overdueCount = expiring.filter(e => e.status === 'overdue').length;
+    const soonCount = expiring.length - overdueCount;
+    let msg;
+    if (overdueCount && soonCount) msg = `⚠️ ${overdueCount} expired, ${soonCount} expiring soon`;
+    else if (overdueCount) msg = `⚠️ ${overdueCount} document${overdueCount > 1 ? 's' : ''} expired`;
+    else msg = `${soonCount} document${soonCount > 1 ? 's' : ''} expiring soon`;
+    showConfirmModal(msg, (viewDashboard) => {
+        if (viewDashboard) openDashboardView();
+    }, { okLabel: 'View', okColor: 'linear-gradient(135deg,#f59e0b,#d97706)' });
+}
+
 
 async function loadAllFileMetadata() {
     const tx = db.transaction('files', 'readonly');
@@ -966,6 +1166,7 @@ async function loadAllFileMetadata() {
                 fsPath: f.fsPath || null,
                 fileData: f.fileData instanceof Blob ? f.fileData : null,
                 dataUrl: f.dataUrl || null,
+                expiryDate: f.expiryDate || null,
                 _hasData: !!(f.fsPath || f.fileData instanceof Blob || f.dataUrl),
                 _isBase64: !!(f.dataUrl && typeof f.dataUrl === 'string')
             };
@@ -1947,7 +2148,7 @@ async function openFile(fileName, folderPath) {
     const fileType = getFileType(fileName);
 
     if (fileType === 'image') {
-        openImageViewer(fileData, fileName);
+        openImageViewer(fileData, fileName, folderPath);
     } else if (fileType === 'pdf') {
         await handlePdfFile(fileData, fileName, folderPath);
     } else if (fileType === 'word') {
@@ -1979,7 +2180,7 @@ async function openFile(fileName, folderPath) {
 // IMAGE VIEWER
 // ============================================================
 
-function openImageViewer(fileData, fileName) {
+function openImageViewer(fileData, fileName, folderPath) {
     const viewer = document.getElementById('imageViewer');
     const viewerImage = document.getElementById('viewerImage');
 
@@ -1989,6 +2190,8 @@ function openImageViewer(fileData, fileName) {
 
     viewer._currentUrl = url;
     viewer._currentData = fileData;
+    viewer._currentName = fileName;
+    viewer._currentFolder = folderPath;
 
     viewer.classList.remove('hidden');
 
@@ -2013,8 +2216,1664 @@ function closeImageViewer() {
 }
 
 // ============================================================
-// WORD DOCUMENT VIEWER (.docx via mammoth.js)
+// IMAGE EDITOR (Phase 1: crop, rotate, flip, brightness, contrast,
+// undo/redo, reset, zoom/pan, save-as-new / replace-original)
+//
+// Design: a single "working canvas" holds the current committed pixel
+// state. Rotate/flip/crop redraw it directly and are pushed to a small
+// history stack (array of canvas clones) for undo/redo. Brightness/
+// contrast are applied live via canvas ctx.filter as a *preview* on
+// top of the working canvas and only get baked into a new working
+// canvas (and pushed to history) right before another discrete action
+// or before saving -- so dragging a slider doesn't spam the history.
 // ============================================================
+
+const imgEditor = {
+    workingCanvas: null,   // current committed pixel state
+    history: [],           // array of canvas clones
+    historyIndex: -1,
+    // Every Adjust slider's CURRENT value is what the handle visually
+    // shows -- it never resets to a hidden "0 delta" after a commit.
+    // adjustBase (below) tracks what was already baked into
+    // workingCanvas last time, so the actual filter applied for preview
+    // is (current - base): dragging the handle further changes the
+    // image from where it visually is now, while the number on screen
+    // always matches the real cumulative value.
+    brightness: 0,
+    contrast: 0,
+    exposure: 0,
+    saturation: 0,
+    hue: 0,        // 0..360, direct degrees, default 0
+    blur: 0,       // 0..20, direct px, default 0
+    sepia: 0,      // 0..100, direct %, default 0
+    opacity: 100,  // 0..100, direct %, default 100 (fully opaque)
+    invert: 0,     // 0..100, direct %, default 0
+    sharpen: 0,    // 0..100, direct %, default 0 (convolution-based, not a CSS filter)
+    adjustBase: {},   // filled in below from IMG_ADJUST_PROPS defaults
+    activeTool: null,
+    mimeType: 'image/png',
+    zoomScale: 1,
+    zoomTranslate: { x: 0, y: 0 },
+    textColor: '#ffffff',
+    textSize: 36,
+    textFont: 'Arial, sans-serif',
+    toggleFilterActive: null,     // null | 'grayscale' | 'bw' -- which one-tap filter is currently on
+    toggleFilterBefore: null,     // canvas snapshot to restore to when toggled off
+};
+
+function imgCloneCanvas(src) {
+    const c = document.createElement('canvas');
+    c.width = src.width;
+    c.height = src.height;
+    c.getContext('2d').drawImage(src, 0, 0);
+    return c;
+}
+
+function imgEditorPushHistory() {
+    imgEditor.history = imgEditor.history.slice(0, imgEditor.historyIndex + 1);
+    imgEditor.history.push({
+        canvas: imgCloneCanvas(imgEditor.workingCanvas),
+        // adjustBase always matches "current" right after a commit (or
+        // was never touched by a pure geometry op like rotate/crop) --
+        // snapshotting it here lets Undo/Redo restore the sliders to
+        // exactly what they showed at this point, instead of wiping
+        // every slider back to 0 regardless of what's actually baked in.
+        adjustSnapshot: { ...imgEditor.adjustBase },
+    });
+    imgEditor.historyIndex = imgEditor.history.length - 1;
+    imgEditorUpdateHistoryButtons();
+}
+
+// Restores both the pixels AND the slider display values from a given
+// history entry -- used by Undo/Redo/Reset so sliders always show the
+// true cumulative value for whatever state you've jumped to.
+function imgEditorRestoreHistoryEntry(entry) {
+    imgEditor.workingCanvas = imgCloneCanvas(entry.canvas);
+    IMG_ADJUST_PROPS.forEach(p => {
+        const val = entry.adjustSnapshot[p.prop];
+        imgEditor[p.prop] = val;
+        imgEditor.adjustBase[p.prop] = val;
+        imgSetSliderDisplay(p, val);
+    });
+}
+
+// Config for every Adjust-panel slider: prop (imgEditor state key), elId
+// (DOM element), default (neutral value), and toFilter (how a DELTA
+// value maps into a CSS filter function -- always fed current-base, so
+// this doesn't need to know about baselines itself). Driving everything
+// off this list keeps the has-pending/reset/filter-string logic in
+// sync as sliders get added.
+const IMG_ADJUST_PROPS = [
+    { prop: 'brightness', elId: 'imgSliderBrightness', default: 0, toFilter: d => `brightness(${100 + d}%)` },
+    { prop: 'contrast',   elId: 'imgSliderContrast',   default: 0, toFilter: d => `contrast(${100 + d}%)` },
+    { prop: 'exposure',   elId: 'imgSliderExposure',   default: 0, toFilter: d => `brightness(${100 + d}%)` },
+    { prop: 'saturation', elId: 'imgSliderSaturation', default: 0, toFilter: d => `saturate(${100 + d}%)` },
+    { prop: 'hue',        elId: 'imgSliderHue',        default: 0, toFilter: d => `hue-rotate(${d}deg)` },
+    // blur/sepia/invert are one-directional CSS filters -- there's no
+    // negative blur/sepia/invert to "undo" an already-baked amount, so
+    // once committed, these can only be increased further, never
+    // reduced, through this delta approach. floorOnly marks that; the
+    // floor is enforced by clamping the value in the 'input' handler
+    // (NOT by moving the slider's `min` attribute -- that broke the
+    // thumb's visual position, since a range input renders its thumb
+    // at (value-min)/(max-min), and setting min===value always puts
+    // the thumb at the very left regardless of the real number).
+    { prop: 'blur',       elId: 'imgSliderBlur',       default: 0, toFilter: d => `blur(${Math.max(0, d)}px)`, floorOnly: true },
+    { prop: 'sepia',      elId: 'imgSliderSepia',      default: 0, toFilter: d => `sepia(${Math.max(0, d)}%)`, floorOnly: true },
+    { prop: 'opacity',    elId: 'imgSliderOpacity',    default: 100, toFilter: d => `opacity(${100 + d}%)` },
+    { prop: 'invert',     elId: 'imgSliderInvert',     default: 0, toFilter: d => `invert(${Math.max(0, d)}%)`, floorOnly: true },
+    // Sharpen has no CSS filter equivalent -- it's applied as a real
+    // convolution pass in imgEditorRender/imgEditorCommitPending
+    // (pixelOp marks that; toFilter is a no-op so it's skipped when
+    // building the CSS filter string). One-directional like blur/sepia.
+    { prop: 'sharpen',    elId: 'imgSliderSharpen',    default: 0, toFilter: () => '', floorOnly: true, pixelOp: true },
+];
+
+// Unsharp-mask-style sharpen kernel, strength 0..1. Classic 3x3 kernel:
+// center = 1 + 4*strength, orthogonal neighbors = -strength.
+function imgApplySharpenConvolution(canvas, strength) {
+    if (strength <= 0) return;
+    const w = canvas.width, h = canvas.height;
+    const ctx = canvas.getContext('2d');
+    const src = ctx.getImageData(0, 0, w, h);
+    const out = ctx.createImageData(w, h);
+    const s = src.data, d = out.data;
+    const center = 1 + 4 * strength;
+    const edge = -strength;
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const i = (y * w + x) * 4;
+            for (let c = 0; c < 3; c++) {
+                const up = y > 0 ? s[i - w * 4 + c] : s[i + c];
+                const down = y < h - 1 ? s[i + w * 4 + c] : s[i + c];
+                const left = x > 0 ? s[i - 4 + c] : s[i + c];
+                const right = x < w - 1 ? s[i + 4 + c] : s[i + c];
+                const v = center * s[i + c] + edge * (up + down + left + right);
+                d[i + c] = v < 0 ? 0 : v > 255 ? 255 : v;
+            }
+            d[i + 3] = s[i + 3];
+        }
+    }
+    ctx.putImageData(out, 0, 0);
+}
+
+// Populate the starting baseline once the config (and its defaults) exists.
+IMG_ADJUST_PROPS.forEach(p => { imgEditor.adjustBase[p.prop] = p.default; });
+
+// Sets a slider's DOM value AND its numeric value-display span next to
+// it in one call -- every place that sets a slider's value
+// programmatically (presets, undo/redo, reset) needs both kept in sync.
+function imgSetSliderDisplay(p, val) {
+    const el = document.getElementById(p.elId);
+    if (el) el.value = val;
+    const valEl = document.getElementById(p.elId + 'Val');
+    if (valEl) valEl.textContent = imgFormatSliderValue(p, val);
+}
+
+// Offset-style sliders (brightness/contrast/exposure/saturation) show a
+// +/- sign since 0 is their neutral center; direct-style ones (hue,
+// blur, sepia, opacity, invert, sharpen) just show the raw number.
+function imgFormatSliderValue(p, val) {
+    const n = Math.round(val);
+    if (p.default === 0 && !p.floorOnly && !p.pixelOp && p.prop !== 'hue') {
+        return (n > 0 ? '+' : '') + n;
+    }
+    return String(n);
+}
+
+function imgEditorHasPendingAdjust() {
+    return IMG_ADJUST_PROPS.some(p => imgEditor[p.prop] !== imgEditor.adjustBase[p.prop]);
+}
+
+// Discards an in-progress drag by snapping the handle back to what's
+// already baked into workingCanvas (its base) -- NOT to the slider's
+// neutral default, which would misrepresent an image that already has
+// a previous commit applied.
+function imgEditorRevertPendingToBase() {
+    IMG_ADJUST_PROPS.forEach(p => {
+        imgEditor[p.prop] = imgEditor.adjustBase[p.prop];
+        imgSetSliderDisplay(p, imgEditor.adjustBase[p.prop]);
+    });
+}
+
+// Full reset to neutral -- both the displayed value AND the baseline go
+// back to default. Used when workingCanvas itself is being replaced
+// wholesale (fresh editor session, Undo/Redo history jump, Reset to
+// Original) since none of the old baseline applies to the new pixels.
+function imgEditorZeroAdjustSliders() {
+    IMG_ADJUST_PROPS.forEach(p => {
+        imgEditor[p.prop] = p.default;
+        imgEditor.adjustBase[p.prop] = p.default;
+        imgSetSliderDisplay(p, p.default);
+    });
+}
+
+function imgEditorFilterString() {
+    return IMG_ADJUST_PROPS.filter(p => !p.pixelOp)
+        .map(p => p.toFilter(imgEditor[p.prop] - imgEditor.adjustBase[p.prop]))
+        .join(' ');
+}
+
+// Preset combinations of the Adjust sliders. "original" just clears back
+// to neutral; the rest set a fixed look. Applying a preset only updates
+// the pending slider values (live preview) -- it commits through the
+// exact same path as manually dragging a slider (leaving the Adjust
+// tool, another discrete edit, or save), so the user can still tweak
+// further before it's baked in.
+const IMG_PRESETS = {
+    original: {},
+    vintage: { sepia: 40, saturation: -20, contrast: -10, brightness: 5 },
+    cold: { hue: 200, saturation: -10, brightness: 5, contrast: 5 },
+    warm: { hue: 340, sepia: 20, saturation: 10, brightness: 5 },
+    dramatic: { contrast: 40, saturation: -10, brightness: -5 },
+    darken: { brightness: -30, contrast: 10 },
+};
+
+function imgEditorApplyPreset(name) {
+    if (name === 'original') {
+        // A math-based "cancel the filter" approach can't work here:
+        // blur/sepia/invert have no negative CSS value to undo what's
+        // baked in, and even the reversible properties (brightness/
+        // contrast/...) don't perfectly cancel once pixel values have
+        // clipped at 0/255. Jumping straight to the very first history
+        // entry is the only way to guarantee the TRUE original image,
+        // pixel for pixel -- same as pressing Reset.
+        imgEditorResetToOriginal();
+        return;
+    }
+    const preset = IMG_PRESETS[name];
+    if (!preset) return;
+    IMG_ADJUST_PROPS.forEach(p => {
+        // Presets are absolute looks, applied on top of whatever's
+        // already baked in -- so they set the displayed value to
+        // (base + preset amount), same "cumulative" meaning as a
+        // manual drag.
+        const delta = preset[p.prop] !== undefined ? preset[p.prop] : 0;
+        const val = imgEditor.adjustBase[p.prop] + delta;
+        imgEditor[p.prop] = val;
+        imgSetSliderDisplay(p, val);
+    });
+    imgEditorRender();
+    imgEditorUpdateHistoryButtons();
+}
+
+function imgEditorUpdateHistoryButtons() {
+    const undoBtn = document.getElementById('imgEditorUndoBtn');
+    const redoBtn = document.getElementById('imgEditorRedoBtn');
+    if (undoBtn) undoBtn.disabled = imgEditor.historyIndex <= 0 && !imgEditorHasPendingAdjust();
+    if (redoBtn) redoBtn.disabled = imgEditor.historyIndex >= imgEditor.history.length - 1;
+}
+
+// Applies the ctx.filter preview onto #imgEditorCanvas without touching
+// workingCanvas -- called on every slider input for a live preview.
+function imgEditorRender() {
+    const canvas = document.getElementById('imgEditorCanvas');
+    if (!canvas || !imgEditor.workingCanvas) return;
+    canvas.width = imgEditor.workingCanvas.width;
+    canvas.height = imgEditor.workingCanvas.height;
+    const ctx = canvas.getContext('2d');
+    ctx.filter = imgEditorFilterString();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(imgEditor.workingCanvas, 0, 0);
+    ctx.filter = 'none';
+    const sharpenDelta = imgEditor.sharpen - imgEditor.adjustBase.sharpen;
+    if (sharpenDelta > 0) imgApplySharpenConvolution(canvas, sharpenDelta / 100);
+}
+
+// Bakes the pending delta into a new working canvas and commits it as
+// ONE history step. The slider handles are left exactly where they
+// are (still showing the true cumulative value) -- only their
+// baseline moves to match, so nothing visually snaps and re-entering
+// Adjust later still shows the real applied numbers. Safe to call even
+// if nothing is pending (no-op). Always call this before rotate/flip/
+// crop/grayscale/document-mode/text/save so those operations act on
+// the true current pixels.
+function imgEditorCommitPending() {
+    if (!imgEditorHasPendingAdjust()) return;
+    const baked = imgCloneCanvas(imgEditor.workingCanvas);
+    const ctx = baked.getContext('2d');
+    ctx.filter = imgEditorFilterString();
+    ctx.drawImage(imgEditor.workingCanvas, 0, 0);
+    ctx.filter = 'none';
+    const sharpenDelta = imgEditor.sharpen - imgEditor.adjustBase.sharpen;
+    if (sharpenDelta > 0) imgApplySharpenConvolution(baked, sharpenDelta / 100);
+    imgEditor.workingCanvas = baked;
+    IMG_ADJUST_PROPS.forEach(p => { imgEditor.adjustBase[p.prop] = imgEditor[p.prop]; });
+    imgEditorInvalidateToggleFilter();
+    imgEditorPushHistory();
+}
+
+// Grayscale/Document-mode are "toggle" tools: pressing the same button
+// again reverts to the pixels from right before it was applied. That
+// revert target only makes sense until something else touches the
+// canvas -- call this from every other discrete edit (rotate, flip,
+// crop, text, undo/redo/reset) so a stale "before" snapshot can never
+// be restored on top of a different image state.
+function imgEditorInvalidateToggleFilter() {
+    imgEditor.toggleFilterActive = null;
+    imgEditor.toggleFilterBefore = null;
+}
+
+function imgEditorRotate(direction) {
+    imgEditorCommitPending();
+    imgEditorInvalidateToggleFilter();
+    const src = imgEditor.workingCanvas;
+    const out = document.createElement('canvas');
+    out.width = src.height;
+    out.height = src.width;
+    const ctx = out.getContext('2d');
+    ctx.translate(out.width / 2, out.height / 2);
+    ctx.rotate((direction === 'left' ? -90 : 90) * Math.PI / 180);
+    ctx.drawImage(src, -src.width / 2, -src.height / 2);
+    imgEditor.workingCanvas = out;
+    imgEditorPushHistory();
+    imgEditorRender();
+}
+
+function imgEditorFlip(axis) {
+    imgEditorCommitPending();
+    imgEditorInvalidateToggleFilter();
+    const src = imgEditor.workingCanvas;
+    const out = document.createElement('canvas');
+    out.width = src.width;
+    out.height = src.height;
+    const ctx = out.getContext('2d');
+    ctx.translate(axis === 'h' ? out.width : 0, axis === 'v' ? out.height : 0);
+    ctx.scale(axis === 'h' ? -1 : 1, axis === 'v' ? -1 : 1);
+    ctx.drawImage(src, 0, 0);
+    imgEditor.workingCanvas = out;
+    imgEditorPushHistory();
+    imgEditorRender();
+}
+
+// One-click grayscale -- desaturates the current pixels and commits
+// immediately (a discrete action, same pattern as rotate/flip).
+// Toggleable: pressing it again while active reverts to the pixels
+// from right before it was applied, instead of requiring Undo.
+function imgEditorApplyGrayscale() {
+    if (imgEditor.toggleFilterActive === 'grayscale') {
+        imgEditor.workingCanvas = imgEditor.toggleFilterBefore;
+        imgEditor.toggleFilterActive = null;
+        imgEditor.toggleFilterBefore = null;
+        imgEditorPushHistory();
+        imgEditorRender();
+        return;
+    }
+    imgEditorCommitPending();
+    const src = imgEditor.workingCanvas;
+    const before = imgCloneCanvas(src);
+    const out = document.createElement('canvas');
+    out.width = src.width;
+    out.height = src.height;
+    const ctx = out.getContext('2d');
+    ctx.filter = 'grayscale(100%)';
+    ctx.drawImage(src, 0, 0);
+    ctx.filter = 'none';
+    imgEditor.workingCanvas = out;
+    imgEditor.toggleFilterActive = 'grayscale';
+    imgEditor.toggleFilterBefore = before;
+    imgEditorPushHistory();
+    imgEditorRender();
+}
+
+// One-click "Document mode" -- grayscale + hard black/white threshold,
+// for a clean scanned-document look. Fixed threshold, done via manual
+// pixel manipulation since CSS has no threshold filter. Toggleable,
+// same pattern as grayscale above.
+function imgEditorApplyDocumentMode() {
+    if (imgEditor.toggleFilterActive === 'bw') {
+        imgEditor.workingCanvas = imgEditor.toggleFilterBefore;
+        imgEditor.toggleFilterActive = null;
+        imgEditor.toggleFilterBefore = null;
+        imgEditorPushHistory();
+        imgEditorRender();
+        return;
+    }
+    imgEditorCommitPending();
+    const src = imgEditor.workingCanvas;
+    const before = imgCloneCanvas(src);
+    const out = document.createElement('canvas');
+    out.width = src.width;
+    out.height = src.height;
+    const ctx = out.getContext('2d');
+    ctx.drawImage(src, 0, 0);
+    const imgData = ctx.getImageData(0, 0, out.width, out.height);
+    const d = imgData.data;
+    const THRESHOLD = 150;
+    for (let i = 0; i < d.length; i += 4) {
+        const luminance = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        const v = luminance >= THRESHOLD ? 255 : 0;
+        d[i] = d[i + 1] = d[i + 2] = v;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    imgEditor.workingCanvas = out;
+    imgEditor.toggleFilterActive = 'bw';
+    imgEditor.toggleFilterBefore = before;
+    imgEditorPushHistory();
+    imgEditorRender();
+}
+
+// One-click "Auto Enhance" -- a simple auto-levels contrast stretch:
+// finds the darkest/lightest luminance in the image and stretches that
+// range out to the full 0-255 range, per RGB channel. Toggleable, same
+// pattern as grayscale/document mode.
+function imgEditorApplyAutoEnhance() {
+    if (imgEditor.toggleFilterActive === 'autoEnhance') {
+        imgEditor.workingCanvas = imgEditor.toggleFilterBefore;
+        imgEditor.toggleFilterActive = null;
+        imgEditor.toggleFilterBefore = null;
+        imgEditorPushHistory();
+        imgEditorRender();
+        return;
+    }
+    imgEditorCommitPending();
+    const src = imgEditor.workingCanvas;
+    const before = imgCloneCanvas(src);
+    const out = document.createElement('canvas');
+    out.width = src.width;
+    out.height = src.height;
+    const ctx = out.getContext('2d');
+    ctx.drawImage(src, 0, 0);
+    const imgData = ctx.getImageData(0, 0, out.width, out.height);
+    const d = imgData.data;
+    let minR = 255, maxR = 0, minG = 255, maxG = 0, minB = 255, maxB = 0;
+    for (let i = 0; i < d.length; i += 4) {
+        if (d[i] < minR) minR = d[i]; if (d[i] > maxR) maxR = d[i];
+        if (d[i + 1] < minG) minG = d[i + 1]; if (d[i + 1] > maxG) maxG = d[i + 1];
+        if (d[i + 2] < minB) minB = d[i + 2]; if (d[i + 2] > maxB) maxB = d[i + 2];
+    }
+    const rangeR = Math.max(1, maxR - minR);
+    const rangeG = Math.max(1, maxG - minG);
+    const rangeB = Math.max(1, maxB - minB);
+    for (let i = 0; i < d.length; i += 4) {
+        d[i] = ((d[i] - minR) / rangeR) * 255;
+        d[i + 1] = ((d[i + 1] - minG) / rangeG) * 255;
+        d[i + 2] = ((d[i + 2] - minB) / rangeB) * 255;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    imgEditor.workingCanvas = out;
+    imgEditor.toggleFilterActive = 'autoEnhance';
+    imgEditor.toggleFilterBefore = before;
+    imgEditorPushHistory();
+    imgEditorRender();
+}
+
+function imgEditorUndo() {
+    if (imgEditorHasPendingAdjust()) {
+        // Pending, uncommitted slider change -- discard it first rather
+        // than consuming a history step. Reverts to the last-committed
+        // baseline, not to 0.
+        imgEditorRevertPendingToBase();
+        imgEditorRender();
+        imgEditorUpdateHistoryButtons();
+        return;
+    }
+    if (imgEditor.historyIndex <= 0) return;
+    imgEditor.historyIndex--;
+    imgEditorRestoreHistoryEntry(imgEditor.history[imgEditor.historyIndex]);
+    imgEditorInvalidateToggleFilter();
+    imgEditorRender();
+    imgEditorUpdateHistoryButtons();
+}
+
+function imgEditorRedo() {
+    if (imgEditor.historyIndex >= imgEditor.history.length - 1) return;
+    imgEditor.historyIndex++;
+    imgEditorRestoreHistoryEntry(imgEditor.history[imgEditor.historyIndex]);
+    imgEditorInvalidateToggleFilter();
+    imgEditorRender();
+    imgEditorUpdateHistoryButtons();
+}
+
+function imgEditorResetToOriginal() {
+    if (!imgEditor.history.length) return;
+    imgEditor.historyIndex = 0;
+    imgEditorRestoreHistoryEntry(imgEditor.history[0]);
+    imgEditorInvalidateToggleFilter();
+    imgEditorRender();
+    imgEditorUpdateHistoryButtons();
+}
+
+function imgEditorSetTool(tool) {
+    // Leaving the Adjust panel for any other tool (or closing it)
+    // commits the whole brightness/contrast/saturation session as ONE
+    // history step -- this is the only place pending adjustments get
+    // baked outside of another discrete edit or save, so a full
+    // "Adjust" visit is one undo step, not one per slider.
+    if (imgEditor.activeTool === 'adjust' && tool !== 'adjust') {
+        imgEditorCommitPending();
+    }
+    imgEditor.activeTool = tool;
+    document.querySelectorAll('.img-editor-tool').forEach(btn => {
+        const isToggleActive = (btn.dataset.tool === 'grayscale' && imgEditor.toggleFilterActive === 'grayscale')
+            || (btn.dataset.tool === 'bw' && imgEditor.toggleFilterActive === 'bw')
+            || (btn.dataset.tool === 'autoEnhance' && imgEditor.toggleFilterActive === 'autoEnhance');
+        btn.classList.toggle('active', btn.dataset.tool === tool || isToggleActive);
+    });
+    const sliderPanel = document.getElementById('imgEditorSliderPanel');
+    const textPanel = document.getElementById('imgEditorTextPanel');
+    const brushPanel = document.getElementById('imgEditorBrushPanel');
+    const cropOverlay = document.getElementById('imgEditorCropOverlay');
+    const cropConfirm = document.getElementById('imgEditorCropConfirm');
+    const textConfirm = document.getElementById('imgEditorTextConfirm');
+    const textOverlay = document.getElementById('imgTextOverlay');
+    const scanOverlay = document.getElementById('imgScanOverlay');
+    const scanConfirm = document.getElementById('imgEditorScanConfirm');
+    const canvas = document.getElementById('imgEditorCanvas');
+
+    sliderPanel.classList.toggle('visible', tool === 'adjust');
+    textPanel.classList.toggle('visible', tool === 'text');
+    brushPanel.classList.toggle('visible', tool === 'draw' || tool === 'highlight' || tool === 'blurarea');
+    cropOverlay.classList.toggle('hidden', tool !== 'crop');
+    cropConfirm.classList.toggle('hidden', tool !== 'crop');
+    textConfirm.classList.toggle('hidden', tool !== 'text');
+    textOverlay.classList.toggle('hidden', tool !== 'text');
+    scanOverlay.classList.toggle('hidden', tool !== 'scan');
+    scanConfirm.classList.toggle('hidden', tool !== 'scan');
+    if (tool !== 'scan') document.getElementById('imgScanStatus').classList.add('hidden');
+    // Color swatches don't apply to the blur brush -- there's nothing to
+    // pick a color for.
+    document.getElementById('imgBrushSwatches').classList.toggle('hidden', tool === 'blurarea');
+
+    // Crop/text/brush/scan math assumes a 1:1 (unzoomed) view -- reset
+    // any pinch-zoom pan whenever entering any of those, since
+    // pinch-zoom is always available the rest of the time (no separate
+    // "Zoom" tool).
+    if (tool === 'crop' || tool === 'text' || tool === 'draw' || tool === 'highlight' || tool === 'blurarea' || tool === 'scan') {
+        imgEditor.zoomScale = 1;
+        imgEditor.zoomTranslate = { x: 0, y: 0 };
+        canvas.style.transform = '';
+    }
+
+    if (tool === 'crop') {
+        imgEditorInitCropBox();
+    } else if (tool === 'text') {
+        imgEditorInitTextOverlay();
+    } else if (tool === 'scan') {
+        imgEditorCommitPending();
+        imgEditorRender();
+        imgEditorWireScanHandles();
+        imgEditorInitScanOverlay();
+    } else if (tool === 'draw' || tool === 'highlight' || tool === 'blurarea') {
+        imgEditorCommitPending();
+        imgEditorRender();
+    } else if (tool === 'rotate') {
+        imgEditorRotate('right');
+        imgEditorSetTool(null);
+    } else if (tool === 'flip-h') {
+        imgEditorFlip('h');
+        imgEditorSetTool(null);
+    } else if (tool === 'grayscale') {
+        imgEditorApplyGrayscale();
+        imgEditorSetTool(null);
+    } else if (tool === 'bw') {
+        imgEditorApplyDocumentMode();
+        imgEditorSetTool(null);
+    } else if (tool === 'autoEnhance') {
+        imgEditorApplyAutoEnhance();
+        imgEditorSetTool(null);
+    }
+}
+
+// ---- Crop box drag/resize ----
+
+function imgEditorInitCropBox() {
+    const wrap = document.getElementById('imgEditorCanvasWrap');
+    const canvas = document.getElementById('imgEditorCanvas');
+    const box = document.getElementById('imgCropBox');
+    const wrapRect = wrap.getBoundingClientRect();
+    const canvasRect = canvas.getBoundingClientRect();
+
+    const marginX = canvasRect.width * 0.1;
+    const marginY = canvasRect.height * 0.1;
+    const left = (canvasRect.left - wrapRect.left) + marginX;
+    const top = (canvasRect.top - wrapRect.top) + marginY;
+    const width = canvasRect.width - marginX * 2;
+    const height = canvasRect.height - marginY * 2;
+
+    box.style.left = left + 'px';
+    box.style.top = top + 'px';
+    box.style.width = width + 'px';
+    box.style.height = height + 'px';
+}
+
+function imgEditorWireCropBox() {
+    const box = document.getElementById('imgCropBox');
+    if (!box || box._wired) return;
+    box._wired = true;
+    const wrap = document.getElementById('imgEditorCanvasWrap');
+
+    let dragMode = null; // 'move' | 'tl' | 'tr' | 'bl' | 'br'
+    let startX = 0, startY = 0, startBox = null;
+
+    function getBoxRect() {
+        return { left: parseFloat(box.style.left), top: parseFloat(box.style.top), width: parseFloat(box.style.width), height: parseFloat(box.style.height) };
+    }
+
+    function onPointerDown(e, mode) {
+        e.preventDefault();
+        e.stopPropagation();
+        dragMode = mode;
+        const pt = e.touches ? e.touches[0] : e;
+        startX = pt.clientX;
+        startY = pt.clientY;
+        startBox = getBoxRect();
+        document.addEventListener('mousemove', onPointerMove);
+        document.addEventListener('mouseup', onPointerUp);
+        document.addEventListener('touchmove', onPointerMove, { passive: false });
+        document.addEventListener('touchend', onPointerUp);
+    }
+
+    function onPointerMove(e) {
+        if (!dragMode) return;
+        e.preventDefault();
+        const pt = e.touches ? e.touches[0] : e;
+        const dx = pt.clientX - startX;
+        const dy = pt.clientY - startY;
+        const wrapRect = wrap.getBoundingClientRect();
+        const MIN = 40;
+
+        let { left, top, width, height } = startBox;
+
+        if (dragMode === 'move') {
+            left = startBox.left + dx;
+            top = startBox.top + dy;
+        } else {
+            if (dragMode === 'tl') { left = startBox.left + dx; top = startBox.top + dy; width = startBox.width - dx; height = startBox.height - dy; }
+            if (dragMode === 'tr') { top = startBox.top + dy; width = startBox.width + dx; height = startBox.height - dy; }
+            if (dragMode === 'bl') { left = startBox.left + dx; width = startBox.width - dx; height = startBox.height + dy; }
+            if (dragMode === 'br') { width = startBox.width + dx; height = startBox.height + dy; }
+        }
+
+        width = Math.max(MIN, width);
+        height = Math.max(MIN, height);
+        left = Math.max(0, Math.min(left, wrapRect.width - width));
+        top = Math.max(0, Math.min(top, wrapRect.height - height));
+
+        box.style.left = left + 'px';
+        box.style.top = top + 'px';
+        box.style.width = width + 'px';
+        box.style.height = height + 'px';
+    }
+
+    function onPointerUp() {
+        dragMode = null;
+        document.removeEventListener('mousemove', onPointerMove);
+        document.removeEventListener('mouseup', onPointerUp);
+        document.removeEventListener('touchmove', onPointerMove);
+        document.removeEventListener('touchend', onPointerUp);
+    }
+
+    box.addEventListener('mousedown', (e) => onPointerDown(e, 'move'));
+    box.addEventListener('touchstart', (e) => onPointerDown(e, 'move'), { passive: false });
+    box.querySelectorAll('.img-crop-handle').forEach(handle => {
+        const mode = handle.dataset.handle;
+        handle.addEventListener('mousedown', (e) => onPointerDown(e, mode));
+        handle.addEventListener('touchstart', (e) => onPointerDown(e, mode), { passive: false });
+    });
+}
+
+function imgEditorApplyCrop() {
+    const canvas = document.getElementById('imgEditorCanvas');
+    const box = document.getElementById('imgCropBox');
+    const canvasRect = canvas.getBoundingClientRect();
+    const boxRect = box.getBoundingClientRect();
+
+    const scale = imgEditor.workingCanvas.width / canvasRect.width;
+    const sx = Math.max(0, (boxRect.left - canvasRect.left) * scale);
+    const sy = Math.max(0, (boxRect.top - canvasRect.top) * scale);
+    const sw = Math.min(imgEditor.workingCanvas.width - sx, boxRect.width * scale);
+    const sh = Math.min(imgEditor.workingCanvas.height - sy, boxRect.height * scale);
+
+    if (sw < 5 || sh < 5) { imgEditorSetTool(null); return; }
+
+    imgEditorCommitPending();
+    imgEditorInvalidateToggleFilter();
+    const out = document.createElement('canvas');
+    out.width = sw;
+    out.height = sh;
+    out.getContext('2d').drawImage(imgEditor.workingCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+    imgEditor.workingCanvas = out;
+    imgEditorPushHistory();
+    imgEditorRender();
+    imgEditorSetTool(null);
+}
+
+// ---- Add Text tool ----
+// A draggable overlay div sits on top of the canvas reflecting the
+// current text/color/size; the user drags it to position, then "Apply
+// Text" bakes it into the working canvas at the equivalent pixel
+// position (same canvasRect-based scale math as crop).
+
+function imgEditorInitTextOverlay() {
+    const overlay = document.getElementById('imgTextOverlay');
+    const input = document.getElementById('imgTextInput');
+    overlay.textContent = input.value || 'Text';
+    overlay.style.color = imgEditor.textColor;
+    overlay.style.fontSize = imgEditor.textSize + 'px';
+    overlay.style.fontFamily = imgEditor.textFont;
+    // Center it over the canvas wrap on first open; if the user already
+    // dragged it this session, leave its position alone.
+    if (!overlay.style.left) {
+        overlay.style.left = '50%';
+        overlay.style.top = '50%';
+        overlay.style.transform = 'translate(-50%, -50%)';
+    }
+}
+
+function imgEditorWireTextOverlay() {
+    const overlay = document.getElementById('imgTextOverlay');
+    if (!overlay || overlay._wired) return;
+    overlay._wired = true;
+    const wrap = document.getElementById('imgEditorCanvasWrap');
+
+    let dragging = false;
+    let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+
+    function onDown(e) {
+        e.preventDefault();
+        dragging = true;
+        const pt = e.touches ? e.touches[0] : e;
+        const rect = overlay.getBoundingClientRect();
+        const wrapRect = wrap.getBoundingClientRect();
+        startX = pt.clientX;
+        startY = pt.clientY;
+        startLeft = rect.left - wrapRect.left;
+        startTop = rect.top - wrapRect.top;
+        // Switch from % + translate centering to absolute px, anchored
+        // at the overlay's current on-screen position, so dragging
+        // doesn't jump.
+        overlay.style.transform = 'none';
+        overlay.style.left = startLeft + 'px';
+        overlay.style.top = startTop + 'px';
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('touchend', onUp);
+    }
+
+    function onMove(e) {
+        if (!dragging) return;
+        e.preventDefault();
+        const pt = e.touches ? e.touches[0] : e;
+        overlay.style.left = (startLeft + (pt.clientX - startX)) + 'px';
+        overlay.style.top = (startTop + (pt.clientY - startY)) + 'px';
+    }
+
+    function onUp() {
+        dragging = false;
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('touchend', onUp);
+    }
+
+    overlay.addEventListener('mousedown', onDown);
+    overlay.addEventListener('touchstart', onDown, { passive: false });
+}
+
+function imgEditorApplyText() {
+    const canvas = document.getElementById('imgEditorCanvas');
+    const overlay = document.getElementById('imgTextOverlay');
+    const input = document.getElementById('imgTextInput');
+    const text = (input.value || '').trim();
+    if (!text) { imgEditorSetTool(null); return; }
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const overlayRect = overlay.getBoundingClientRect();
+    const scale = imgEditor.workingCanvas.width / canvasRect.width;
+
+    // Overlay has ~6-10px CSS padding around the text baseline -- account
+    // for it roughly so the baked text lands where it visually appeared.
+    const px = (overlayRect.left - canvasRect.left + 10) * scale;
+    const py = (overlayRect.top - canvasRect.top + overlayRect.height / 2) * scale;
+    const fontSize = imgEditor.textSize * scale;
+
+    imgEditorCommitPending();
+    imgEditorInvalidateToggleFilter();
+    const out = imgCloneCanvas(imgEditor.workingCanvas);
+    const ctx = out.getContext('2d');
+    ctx.font = `700 ${fontSize}px ${imgEditor.textFont}`;
+    ctx.fillStyle = imgEditor.textColor;
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur = 4 * scale;
+    ctx.fillText(text, px, py);
+    imgEditor.workingCanvas = out;
+    imgEditorPushHistory();
+    imgEditorRender();
+
+    // Reset overlay position for next use.
+    overlay.style.left = '';
+    overlay.style.top = '';
+    imgEditorSetTool(null);
+}
+
+// ---- Brush tools: Draw, Highlight, Blur Area ----
+// All three draw directly onto #imgEditorCanvas as the user drags (so
+// the stroke is visible immediately), then on release the canvas's
+// current pixels (committed image + finished stroke) become the new
+// workingCanvas and get pushed as ONE history step -- each stroke is
+// its own undo step, same granularity as everything else in this editor.
+
+const imgBrush = {
+    color: '#ff3b30',
+    size: 18,
+    drawing: false,
+    lastX: 0,
+    lastY: 0,
+};
+
+function imgEditorInitBrushPanel() {
+    document.querySelectorAll('.img-brush-swatch').forEach(sw => {
+        sw.classList.toggle('active', sw.dataset.color === imgBrush.color);
+    });
+    const sizeEl = document.getElementById('imgBrushSize');
+    if (sizeEl) sizeEl.value = imgBrush.size;
+}
+
+function imgBrushCanvasPoint(e, canvas) {
+    const rect = canvas.getBoundingClientRect();
+    const pt = e.touches ? e.touches[0] : e;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return { x: (pt.clientX - rect.left) * scaleX, y: (pt.clientY - rect.top) * scaleY };
+}
+
+// For the blur brush: stamps a blurred copy of the working image
+// (as it was before this stroke started) at the given point, so
+// dragging smears a blurred patch along the path instead of drawing a
+// solid color.
+function imgBrushStampBlur(ctx, canvas, x, y, radius, sourceCanvas) {
+    const size = radius * 2;
+    const patch = document.createElement('canvas');
+    patch.width = size;
+    patch.height = size;
+    const pctx = patch.getContext('2d');
+    pctx.filter = 'blur(6px)';
+    pctx.drawImage(sourceCanvas, x - radius, y - radius, size, size, 0, 0, size, size);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.filter = 'none';
+    ctx.drawImage(patch, x - radius, y - radius, size, size);
+    ctx.restore();
+}
+
+function imgEditorWireBrush() {
+    const canvas = document.getElementById('imgEditorCanvas');
+    if (!canvas || canvas._brushWired) return;
+    canvas._brushWired = true;
+    let strokeSourceCanvas = null; // snapshot of the image before this stroke, for the blur brush to sample from
+
+    function isBrushToolActive() {
+        return imgEditor.activeTool === 'draw' || imgEditor.activeTool === 'highlight' || imgEditor.activeTool === 'blurarea';
+    }
+
+    function strokeAt(ctx, x, y) {
+        const tool = imgEditor.activeTool;
+        if (tool === 'blurarea') {
+            imgBrushStampBlur(ctx, canvas, x, y, imgBrush.size, strokeSourceCanvas);
+            return;
+        }
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = imgBrush.size;
+        ctx.strokeStyle = imgBrush.color;
+        ctx.globalAlpha = tool === 'highlight' ? 0.35 : 1;
+        ctx.globalCompositeOperation = tool === 'highlight' ? 'multiply' : 'source-over';
+        ctx.beginPath();
+        ctx.moveTo(imgBrush.lastX, imgBrush.lastY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
+    function onDown(e) {
+        if (!isBrushToolActive()) return;
+        e.preventDefault();
+        imgBrush.drawing = true;
+        strokeSourceCanvas = imgCloneCanvas(imgEditor.workingCanvas);
+        const p = imgBrushCanvasPoint(e, canvas);
+        imgBrush.lastX = p.x;
+        imgBrush.lastY = p.y;
+        const ctx = canvas.getContext('2d');
+        // A tap without any drag should still leave a dot.
+        strokeAt(ctx, p.x, p.y);
+    }
+
+    function onMove(e) {
+        if (!imgBrush.drawing) return;
+        e.preventDefault();
+        const p = imgBrushCanvasPoint(e, canvas);
+        const ctx = canvas.getContext('2d');
+        strokeAt(ctx, p.x, p.y);
+        imgBrush.lastX = p.x;
+        imgBrush.lastY = p.y;
+    }
+
+    function onUp() {
+        if (!imgBrush.drawing) return;
+        imgBrush.drawing = false;
+        strokeSourceCanvas = null;
+        // The canvas now shows the committed image plus the finished
+        // stroke -- that becomes the new committed pixels.
+        imgEditor.workingCanvas = imgCloneCanvas(canvas);
+        imgEditorInvalidateToggleFilter();
+        imgEditorPushHistory();
+    }
+
+    canvas.addEventListener('mousedown', onDown);
+    canvas.addEventListener('touchstart', onDown, { passive: false });
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('mouseup', onUp);
+    document.addEventListener('touchend', onUp);
+}
+
+// ---- Scan: perspective correction (manual corners) ----
+// Pure JavaScript -- no external library. An earlier version used
+// OpenCV.js for automatic edge detection, but the ~13MB library took
+// too long to parse/initialize on many devices (some devices never
+// finished within any reasonable timeout), which also meant Straighten
+// silently did nothing since it depended on the same library. This
+// version has no auto-detect, but Straighten always works instantly:
+// the user drags the 4 corners onto the document by hand, and a
+// hand-rolled homography warp (solved from the 4 point correspondences,
+// then sampled with bilinear interpolation) rectifies it.
+
+const imgScan = {
+    corners: null, // [{x,y} x4] in canvas-pixel space, order TL,TR,BR,BL
+};
+
+function imgScanUpdateOverlayFromCorners() {
+    const wrap = document.getElementById('imgEditorCanvasWrap');
+    const canvas = document.getElementById('imgEditorCanvas');
+    const canvasRect = canvas.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    const scale = canvasRect.width / canvas.width;
+    const offX = canvasRect.left - wrapRect.left;
+    const offY = canvasRect.top - wrapRect.top;
+
+    const handles = [
+        document.getElementById('imgScanHandleTL'),
+        document.getElementById('imgScanHandleTR'),
+        document.getElementById('imgScanHandleBR'),
+        document.getElementById('imgScanHandleBL'),
+    ];
+    imgScan.corners.forEach((pt, i) => {
+        const left = offX + pt.x * scale;
+        const top = offY + pt.y * scale;
+        handles[i].style.left = left + 'px';
+        handles[i].style.top = top + 'px';
+    });
+
+    const svg = document.getElementById('imgScanSvg');
+    svg.setAttribute('viewBox', `0 0 ${wrapRect.width} ${wrapRect.height}`);
+    const polygon = document.getElementById('imgScanPolygon');
+    polygon.setAttribute('points', imgScan.corners
+        .map(pt => `${offX + pt.x * scale},${offY + pt.y * scale}`)
+        .join(' '));
+}
+
+// Fits y = m*x + c to a set of {x,y} points via least-squares.
+function imgFitLineY(points) {
+    const n = points.length;
+    let sx = 0, sy = 0, sxy = 0, sxx = 0;
+    for (const p of points) { sx += p.x; sy += p.y; sxy += p.x * p.y; sxx += p.x * p.x; }
+    const denom = n * sxx - sx * sx;
+    if (Math.abs(denom) < 1e-6) return null;
+    const m = (n * sxy - sx * sy) / denom;
+    const c = (sy - m * sx) / n;
+    return { m, c, vertical: false }; // y = m*x + c
+}
+
+// Fits x = m*y + c (for near-vertical left/right edges, where fitting
+// y-as-function-of-x would be unstable).
+function imgFitLineX(points) {
+    const n = points.length;
+    let sx = 0, sy = 0, sxy = 0, syy = 0;
+    for (const p of points) { sx += p.x; sy += p.y; sxy += p.x * p.y; syy += p.y * p.y; }
+    const denom = n * syy - sy * sy;
+    if (Math.abs(denom) < 1e-6) return null;
+    const m = (n * sxy - sx * sy) / denom;
+    const c = (sx - m * sy) / n;
+    return { m, c, vertical: true }; // x = m*y + c
+}
+
+// Intersection of a horizontal-ish line (y=m1*x+c1) and a vertical-ish
+// line (x=m2*y+c2).
+function imgIntersectHV(hLine, vLine) {
+    // y = m1*x + c1 ; x = m2*y + c2  ->  x = m2*(m1*x+c1) + c2
+    const denom = 1 - hLine.m * vLine.m;
+    if (Math.abs(denom) < 1e-6) return null;
+    const x = (vLine.m * hLine.c + vLine.c) / denom;
+    const y = hLine.m * x + hLine.c;
+    return { x, y };
+}
+
+// Scans a set of rays inward from one side of a small grayscale buffer,
+// returning the {x,y} point of strongest gradient per ray (downscaled
+// coordinates). side: 'top'|'bottom'|'left'|'right'.
+function imgScanSideEdges(gray, w, h, side, count = 20) {
+    const points = [];
+    const isHorizontalScan = side === 'top' || side === 'bottom';
+    const perpLen = isHorizontalScan ? w : h;
+    const scanLen = isHorizontalScan ? h : w;
+    const maxDepth = Math.floor(scanLen * 0.45);
+    const margin = perpLen * 0.08; // skip near corners, edges are noisy there
+
+    for (let i = 0; i < count; i++) {
+        const t = margin + (perpLen - 2 * margin) * (i / (count - 1));
+        let bestGrad = 0, bestDepth = -1;
+        let prev = null;
+        for (let d = 1; d < maxDepth; d++) {
+            let x, y;
+            if (side === 'top')    { x = t; y = d; }
+            else if (side === 'bottom') { x = t; y = h - 1 - d; }
+            else if (side === 'left')   { x = d; y = t; }
+            else /* right */            { x = w - 1 - d; y = t; }
+            x = Math.round(x); y = Math.round(y);
+            const v = gray[y * w + x];
+            if (prev !== null) {
+                const grad = Math.abs(v - prev);
+                if (grad > bestGrad) { bestGrad = grad; bestDepth = d; }
+            }
+            prev = v;
+        }
+        if (bestGrad > 14 && bestDepth > 0) {
+            let x, y;
+            if (side === 'top')    { x = t; y = bestDepth; }
+            else if (side === 'bottom') { x = t; y = h - 1 - bestDepth; }
+            else if (side === 'left')   { x = bestDepth; y = t; }
+            else /* right */            { x = w - 1 - bestDepth; y = t; }
+            points.push({ x, y });
+        }
+    }
+    return points;
+}
+
+// Lightweight document-edge detection -- no external library. Works on
+// a small downscaled copy for speed, scans inward from each of the 4
+// sides to find the strongest brightness transition (the document's
+// edge against the background), fits a line per side, and intersects
+// them for the 4 corners. Returns null (caller falls back to the
+// default inset rectangle) if the result doesn't look trustworthy --
+// e.g. a cluttered background or a document that fills the whole frame
+// can make this unreliable, and a bad automatic guess is worse than an
+// honest "couldn't tell, drag it yourself".
+function imgDetectDocumentCornersLite(canvas) {
+    const maxSide = 340;
+    const scale = Math.min(1, maxSide / Math.max(canvas.width, canvas.height));
+    const w = Math.max(1, Math.round(canvas.width * scale));
+    const h = Math.max(1, Math.round(canvas.height * scale));
+
+    const small = document.createElement('canvas');
+    small.width = w; small.height = h;
+    const sctx = small.getContext('2d');
+    sctx.drawImage(canvas, 0, 0, w, h);
+    const data = sctx.getImageData(0, 0, w, h).data;
+
+    const gray = new Uint8ClampedArray(w * h);
+    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+        gray[p] = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) | 0;
+    }
+
+    const topPts = imgScanSideEdges(gray, w, h, 'top');
+    const bottomPts = imgScanSideEdges(gray, w, h, 'bottom');
+    const leftPts = imgScanSideEdges(gray, w, h, 'left');
+    const rightPts = imgScanSideEdges(gray, w, h, 'right');
+
+    // Need most rays per side to have found a real edge, or the fitted
+    // line is just noise.
+    if (topPts.length < 12 || bottomPts.length < 12 || leftPts.length < 12 || rightPts.length < 12) {
+        return null;
+    }
+
+    const topLine = imgFitLineY(topPts);
+    const bottomLine = imgFitLineY(bottomPts);
+    const leftLine = imgFitLineX(leftPts);
+    const rightLine = imgFitLineX(rightPts);
+    if (!topLine || !bottomLine || !leftLine || !rightLine) return null;
+
+    const tl = imgIntersectHV(topLine, leftLine);
+    const tr = imgIntersectHV(topLine, rightLine);
+    const br = imgIntersectHV(bottomLine, rightLine);
+    const bl = imgIntersectHV(bottomLine, leftLine);
+    if (!tl || !tr || !br || !bl) return null;
+
+    // Sanity check: corners should be roughly within frame (allow a
+    // small overshoot) and the quad should cover a meaningful area --
+    // a sliver or wildly out-of-bounds result means the fit failed.
+    const pts = [tl, tr, br, bl];
+    const pad = Math.max(w, h) * 0.15;
+    for (const p of pts) {
+        if (p.x < -pad || p.x > w + pad || p.y < -pad || p.y > h + pad) return null;
+    }
+    const area = Math.abs(
+        (tr.x - tl.x) * (bl.y - tl.y) - (bl.x - tl.x) * (tr.y - tl.y)
+    ) + Math.abs(
+        (br.x - tr.x) * (bl.y - tr.y) - (bl.x - tr.x) * (br.y - tr.y)
+    );
+    if (area < w * h * 0.18) return null;
+
+    const inv = 1 / scale;
+    const clampPt = (p) => ({
+        x: Math.max(0, Math.min(canvas.width, p.x * inv)),
+        y: Math.max(0, Math.min(canvas.height, p.y * inv)),
+    });
+    return [clampPt(tl), clampPt(tr), clampPt(br), clampPt(bl)];
+}
+
+function imgEditorInitScanOverlay() {
+    const overlay = document.getElementById('imgScanOverlay');
+    const canvas = imgEditor.workingCanvas;
+
+    const detected = imgDetectDocumentCornersLite(canvas);
+    if (detected) {
+        imgScan.corners = detected;
+    } else {
+        // Fallback: a rectangle inset ~10% from the full image, so
+        // there's visibly something to drag onto the document's actual
+        // edges, rather than corners sitting exactly on the frame border.
+        const mx = canvas.width * 0.1;
+        const my = canvas.height * 0.1;
+        imgScan.corners = [
+            { x: mx, y: my }, { x: canvas.width - mx, y: my },
+            { x: canvas.width - mx, y: canvas.height - my }, { x: mx, y: canvas.height - my },
+        ];
+    }
+    overlay.classList.remove('hidden');
+    imgScanUpdateOverlayFromCorners();
+}
+
+function imgEditorWireScanHandles() {
+    const handles = ['imgScanHandleTL', 'imgScanHandleTR', 'imgScanHandleBR', 'imgScanHandleBL']
+        .map(id => document.getElementById(id));
+    if (!handles[0] || handles[0]._wired) return;
+    handles.forEach(h => { h._wired = true; });
+
+    const wrap = document.getElementById('imgEditorCanvasWrap');
+    const canvas = document.getElementById('imgEditorCanvas');
+    let dragIndex = -1;
+
+    function onDown(e, index) {
+        e.preventDefault();
+        e.stopPropagation();
+        dragIndex = index;
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('mouseup', onUp);
+        document.addEventListener('touchend', onUp);
+    }
+
+    function onMove(e) {
+        if (dragIndex < 0) return;
+        e.preventDefault();
+        const pt = e.touches ? e.touches[0] : e;
+        const canvasRect = canvas.getBoundingClientRect();
+        const scale = canvas.width / canvasRect.width;
+        let x = (pt.clientX - canvasRect.left) * scale;
+        let y = (pt.clientY - canvasRect.top) * scale;
+        x = Math.max(0, Math.min(canvas.width, x));
+        y = Math.max(0, Math.min(canvas.height, y));
+        imgScan.corners[dragIndex] = { x, y };
+        imgScanUpdateOverlayFromCorners();
+    }
+
+    function onUp() {
+        dragIndex = -1;
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.removeEventListener('touchend', onUp);
+    }
+
+    handles.forEach((h, i) => {
+        h.addEventListener('mousedown', (e) => onDown(e, i));
+        h.addEventListener('touchstart', (e) => onDown(e, i), { passive: false });
+    });
+}
+
+// Solves the 8-unknown linear system for a 2D projective transform
+// mapping each fromPts[i] -> toPts[i] (4 point correspondences).
+// Returns [a,b,c,d,e,f,g,h] such that:
+//   toX = (a*x + b*y + c) / (g*x + h*y + 1)
+//   toY = (d*x + e*y + f) / (g*x + h*y + 1)
+// via straightforward Gaussian elimination with partial pivoting.
+function imgSolveProjective(fromPts, toPts) {
+    const A = [];
+    const B = [];
+    for (let i = 0; i < 4; i++) {
+        const { x, y } = fromPts[i];
+        const { x: X, y: Y } = toPts[i];
+        A.push([x, y, 1, 0, 0, 0, -x * X, -y * X]); B.push(X);
+        A.push([0, 0, 0, x, y, 1, -x * Y, -y * Y]); B.push(Y);
+    }
+    // Augment and eliminate.
+    for (let i = 0; i < 8; i++) A[i].push(B[i]);
+    for (let col = 0; col < 8; col++) {
+        let pivot = col;
+        for (let r = col + 1; r < 8; r++) {
+            if (Math.abs(A[r][col]) > Math.abs(A[pivot][col])) pivot = r;
+        }
+        [A[col], A[pivot]] = [A[pivot], A[col]];
+        const pv = A[col][col] || 1e-12;
+        for (let r = 0; r < 8; r++) {
+            if (r === col) continue;
+            const factor = A[r][col] / pv;
+            for (let c = col; c <= 8; c++) A[r][c] -= factor * A[col][c];
+        }
+    }
+    return A.map((row, i) => row[8] / (A[i][i] || 1e-12));
+}
+
+// Warps srcCanvas so that the quad `corners` becomes the full
+// outW x outH rectangle, using bilinear-sampled inverse mapping (walk
+// every OUTPUT pixel, find where it came from in the source -- avoids
+// gaps that a forward/"push" warp would leave).
+function imgWarpPerspective(srcCanvas, corners, outW, outH) {
+    const [tl, tr, br, bl] = corners;
+    const rectPts = [{ x: 0, y: 0 }, { x: outW, y: 0 }, { x: outW, y: outH }, { x: 0, y: outH }];
+    // Map OUTPUT rectangle -> SOURCE quad directly, so each output pixel
+    // gives us exactly the source coordinate to sample (no matrix
+    // inversion needed).
+    const [a, b, c, d, e, f, g, h] = imgSolveProjective(rectPts, corners);
+
+    const sctx = srcCanvas.getContext('2d');
+    const srcData = sctx.getImageData(0, 0, srcCanvas.width, srcCanvas.height).data;
+    const sw = srcCanvas.width, sh = srcCanvas.height;
+
+    const out = document.createElement('canvas');
+    out.width = outW;
+    out.height = outH;
+    const octx = out.getContext('2d');
+    const outImg = octx.createImageData(outW, outH);
+    const od = outImg.data;
+
+    for (let Y = 0; Y < outH; Y++) {
+        for (let X = 0; X < outW; X++) {
+            const denom = g * X + h * Y + 1;
+            const sx = (a * X + b * Y + c) / denom;
+            const sy = (d * X + e * Y + f) / denom;
+            const oi = (Y * outW + X) * 4;
+            if (sx < 0 || sy < 0 || sx >= sw - 1 || sy >= sh - 1) {
+                od[oi + 3] = 0; // outside the source -- transparent
+                continue;
+            }
+            // Bilinear interpolation between the 4 nearest source pixels.
+            const x0 = sx | 0, y0 = sy | 0;
+            const fx = sx - x0, fy = sy - y0;
+            const i00 = (y0 * sw + x0) * 4;
+            const i10 = i00 + 4;
+            const i01 = i00 + sw * 4;
+            const i11 = i01 + 4;
+            for (let ch = 0; ch < 4; ch++) {
+                const top = srcData[i00 + ch] * (1 - fx) + srcData[i10 + ch] * fx;
+                const bot = srcData[i01 + ch] * (1 - fx) + srcData[i11 + ch] * fx;
+                od[oi + ch] = top * (1 - fy) + bot * fy;
+            }
+        }
+    }
+    octx.putImageData(outImg, 0, 0);
+    return out;
+}
+
+function imgEditorApplyScan() {
+    if (!imgScan.corners) { imgEditorSetTool(null); return; }
+    imgEditorCommitPending();
+    const src = imgEditor.workingCanvas;
+    const [tl, tr, br, bl] = imgScan.corners;
+
+    const widthTop = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+    const widthBottom = Math.hypot(br.x - bl.x, br.y - bl.y);
+    const heightLeft = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+    const heightRight = Math.hypot(br.x - tr.x, br.y - tr.y);
+    const outW = Math.max(1, Math.round(Math.max(widthTop, widthBottom)));
+    const outH = Math.max(1, Math.round(Math.max(heightLeft, heightRight)));
+
+    try {
+        const out = imgWarpPerspective(src, [tl, tr, br, bl], outW, outH);
+        imgEditor.workingCanvas = out;
+        imgEditorInvalidateToggleFilter();
+        imgEditorPushHistory();
+        imgEditorRender();
+    } catch (e) {
+        console.error('imgEditorApplyScan failed:', e);
+        showToast('Could not straighten image', true);
+    }
+    imgEditorSetTool(null);
+}
+
+// ---- Zoom / pan (view-only, resets before crop) ----
+
+function imgEditorWireZoomPan() {
+    const wrap = document.getElementById('imgEditorCanvasWrap');
+    const canvas = document.getElementById('imgEditorCanvas');
+    if (!wrap || wrap._zoomWired) return;
+    wrap._zoomWired = true;
+
+    let pinchStartDist = 0;
+    let pinchStartScale = 1;
+    let panning = false;
+    let panStart = { x: 0, y: 0 };
+    let panOrigin = { x: 0, y: 0 };
+
+    function applyTransform() {
+        canvas.style.transform = `translate(${imgEditor.zoomTranslate.x}px, ${imgEditor.zoomTranslate.y}px) scale(${imgEditor.zoomScale})`;
+    }
+
+    wrap.addEventListener('wheel', (e) => {
+        if (imgEditor.activeTool === 'crop' || imgEditor.activeTool === 'text' || imgEditor.activeTool === 'draw' || imgEditor.activeTool === 'highlight' || imgEditor.activeTool === 'blurarea' || imgEditor.activeTool === 'scan') return;
+        e.preventDefault();
+        imgEditor.zoomScale = Math.min(4, Math.max(1, imgEditor.zoomScale - e.deltaY * 0.0015));
+        applyTransform();
+    }, { passive: false });
+
+    wrap.addEventListener('touchstart', (e) => {
+        if (imgEditor.activeTool === 'crop' || imgEditor.activeTool === 'text' || imgEditor.activeTool === 'draw' || imgEditor.activeTool === 'highlight' || imgEditor.activeTool === 'blurarea' || imgEditor.activeTool === 'scan') return;
+        if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            pinchStartDist = Math.hypot(dx, dy);
+            pinchStartScale = imgEditor.zoomScale;
+        } else if (e.touches.length === 1 && imgEditor.zoomScale > 1) {
+            panning = true;
+            panStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            panOrigin = { ...imgEditor.zoomTranslate };
+        }
+    }, { passive: true });
+
+    wrap.addEventListener('touchmove', (e) => {
+        if (imgEditor.activeTool === 'crop' || imgEditor.activeTool === 'text' || imgEditor.activeTool === 'draw' || imgEditor.activeTool === 'highlight' || imgEditor.activeTool === 'blurarea' || imgEditor.activeTool === 'scan') return;
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.hypot(dx, dy);
+            imgEditor.zoomScale = Math.min(4, Math.max(1, pinchStartScale * (dist / pinchStartDist)));
+            applyTransform();
+        } else if (panning && e.touches.length === 1) {
+            e.preventDefault();
+            imgEditor.zoomTranslate = {
+                x: panOrigin.x + (e.touches[0].clientX - panStart.x),
+                y: panOrigin.y + (e.touches[0].clientY - panStart.y)
+            };
+            applyTransform();
+        }
+    }, { passive: false });
+
+    wrap.addEventListener('touchend', () => { panning = false; });
+}
+
+// ---- Open / close / save ----
+
+async function openImageEditor() {
+    const viewer = document.getElementById('imageViewer');
+    const editor = document.getElementById('imageEditor');
+    if (!viewer._currentData) return;
+    // Guard against re-entry: if the editor is already open, a duplicate
+    // trigger (e.g. a stray click reaching the "Edit" button underneath)
+    // must NOT re-run this and silently wipe out all edits made so far.
+    if (!editor.classList.contains('hidden')) return;
+
+    imgEditor.mimeType = viewer._currentData.type || 'image/png';
+
+    const bitmap = await createImageBitmap(viewer._currentData);
+    const base = document.createElement('canvas');
+    base.width = bitmap.width;
+    base.height = bitmap.height;
+    base.getContext('2d').drawImage(bitmap, 0, 0);
+    bitmap.close?.();
+
+    imgEditor.workingCanvas = base;
+    imgEditor.historyIndex = 0;
+    imgEditorZeroAdjustSliders();
+    imgEditor.history = [{ canvas: imgCloneCanvas(base), adjustSnapshot: { ...imgEditor.adjustBase } }];
+    imgEditor.activeTool = null;
+    imgEditor.zoomScale = 1;
+    imgEditor.zoomTranslate = { x: 0, y: 0 };
+    imgEditor.textColor = '#ffffff';
+    imgEditor.textSize = 36;
+    imgEditor.textFont = 'Arial, sans-serif';
+    imgEditor.toggleFilterActive = null;
+    imgEditor.toggleFilterBefore = null;
+
+    document.getElementById('imgEditorCanvas').style.transform = '';
+
+    const textOverlay = document.getElementById('imgTextOverlay');
+    textOverlay.style.left = '';
+    textOverlay.style.top = '';
+    const textInput = document.getElementById('imgTextInput');
+    if (textInput) textInput.value = 'Text';
+    const textSize = document.getElementById('imgTextSize');
+    if (textSize) textSize.value = 36;
+    document.querySelectorAll('.img-text-swatch').forEach(sw => sw.classList.toggle('active', sw.dataset.color === '#ffffff'));
+    document.querySelectorAll('.img-text-font').forEach(fb => fb.classList.toggle('active', fb.dataset.font === 'Arial, sans-serif'));
+
+    editor.classList.remove('hidden');
+    document.getElementById('imgExitModal').classList.add('hidden');
+    // Belt-and-braces: the editor is a full-screen opaque overlay and
+    // should already block every click to whatever is behind it, but
+    // disabling pointer-events on the viewer underneath removes any
+    // possibility of a click reaching its Close/Edit buttons while the
+    // editor is up, regardless of any stacking/layout edge case.
+    viewer.style.pointerEvents = 'none';
+    imgEditorSetTool(null);
+    imgEditorRender();
+    imgEditorUpdateHistoryButtons();
+    imgEditorWireCropBox();
+    imgEditorWireZoomPan();
+    imgEditorWireTextOverlay();
+    imgEditorWireBrush();
+    imgEditorInitBrushPanel();
+}
+
+function closeImageEditor() {
+    document.getElementById('imageEditor').classList.add('hidden');
+    document.getElementById('imageViewer').style.pointerEvents = '';
+    imgEditor.workingCanvas = null;
+    imgEditor.history = [];
+    imgEditor.historyIndex = -1;
+}
+
+function imgEditorHasEdits() {
+    return imgEditor.historyIndex > 0 || imgEditorHasPendingAdjust();
+}
+
+function imgEditorCancel() {
+    if (imgEditorHasEdits()) {
+        document.getElementById('imgExitModal').classList.remove('hidden');
+    } else {
+        closeImageEditor();
+    }
+}
+
+function imgEditorExitModalHide() {
+    document.getElementById('imgExitModal').classList.add('hidden');
+}
+
+function imgEditorExportBlob() {
+    imgEditorCommitPending();
+    return new Promise((resolve) => {
+        imgEditor.workingCanvas.toBlob((blob) => resolve(blob), imgEditor.mimeType, 0.92);
+    });
+}
+
+async function imgEditorSaveAsNew() {
+    const viewer = document.getElementById('imageViewer');
+    const folderPath = viewer._currentFolder;
+    const originalName = viewer._currentName || 'image.png';
+    if (folderPath === undefined || folderPath === null) {
+        showToast('Could not determine folder to save to', true);
+        return;
+    }
+
+    const blob = await imgEditorExportBlob();
+    if (!blob) { showToast('Could not export edited image', true); return; }
+
+    const dotIdx = originalName.lastIndexOf('.');
+    const base = dotIdx > -1 ? originalName.slice(0, dotIdx) : originalName;
+    const ext = dotIdx > -1 ? originalName.slice(dotIdx) : '';
+    let newName = `${base}_edited${ext}`;
+    let n = 2;
+    const existingNames = new Set((allFiles[folderPath] || []).map(f => f.name));
+    while (existingNames.has(newName)) {
+        newName = `${base}_edited(${n})${ext}`;
+        n++;
+    }
+
+    const file = new File([blob], newName, { type: blob.type });
+    await addFileToCurrentFolder(file);
+    render();
+    updateStats();
+    showToast('Saved as new image');
+    closeImageEditor();
+    closeImageViewer();
+}
+
+async function imgEditorSaveAsPdf() {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        showToast('PDF library not available', true);
+        return;
+    }
+    const viewer = document.getElementById('imageViewer');
+    const folderPath = viewer._currentFolder;
+    const originalName = viewer._currentName || 'image';
+    if (folderPath === undefined || folderPath === null) {
+        showToast('Could not determine folder to save to', true);
+        return;
+    }
+
+    imgEditorCommitPending();
+    const canvas = imgEditor.workingCanvas;
+    // JPEG keeps the PDF a reasonable size for photos; quality 0.92 is
+    // visually lossless for document/photo use at this app's scale.
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+    // Page sized to the image itself (in points, 72pt = 1in, treating
+    // the image at 96dpi) rather than forcing it onto a fixed A4/Letter
+    // page -- keeps the PDF page proportioned exactly like the photo,
+    // which is what "convert this image to PDF" usually means here.
+    const pageW = canvas.width * 72 / 96;
+    const pageH = canvas.height * 72 / 96;
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({
+        orientation: pageW > pageH ? 'landscape' : 'portrait',
+        unit: 'pt',
+        format: [pageW, pageH],
+    });
+    pdf.addImage(dataUrl, 'JPEG', 0, 0, pageW, pageH);
+    const blob = pdf.output('blob');
+
+    const dotIdx = originalName.lastIndexOf('.');
+    const base = dotIdx > -1 ? originalName.slice(0, dotIdx) : originalName;
+    let newName = `${base}.pdf`;
+    let n = 2;
+    const existingNames = new Set((allFiles[folderPath] || []).map(f => f.name));
+    while (existingNames.has(newName)) {
+        newName = `${base}(${n}).pdf`;
+        n++;
+    }
+
+    const file = new File([blob], newName, { type: 'application/pdf' });
+    await addFileToCurrentFolder(file);
+    render();
+    updateStats();
+    showToast('Saved as PDF');
+    closeImageEditor();
+    closeImageViewer();
+}
+
+// ============================================================
+// "ADD TO PDF" QUEUE -- combine several images (added one at a time
+// via each file's long-press context menu) into a single multi-page
+// PDF. Deliberately simple: no drag-to-reorder UI, no persistence
+// across app restarts -- just a lightweight in-memory queue for the
+// common case of "pick a few photos, make one PDF".
+// ============================================================
+
+let pdfQueue = []; // array of { folderPath, fileName }
+
+function imgUpdatePdfQueueBadge() {
+    const fab = document.getElementById('pdfQueueFab');
+    const countEl = document.getElementById('pdfQueueCount');
+    if (!fab || !countEl) return;
+    fab.classList.toggle('hidden', pdfQueue.length === 0);
+    countEl.textContent = pdfQueue.length;
+}
+
+function imgAddToPdfQueue(folderPath, fileName) {
+    if (pdfQueue.some(q => q.folderPath === folderPath && q.fileName === fileName)) {
+        showToast('Already added to PDF');
+        return;
+    }
+    pdfQueue.push({ folderPath, fileName });
+    imgUpdatePdfQueueBadge();
+    showToast(`Added to PDF (${pdfQueue.length})`);
+}
+
+function imgClearPdfQueue() {
+    pdfQueue = [];
+    imgUpdatePdfQueueBadge();
+}
+
+async function imgCombinePdfQueue() {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        showToast('PDF library not available', true);
+        return;
+    }
+    if (!pdfQueue.length) return;
+
+    showPromptModal('Name for the combined PDF:', 'Combined', async (name) => {
+        if (!name?.trim()) return;
+        const folderPath = currentPath.join('/');
+        const { jsPDF } = window.jspdf;
+        let pdf = null;
+
+        for (const entry of pdfQueue) {
+            let blob;
+            try {
+                blob = await loadFileData(entry.folderPath, entry.fileName);
+            } catch (e) {
+                continue; // skip a file that failed to load rather than aborting the whole PDF
+            }
+            if (!blob) continue;
+
+            const bitmap = await createImageBitmap(blob);
+            const canvas = document.createElement('canvas');
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+            canvas.getContext('2d').drawImage(bitmap, 0, 0);
+            bitmap.close?.();
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+            const pageW = canvas.width * 72 / 96;
+            const pageH = canvas.height * 72 / 96;
+            const orientation = pageW > pageH ? 'landscape' : 'portrait';
+
+            if (!pdf) {
+                pdf = new jsPDF({ orientation, unit: 'pt', format: [pageW, pageH] });
+            } else {
+                pdf.addPage([pageW, pageH], orientation);
+            }
+            pdf.addImage(dataUrl, 'JPEG', 0, 0, pageW, pageH);
+        }
+
+        if (!pdf) {
+            showToast('Could not load any of the selected images', true);
+            return;
+        }
+
+        const blob = pdf.output('blob');
+        const base = name.trim().replace(/\.pdf$/i, '');
+        let newName = `${base}.pdf`;
+        let n = 2;
+        const existingNames = new Set((allFiles[folderPath] || []).map(f => f.name));
+        while (existingNames.has(newName)) {
+            newName = `${base}(${n}).pdf`;
+            n++;
+        }
+
+        const file = new File([blob], newName, { type: 'application/pdf' });
+        await addFileToCurrentFolder(file);
+        render();
+        updateStats();
+        showToast(`Combined ${pdfQueue.length} images into ${newName}`);
+        imgClearPdfQueue();
+    });
+}
+
+async function imgEditorReplaceOriginal() {
+    const viewer = document.getElementById('imageViewer');
+    const folderPath = viewer._currentFolder;
+    const fileName = viewer._currentName;
+    if (folderPath === undefined || folderPath === null || !fileName) {
+        showToast('Could not determine file to replace', true);
+        return;
+    }
+
+    const blob = await imgEditorExportBlob();
+    if (!blob) { showToast('Could not export edited image', true); return; }
+
+    await replaceFileContent(folderPath, fileName, blob);
+
+    // Refresh the viewer image behind the editor to the new content.
+    if (viewer._currentUrl) URL.revokeObjectURL(viewer._currentUrl);
+    const newUrl = URL.createObjectURL(blob);
+    viewer._currentUrl = newUrl;
+    viewer._currentData = blob;
+    document.getElementById('viewerImage').src = newUrl;
+
+    render();
+    updateStats();
+    showToast('Original image replaced');
+    closeImageEditor();
+}
+
+
 
 async function openWordViewer(fileData, fileName) {
     const viewer = document.getElementById('docViewer');
@@ -2423,7 +4282,7 @@ function ensurePinExistsForLock(onReady) {
     });
 }
 
-function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked, onLock, onShare, triggerEl }) {
+function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked, onLock, onShare, onAddToPdf, triggerEl }) {
     const existing = document.getElementById('ctxMenuOverlay');
     if (existing) existing.remove();
 
@@ -2454,6 +4313,11 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
         <div class="ctx-menu-item" id="ctxShare">
             <i class="fas fa-share-nodes ctx-item-icon ctx-icon-share"></i>
             <span class="ctx-menu-item-label">Share</span>
+        </div>` : ''}
+        ${onAddToPdf ? `
+        <div class="ctx-menu-item" id="ctxAddToPdf">
+            <i class="fas fa-file-pdf ctx-item-icon ctx-icon-share"></i>
+            <span class="ctx-menu-item-label">Add to PDF</span>
         </div>` : ''}
         ${onDelete ? `
         <div class="ctx-menu-divider"></div>
@@ -2507,6 +4371,9 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
     const shareEl = document.getElementById('ctxShare');
     if (shareEl) shareEl.addEventListener('click', () => { haptic.press(); close();
         onShare(); });
+    const addToPdfEl = document.getElementById('ctxAddToPdf');
+    if (addToPdfEl) addToPdfEl.addEventListener('click', () => { haptic.press(); close();
+        onAddToPdf(); });
     const deleteEl = document.getElementById('ctxDelete');
     if (deleteEl) deleteEl.addEventListener('click', () => { haptic.press(); close();
         onDelete(); });
@@ -2522,12 +4389,19 @@ function createFileCard(file, folderPath, opts = {}) {
     div.className = 'card file-card';
     const sizeLabel = getFileSizeLabel(file);
     const nameHtml = opts.highlightQuery ? highlightMatch(file.name, opts.highlightQuery) : escapeHtml(file.name);
+    const expiryInfo = getExpiryStatus(file);
+    const expiryBadge = expiryInfo && expiryInfo.status !== 'ok'
+        ? `<span class="card-expiry-badge card-expiry-${expiryInfo.status}">${
+            expiryInfo.status === 'overdue' ? 'Expired' : `${expiryInfo.days}d left`
+          }</span>`
+        : '';
     div.innerHTML = `
         <div class="card-icon"><i class="fas ${iconClass}"></i></div>
         <div class="card-info">
             <div class="card-filename" title="${escapeHtml(file.name)}">${nameHtml}</div>
             ${sizeLabel ? `<div class="card-meta">${sizeLabel}</div>` : ''}
         </div>
+        ${expiryBadge}
         ${file.locked ? '<i class="fas fa-lock card-lock-indicator"></i>' : ''}
         <i class="fas fa-star card-fav-indicator${file.favourite ? '' : ' card-fav-hidden'}"></i>
     `;
@@ -2577,6 +4451,11 @@ function createFileCard(file, folderPath, opts = {}) {
                 }),
                 onDelete: () => deleteFileFromFolder(folderPath, file.name),
                 onShare: () => openFileWithGesture(file, folderPath),
+                onAddToPdf: getFileType(file.name) === 'image' ? () => imgAddToPdfQueue(folderPath, file.name) : null,
+                onSetExpiry: () => showDateModal(`Expiry date for "${file.name}":`, file.expiryDate || '', (val) => {
+                    if (val === undefined) return; // cancelled, no change
+                    setFileExpiryDate(folderPath, file.name, val);
+                }),
                 isLocked: !!file.locked,
                 onLock: () => {
                     const files = allFiles[folderPath];
@@ -3220,19 +5099,15 @@ function onDeptAddFabTap() {
     const fab = document.getElementById('deptAddFab');
     if (fab) fab.classList.add('dept-add-fab-expanded');
     // Delay matches the .dept-add-fab width transition (0.42s in style.css)
-    // plus a small buffer, so the expand animation is fully visible before
-    // the dialog opens on top of it. Previously this was 260ms, shorter
-    // than the 420ms CSS transition, so the dialog interrupted the
-    // animation mid-flight -- the half-expanded pill briefly clipped over
-    // whatever department card sat underneath it, and the popup felt like
-    // it appeared with zero delay.
+    // plus extra buffer, so the expand animation is fully visible and
+    // settles before the dialog opens on top of it.
     setTimeout(() => {
         addNewDepartment();
-        setTimeout(() => {
-            const f = document.getElementById('deptAddFab');
-            if (f) f.classList.remove('dept-add-fab-expanded');
-        }, 4000);
-    }, 450);
+        // Dialog is open now, covering the FAB anyway -- collapse it back
+        // to just the "+" icon right away instead of leaving it expanded.
+        const f = document.getElementById('deptAddFab');
+        if (f) f.classList.remove('dept-add-fab-expanded');
+    }, 1200);
 }
 
 function addNewDepartment() {
@@ -3674,7 +5549,7 @@ function render() {
                 <div class="dept-hub">
                     <div class="dept-hub-circle">
                         <span class="dept-hub-text">DEPARTMENT</span>
-                        <div class="dept-hub-knob" onclick="showInfo()">
+                        <div class="dept-hub-knob" onclick="showInfoDelayed()">
                             <i class="fas fa-info dept-hub-icon"></i>
                         </div>
                     </div>
@@ -4189,7 +6064,10 @@ function attachDepartmentPressEffects() {
 
         oval.addEventListener('click', () => {
             if (longPressTriggered) { longPressTriggered = false; return; }
-            selectDepartment(dept);
+            // Let the press-feedback sink animation actually finish
+            // playing before navigating away -- otherwise the page
+            // change cuts it off and the press feels instant/sudden.
+            setTimeout(() => selectDepartment(dept), 260);
         });
     });
 }
@@ -4664,6 +6542,8 @@ function renderDashboardView() {
         noteCount += allNotes[folderPath].length;
     }
 
+    const expiring = getAllExpiringFiles(EXPIRY_SOON_DAYS);
+
     body.innerHTML = `
         <div class="dash-stat-grid">
             <div class="dash-stat-card">
@@ -4691,6 +6571,17 @@ function renderDashboardView() {
             <div class="dash-used-label">Storage Used</div>
             <div class="dash-used-value">${formatBytes(totalBytes)}</div>
         </div>
+        ${expiring.length ? `
+        <div class="settings-group-title">Expiring Soon</div>
+        <div class="settings-card">
+            ${expiring.map(e => `
+                <div class="dept-manage-row dash-expiry-row" data-folder="${escapeHtml(e.folderPath)}" data-file="${escapeHtml(e.file.name)}">
+                    <div class="settings-item-icon" style="width:32px;height:32px;font-size:0.8rem;flex-shrink:0"><i class="fas ${getFileIcon(e.file.name)}"></i></div>
+                    <div class="dept-manage-name" style="font-weight:600;font-size:0.82rem;">${escapeHtml(e.file.name)}</div>
+                    <span class="card-expiry-badge card-expiry-${e.status}">${e.status === 'overdue' ? 'Expired' : `${e.days}d left`}</span>
+                </div>
+            `).join('')}
+        </div>` : ''}
         <div class="settings-group-title">Largest Document</div>
         <div class="settings-card">
             <div class="dept-manage-row">
@@ -4712,6 +6603,15 @@ function renderDashboardView() {
             }).join('') : '<div class="settings-empty-row">No departments yet</div>'}
         </div>
     `;
+
+    body.querySelectorAll('.dash-expiry-row').forEach(row => {
+        row.onclick = () => {
+            const folderPath = row.dataset.folder;
+            const fileName = row.dataset.file;
+            const file = allFiles[folderPath]?.find(f => f.name === fileName);
+            if (file) { closeDashboardView(); openFile(fileName, folderPath); }
+        };
+    });
 }
 
 function openDashboardView() {
@@ -6589,6 +8489,14 @@ function initSettingsPage() {
 // SHOW INFO
 // ============================================================
 
+// Called from the info-button's touch handler instead of onclick directly
+// -- delays opening the modal just long enough for the press-feedback
+// sink animation to actually finish playing (see attachDepartmentPressEffects
+// for the same pattern on department cards).
+function showInfoDelayed() {
+    setTimeout(showInfo, 260);
+}
+
 function showInfo() {
     haptic.press();
     const deptCount = Object.keys(fileSystem).length;
@@ -6687,6 +8595,31 @@ function addDepthEffect(element, event) {
 // HANDLE FILES UPLOAD
 // ============================================================
 
+// heic2any is small (~1.3MB, unlike the OpenCV experiment) but still
+// only worth loading the first time a HEIC/HEIF file is actually
+// imported, not on every app start.
+let imgHeic2anyLoadPromise = null;
+function imgLoadHeic2any() {
+    if (window.heic2any) return Promise.resolve(window.heic2any);
+    if (imgHeic2anyLoadPromise) return imgHeic2anyLoadPromise;
+    imgHeic2anyLoadPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'vendor/heic2any/heic2any.min.js';
+        script.onload = () => resolve(window.heic2any);
+        script.onerror = () => reject(new Error('Failed to load HEIC converter'));
+        document.head.appendChild(script);
+    }).catch(err => { imgHeic2anyLoadPromise = null; throw err; });
+    return imgHeic2anyLoadPromise;
+}
+
+async function imgConvertHeicToJpeg(file) {
+    const heic2any = await imgLoadHeic2any();
+    const result = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+    const blob = Array.isArray(result) ? result[0] : result; // multi-image HEIC containers -> just the first
+    const base = file.name.replace(/\.(heic|heif)$/i, '');
+    return new File([blob], `${base}.jpg`, { type: 'image/jpeg' });
+}
+
 // One bad file must never silently abort the rest of a multi-file import.
 // Previously this had no try/catch around addFileToCurrentFolder -- an
 // IndexedDB error partway through a batch (e.g. storage quota exceeded,
@@ -6696,22 +8629,43 @@ function addDepthEffect(element, event) {
 // stops the rest of the batch from being attempted.
 async function handleFiles(files) {
     let failures = 0;
+    let heicFailures = 0;
+    let heicConverted = 0;
+    let firstFailureDetail = null;
+    let firstHeicFailureDetail = null;
     for (let f of files) {
         const fileType = getFileType(f.name);
         if (['image', 'pdf', 'word', 'word-legacy', 'excel'].includes(fileType)) {
             try {
                 await addFileToCurrentFolder(f);
             } catch (e) {
-                console.warn('Import failed for', f.name, e);
+                console.error('Import failed for', f.name, e);
+                if (!firstFailureDetail) firstFailureDetail = `${f.name}: ${e.message || e}`;
                 failures++;
+            }
+        } else if (fileType === 'heic') {
+            try {
+                const converted = await imgConvertHeicToJpeg(f);
+                await addFileToCurrentFolder(converted);
+                heicConverted++;
+            } catch (e) {
+                console.error('HEIC conversion failed for', f.name, e);
+                if (!firstHeicFailureDetail) firstHeicFailureDetail = `${f.name}: ${e.message || e}`;
+                heicFailures++;
             }
         } else {
             showToast('Skipped: ' + f.name + ' (not supported)', true);
         }
     }
     render();
+    if (heicConverted) {
+        showToast(`Converted ${heicConverted} HEIC photo(s) to JPG`);
+    }
+    if (heicFailures) {
+        showToast(`${heicFailures} HEIC failed: ${firstHeicFailureDetail}`, true);
+    }
     if (failures) {
-        showToast(failures + ' file(s) could not be imported — check console', true);
+        showToast(`${failures} file(s) failed: ${firstFailureDetail}`, true);
     }
 }
 
@@ -7044,7 +8998,7 @@ function initElasticOverscroll() {
     const stretchEl = document.querySelector('.app');
     if (!stretchEl) return;
 
-    const EXCLUDED_SELECTOR = '.settings-page, .favourites-view, #imageViewer, .pdf-viewer-body, .modal, .ctx-menu-overlay, #appLockScreen, #pinVerifyModal, #customConfirm, #customPrompt, #lockedItemsOverlay';
+    const EXCLUDED_SELECTOR = '.settings-page, .favourites-view, #imageViewer, #imageEditor, .pdf-viewer-body, .modal, .ctx-menu-overlay, #appLockScreen, #pinVerifyModal, #customConfirm, #customPrompt, #lockedItemsOverlay';
 
     let startY = 0;
     let pulling = false;
@@ -7100,6 +9054,32 @@ function initElasticOverscroll() {
 document.addEventListener('DOMContentLoaded', async () => {
     initAndroidBackButton();
 
+    // CSS :active alone doesn't reliably show its transition on mobile
+    // for a quick tap -- some WebViews apply and remove the :active
+    // state faster than a frame can render, so the "sink in" animation
+    // only becomes visible on a press-and-hold. This guarantees the
+    // .pressed-feedback class (which the CSS treats identically to
+    // :active) stays on for at least the transition's duration, so a
+    // normal quick tap gets to actually show the animation.
+    // Delegated on document so it also covers .dept-oval cards, which
+    // are created dynamically per department.
+    (function wirePressFeedback(selector, minDuration) {
+        const findTarget = (e) => e.target.closest(selector);
+        document.addEventListener('touchstart', (e) => {
+            const el = findTarget(e);
+            if (el) { el.classList.add('pressed-feedback'); el._pressedAt = Date.now(); }
+        }, { passive: true });
+        const release = (e) => {
+            const el = findTarget(e);
+            if (el) {
+                const elapsed = Date.now() - (el._pressedAt || 0);
+                setTimeout(() => el.classList.remove('pressed-feedback'), Math.max(0, minDuration - elapsed));
+            }
+        };
+        document.addEventListener('touchend', release, { passive: true });
+        document.addEventListener('touchcancel', release, { passive: true });
+    })('.dept-oval, .dept-info-hub-icon', 320);
+
     // "Add Department" FAB -- bound via touchend (not inline onclick) for
     // the same reason as favBackBtn elsewhere in this file: it skips the
     // browser's tap-vs-gesture disambiguation step, which is the fix
@@ -7120,6 +9100,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
         deptAddFabEl.ontouchend = deptAddFabAction;
         deptAddFabEl.onclick = deptAddFabAction; // fallback for mouse/non-touch testing
+    }
+
+    const pdfQueueFabEl = document.getElementById('pdfQueueFab');
+    const pdfQueueClearBtn = document.getElementById('pdfQueueClearBtn');
+    if (pdfQueueFabEl) {
+        pdfQueueFabEl.onclick = (e) => {
+            if (e.target.closest('#pdfQueueClearBtn')) {
+                e.stopPropagation();
+                imgClearPdfQueue();
+                return;
+            }
+            imgCombinePdfQueue();
+        };
     }
 
     // Rendered immediately, before anything else -- including the lock
@@ -7177,6 +9170,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
+            if (!document.getElementById('imageEditor').classList.contains('hidden')) {
+                imgEditorCancel();
+                return;
+            }
             closeImageViewer();
             closePdfViewer();
         }
@@ -7192,6 +9189,145 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (e.target === viewer) closeImageViewer();
         });
     }
+
+    // Image editor
+    const openEditorBtn = document.getElementById('openImageEditorBtn');
+    if (openEditorBtn) {
+        let editorBtnBusy = false;
+        const openEditorAction = (e) => {
+            if (e) e.preventDefault();
+            if (editorBtnBusy) return;
+            editorBtnBusy = true;
+            haptic.press();
+            openImageEditor();
+            setTimeout(() => { editorBtnBusy = false; }, 700);
+        };
+        openEditorBtn.ontouchend = openEditorAction;
+        openEditorBtn.onclick = openEditorAction;
+    }
+
+    const imgEditorCancelBtn = document.getElementById('imgEditorCancelBtn');
+    if (imgEditorCancelBtn) imgEditorCancelBtn.onclick = imgEditorCancel;
+
+    const imgEditorUndoBtn = document.getElementById('imgEditorUndoBtn');
+    if (imgEditorUndoBtn) imgEditorUndoBtn.onclick = imgEditorUndo;
+
+    const imgEditorRedoBtn = document.getElementById('imgEditorRedoBtn');
+    if (imgEditorRedoBtn) imgEditorRedoBtn.onclick = imgEditorRedo;
+
+    const imgEditorResetBtn = document.getElementById('imgEditorResetBtn');
+    if (imgEditorResetBtn) imgEditorResetBtn.onclick = imgEditorResetToOriginal;
+
+    document.querySelectorAll('.img-editor-tool').forEach(btn => {
+        btn.onclick = () => imgEditorSetTool(imgEditor.activeTool === btn.dataset.tool ? null : btn.dataset.tool);
+    });
+
+    // Wire every Adjust-panel slider from the same config used for
+    // has-pending/reset/filter-string, so brightness/contrast/exposure/
+    // saturation/hue/blur/sepia/opacity/invert are all handled
+    // identically: live preview on 'input', and each finished drag
+    // ('change', i.e. release) commits as its own single undo step.
+    IMG_ADJUST_PROPS.forEach(p => {
+        const el = document.getElementById(p.elId);
+        if (!el) return;
+        const valEl = document.getElementById(p.elId + 'Val');
+        el.addEventListener('input', (e) => {
+            const v = parseInt(e.target.value, 10);
+            imgEditor[p.prop] = v;
+            if (valEl) valEl.textContent = imgFormatSliderValue(p, v);
+            imgEditorRender();
+            imgEditorUpdateHistoryButtons();
+        });
+        el.addEventListener('change', imgEditorCommitPending);
+    });
+
+    document.querySelectorAll('.img-preset-btn').forEach(btn => {
+        btn.onclick = () => imgEditorApplyPreset(btn.dataset.preset);
+    });
+
+    const imgCropCancelBtn = document.getElementById('imgCropCancelBtn');
+    if (imgCropCancelBtn) imgCropCancelBtn.onclick = () => imgEditorSetTool(null);
+
+    const imgCropApplyBtn = document.getElementById('imgCropApplyBtn');
+    if (imgCropApplyBtn) imgCropApplyBtn.onclick = imgEditorApplyCrop;
+
+    const imgScanCancelBtn = document.getElementById('imgScanCancelBtn');
+    if (imgScanCancelBtn) imgScanCancelBtn.onclick = () => imgEditorSetTool(null);
+
+    const imgScanApplyBtn = document.getElementById('imgScanApplyBtn');
+    if (imgScanApplyBtn) imgScanApplyBtn.onclick = imgEditorApplyScan;
+
+    const imgTextInput = document.getElementById('imgTextInput');
+    if (imgTextInput) imgTextInput.addEventListener('input', (e) => {
+        document.getElementById('imgTextOverlay').textContent = e.target.value || 'Text';
+    });
+
+    document.querySelectorAll('.img-text-swatch').forEach(sw => {
+        sw.onclick = () => {
+            document.querySelectorAll('.img-text-swatch').forEach(s => s.classList.remove('active'));
+            sw.classList.add('active');
+            imgEditor.textColor = sw.dataset.color;
+            document.getElementById('imgTextOverlay').style.color = imgEditor.textColor;
+        };
+    });
+
+    document.querySelectorAll('.img-text-font').forEach(fb => {
+        fb.onclick = () => {
+            document.querySelectorAll('.img-text-font').forEach(f => f.classList.remove('active'));
+            fb.classList.add('active');
+            imgEditor.textFont = fb.dataset.font;
+            document.getElementById('imgTextOverlay').style.fontFamily = imgEditor.textFont;
+        };
+    });
+
+    const imgTextSize = document.getElementById('imgTextSize');
+    if (imgTextSize) imgTextSize.addEventListener('input', (e) => {
+        imgEditor.textSize = parseInt(e.target.value, 10);
+        document.getElementById('imgTextOverlay').style.fontSize = imgEditor.textSize + 'px';
+    });
+
+    document.querySelectorAll('.img-brush-swatch').forEach(sw => {
+        sw.onclick = () => {
+            document.querySelectorAll('.img-brush-swatch').forEach(s => s.classList.remove('active'));
+            sw.classList.add('active');
+            imgBrush.color = sw.dataset.color;
+        };
+    });
+
+    const imgBrushSize = document.getElementById('imgBrushSize');
+    if (imgBrushSize) imgBrushSize.addEventListener('input', (e) => {
+        imgBrush.size = parseInt(e.target.value, 10);
+    });
+
+    const imgTextCancelBtn = document.getElementById('imgTextCancelBtn');
+    if (imgTextCancelBtn) imgTextCancelBtn.onclick = () => imgEditorSetTool(null);
+
+    const imgTextApplyBtn = document.getElementById('imgTextApplyBtn');
+    if (imgTextApplyBtn) imgTextApplyBtn.onclick = imgEditorApplyText;
+
+    const imgEditorSaveNewBtn = document.getElementById('imgEditorSaveNewBtn');
+    if (imgEditorSaveNewBtn) imgEditorSaveNewBtn.onclick = imgEditorSaveAsNew;
+
+    const imgEditorSavePdfBtn = document.getElementById('imgEditorSavePdfBtn');
+    if (imgEditorSavePdfBtn) imgEditorSavePdfBtn.onclick = imgEditorSaveAsPdf;
+
+    const imgEditorReplaceBtn = document.getElementById('imgEditorReplaceBtn');
+    if (imgEditorReplaceBtn) imgEditorReplaceBtn.onclick = imgEditorReplaceOriginal;
+
+    const imgExitKeepEditingBtn = document.getElementById('imgExitKeepEditingBtn');
+    if (imgExitKeepEditingBtn) imgExitKeepEditingBtn.onclick = imgEditorExitModalHide;
+
+    const imgExitDiscardBtn = document.getElementById('imgExitDiscardBtn');
+    if (imgExitDiscardBtn) imgExitDiscardBtn.onclick = () => {
+        imgEditorExitModalHide();
+        closeImageEditor();
+    };
+
+    const imgExitSaveBtn = document.getElementById('imgExitSaveBtn');
+    if (imgExitSaveBtn) imgExitSaveBtn.onclick = () => {
+        imgEditorExitModalHide();
+        imgEditorReplaceOriginal();
+    };
 
     // Word / Excel viewer close + share
     const closeDocBtn = document.getElementById('closeDocViewer');
@@ -7355,6 +9491,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 render();
 
+                // One-time-per-session check for documents expiring soon
+                // or already overdue -- delayed slightly so it doesn't
+                // compete with the initial render.
+                setTimeout(() => checkExpiringDocumentsOnLoad(), 1200);
+
                 const migrationRun = localStorage.getItem('docman_migration_done');
                 if (!migrationRun) {
                     setTimeout(async () => {
@@ -7448,7 +9589,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.renameNote = renameNote;
     window.deleteNoteFromFolder = deleteNoteFromFolder;
     window.closeImageViewer = closeImageViewer;
+    window.openImageEditor = openImageEditor;
+    window.closeImageEditor = closeImageEditor;
     window.showInfo = showInfo;
+    window.showInfoDelayed = showInfoDelayed;
     window.closeDeptInfo = closeDeptInfo;
 });
 
