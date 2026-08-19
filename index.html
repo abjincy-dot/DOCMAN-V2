@@ -20,7 +20,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/inter/inter.css">
-<link rel="stylesheet" href="style.css?v=180">
+<link rel="stylesheet" href="style.css?v=185">
 
 </head>
 <body>
@@ -501,15 +501,227 @@ border: 1px solid rgba(255,255,255,0.2);
   <div id="content" class="content"></div>
 </div>
 
+<!-- "Add Department" floating button -- deliberately OUTSIDE .app. .app has
+     a permanent (non-"none") transform from its entrance-reveal animation
+     (ends at translateY(0) scale(1), not transform:none, due to
+     animation-fill-mode:forwards), which makes it the containing block for
+     any position:fixed descendant instead of the real viewport. Keeping
+     this button as a direct <body> child avoids that entirely. -->
+<button class="dept-add-fab" id="deptAddFab" aria-label="Add Department — Create New Department">
+    <img src="Images/add-dept-halfpill-icon.png?v=1" alt="" class="dept-add-fab-collapsed">
+    <img src="Images/add-department-halfpill-fullbtn.png?v=1" alt="Add Department — Create New Department" class="dept-add-fab-full">
+</button>
+
+<!-- "Add to PDF" queue -- lets the user long-press several images (one
+     at a time, via the existing per-card context menu) and combine them
+     into a single multi-page PDF. Deliberately a direct <body> child,
+     same containing-block reason as deptAddFab above. -->
+<button class="pdf-queue-fab hidden" id="pdfQueueFab" aria-label="Combine selected images into a PDF">
+    <i class="fas fa-file-pdf"></i>
+    <span id="pdfQueueCount">0</span>
+    <span class="pdf-queue-label">Combine to PDF</span>
+    <span class="pdf-queue-clear" id="pdfQueueClearBtn" aria-label="Clear PDF selection"><i class="fas fa-xmark"></i></span>
+</button>
+
 
 <!-- Image Viewer Modal -->
 
 <div id="imageViewer" class="image-viewer hidden">
   <div class="image-viewer-header">
-    <button id="closeImageViewer" class="close-viewer-btn"><i class="fas fa-times-circle"></i> Close</button>
+    <button id="closeImageViewer" class="neon-icon-btn" aria-label="Close"><img src="Images/close-neon-icon.png" alt="Close"></button>
+    <button id="openImageEditorBtn" class="neon-icon-btn" aria-label="Edit"><img src="Images/edit-neon-icon.png" alt="Edit"></button>
   </div>
   <div class="image-viewer-body">
     <img id="viewerImage" src="" alt="">
+  </div>
+</div>
+
+<!-- Image Editor (Phase 1: crop, rotate, flip, brightness, contrast,
+     undo/redo, reset, zoom/pan, save-as-new/replace. Phase 2: saturation,
+     grayscale, B&W/document mode, add text). Opens on top of imageViewer,
+     editing the same file. -->
+<div id="imageEditor" class="image-editor hidden">
+  <div class="img-editor-header">
+    <button id="imgEditorCancelBtn" class="img-editor-icon-btn" aria-label="Cancel"><i class="fas fa-xmark"></i></button>
+    <div class="img-editor-title">Edit Image</div>
+    <div class="img-editor-header-actions">
+      <button id="imgEditorUndoBtn" class="img-editor-icon-btn" aria-label="Undo" disabled><i class="fas fa-rotate-left"></i></button>
+      <button id="imgEditorRedoBtn" class="img-editor-icon-btn" aria-label="Redo" disabled><i class="fas fa-rotate-right"></i></button>
+      <button id="imgEditorResetBtn" class="img-editor-icon-btn" aria-label="Reset to original"><i class="fas fa-arrows-rotate"></i></button>
+    </div>
+  </div>
+
+  <div class="img-editor-canvas-wrap" id="imgEditorCanvasWrap">
+    <canvas id="imgEditorCanvas"></canvas>
+    <div class="img-editor-crop-overlay hidden" id="imgEditorCropOverlay">
+      <div class="img-crop-box" id="imgCropBox">
+        <div class="img-crop-handle img-crop-handle-tl" data-handle="tl"></div>
+        <div class="img-crop-handle img-crop-handle-tr" data-handle="tr"></div>
+        <div class="img-crop-handle img-crop-handle-bl" data-handle="bl"></div>
+        <div class="img-crop-handle img-crop-handle-br" data-handle="br"></div>
+      </div>
+    </div>
+    <div class="img-text-overlay hidden" id="imgTextOverlay" contenteditable="false">Text</div>
+    <div class="img-scan-overlay hidden" id="imgScanOverlay">
+      <svg class="img-scan-svg" id="imgScanSvg" preserveAspectRatio="none">
+        <polygon id="imgScanPolygon" points="" />
+      </svg>
+      <div class="img-scan-handle" id="imgScanHandleTL" data-corner="0"></div>
+      <div class="img-scan-handle" id="imgScanHandleTR" data-corner="1"></div>
+      <div class="img-scan-handle" id="imgScanHandleBR" data-corner="2"></div>
+      <div class="img-scan-handle" id="imgScanHandleBL" data-corner="3"></div>
+    </div>
+  </div>
+
+  <div class="img-editor-panel img-editor-panel-scroll" id="imgEditorSliderPanel">
+    <div class="img-editor-slider-row">
+      <label>Brightness</label>
+      <input type="range" id="imgSliderBrightness" min="-100" max="100" value="0">
+      <span class="img-slider-value" id="imgSliderBrightnessVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <label>Contrast</label>
+      <input type="range" id="imgSliderContrast" min="-100" max="100" value="0">
+      <span class="img-slider-value" id="imgSliderContrastVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <label>Exposure</label>
+      <input type="range" id="imgSliderExposure" min="-100" max="100" value="0">
+      <span class="img-slider-value" id="imgSliderExposureVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <label>Saturation</label>
+      <input type="range" id="imgSliderSaturation" min="-100" max="100" value="0">
+      <span class="img-slider-value" id="imgSliderSaturationVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <label>Hue</label>
+      <input type="range" id="imgSliderHue" min="0" max="360" value="0">
+      <span class="img-slider-value" id="imgSliderHueVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <label>Blur</label>
+      <input type="range" id="imgSliderBlur" min="0" max="20" value="0">
+      <span class="img-slider-value" id="imgSliderBlurVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <label>Sepia</label>
+      <input type="range" id="imgSliderSepia" min="0" max="100" value="0">
+      <span class="img-slider-value" id="imgSliderSepiaVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <label>Opacity</label>
+      <input type="range" id="imgSliderOpacity" min="0" max="100" value="100">
+      <span class="img-slider-value" id="imgSliderOpacityVal">100</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <label>Invert</label>
+      <input type="range" id="imgSliderInvert" min="0" max="100" value="0">
+      <span class="img-slider-value" id="imgSliderInvertVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <label>Sharpen</label>
+      <input type="range" id="imgSliderSharpen" min="0" max="100" value="0">
+      <span class="img-slider-value" id="imgSliderSharpenVal">0</span>
+    </div>
+
+    <div class="img-preset-row" id="imgPresetRow">
+      <button class="img-preset-btn" data-preset="original">Original</button>
+      <button class="img-preset-btn" data-preset="vintage">Vintage</button>
+      <button class="img-preset-btn" data-preset="cold">Cold</button>
+      <button class="img-preset-btn" data-preset="warm">Warm</button>
+      <button class="img-preset-btn" data-preset="dramatic">Dramatic</button>
+      <button class="img-preset-btn" data-preset="darken">Darken</button>
+    </div>
+  </div>
+
+  <div class="img-editor-panel" id="imgEditorTextPanel">
+    <input type="text" id="imgTextInput" class="img-text-input" placeholder="Enter text" value="Text">
+    <div class="img-text-fonts" id="imgTextFonts">
+      <button class="img-text-font active" data-font="Arial, sans-serif" style="font-family:Arial, sans-serif">Aa</button>
+      <button class="img-text-font" data-font="Georgia, 'Times New Roman', serif" style="font-family:Georgia, serif">Aa</button>
+      <button class="img-text-font" data-font="'Courier New', monospace" style="font-family:'Courier New', monospace">Aa</button>
+      <button class="img-text-font" data-font="Verdana, sans-serif" style="font-family:Verdana, sans-serif">Aa</button>
+      <button class="img-text-font" data-font="'Brush Script MT', cursive" style="font-family:'Brush Script MT', cursive">Aa</button>
+      <button class="img-text-font" data-font="Impact, sans-serif" style="font-family:Impact, sans-serif">Aa</button>
+    </div>
+    <div class="img-text-swatches" id="imgTextSwatches">
+      <button class="img-text-swatch active" data-color="#ffffff" style="background:#ffffff"></button>
+      <button class="img-text-swatch" data-color="#000000" style="background:#000000"></button>
+      <button class="img-text-swatch" data-color="#ef4444" style="background:#ef4444"></button>
+      <button class="img-text-swatch" data-color="#f59e0b" style="background:#f59e0b"></button>
+      <button class="img-text-swatch" data-color="#22c55e" style="background:#22c55e"></button>
+      <button class="img-text-swatch" data-color="#3b82f6" style="background:#3b82f6"></button>
+    </div>
+    <div class="img-editor-slider-row">
+      <label>Size</label>
+      <input type="range" id="imgTextSize" min="14" max="120" value="36">
+    </div>
+  </div>
+
+  <div class="img-editor-panel" id="imgEditorBrushPanel">
+    <div class="img-brush-swatches" id="imgBrushSwatches">
+      <button class="img-brush-swatch active" data-color="#ff3b30" style="background:#ff3b30"></button>
+      <button class="img-brush-swatch" data-color="#f59e0b" style="background:#f59e0b"></button>
+      <button class="img-brush-swatch" data-color="#22c55e" style="background:#22c55e"></button>
+      <button class="img-brush-swatch" data-color="#3b82f6" style="background:#3b82f6"></button>
+      <button class="img-brush-swatch" data-color="#ffffff" style="background:#ffffff"></button>
+      <button class="img-brush-swatch" data-color="#000000" style="background:#000000"></button>
+    </div>
+    <div class="img-editor-slider-row">
+      <label>Size</label>
+      <input type="range" id="imgBrushSize" min="4" max="60" value="18">
+    </div>
+  </div>
+
+  <div class="img-editor-toolbar">
+    <button class="img-editor-tool" data-tool="crop"><i class="fas fa-crop-simple"></i><span>Crop</span></button>
+    <button class="img-editor-tool" data-tool="rotate"><i class="fas fa-rotate-right"></i><span>Rotate</span></button>
+    <button class="img-editor-tool" data-tool="flip-h"><i class="fas fa-left-right"></i><span>Flip</span></button>
+    <button class="img-editor-tool" data-tool="adjust"><i class="fas fa-sliders"></i><span>Adjust</span></button>
+    <button class="img-editor-tool" data-tool="autoEnhance"><i class="fas fa-wand-magic-sparkles"></i><span>Auto</span></button>
+    <button class="img-editor-tool" data-tool="grayscale"><i class="fas fa-circle-half-stroke"></i><span>Grayscale</span></button>
+    <button class="img-editor-tool" data-tool="bw"><i class="fas fa-file-lines"></i><span>Document</span></button>
+    <button class="img-editor-tool" data-tool="text"><i class="fas fa-font"></i><span>Text</span></button>
+    <button class="img-editor-tool" data-tool="draw"><i class="fas fa-pen"></i><span>Draw</span></button>
+    <button class="img-editor-tool" data-tool="highlight"><i class="fas fa-highlighter"></i><span>Highlight</span></button>
+    <button class="img-editor-tool" data-tool="blurarea"><i class="fas fa-droplet"></i><span>Blur Area</span></button>
+    <button class="img-editor-tool" data-tool="scan"><i class="fas fa-vector-square"></i><span>Scan</span></button>
+  </div>
+
+  <div class="img-editor-crop-confirm hidden" id="imgEditorCropConfirm">
+    <button id="imgCropCancelBtn" class="img-editor-confirm-btn img-editor-confirm-cancel">Cancel</button>
+    <button id="imgCropApplyBtn" class="img-editor-confirm-btn img-editor-confirm-apply">Apply Crop</button>
+  </div>
+
+
+  <div class="img-editor-crop-confirm hidden" id="imgEditorTextConfirm">
+    <button id="imgTextCancelBtn" class="img-editor-confirm-btn img-editor-confirm-cancel">Cancel</button>
+    <button id="imgTextApplyBtn" class="img-editor-confirm-btn img-editor-confirm-apply">Apply Text</button>
+  </div>
+
+  <div class="img-editor-crop-confirm hidden" id="imgEditorScanConfirm">
+    <button id="imgScanCancelBtn" class="img-editor-confirm-btn img-editor-confirm-cancel">Cancel</button>
+    <button id="imgScanApplyBtn" class="img-editor-confirm-btn img-editor-confirm-apply">Straighten</button>
+  </div>
+  <div class="img-scan-status hidden" id="imgScanStatus">Loading scanner…</div>
+
+
+  <div class="img-editor-save-row">
+    <button id="imgEditorSaveNewBtn" class="img-editor-save-btn img-editor-save-new"><i class="fas fa-plus"></i> Save as New</button>
+    <button id="imgEditorSavePdfBtn" class="img-editor-save-btn img-editor-save-pdf"><i class="fas fa-file-pdf"></i> Save as PDF</button>
+    <button id="imgEditorReplaceBtn" class="img-editor-save-btn img-editor-save-replace"><i class="fas fa-check"></i> Replace Original</button>
+  </div>
+
+  <div class="img-exit-modal hidden" id="imgExitModal">
+    <div class="img-exit-modal-card">
+      <p class="img-exit-modal-text">You have unsaved edits. Save changes before closing?</p>
+      <div class="img-exit-modal-buttons">
+        <button id="imgExitKeepEditingBtn" class="img-exit-btn img-exit-btn-ghost">Keep Editing</button>
+        <button id="imgExitDiscardBtn" class="img-exit-btn img-exit-btn-discard">Discard</button>
+        <button id="imgExitSaveBtn" class="img-exit-btn img-exit-btn-save">Save &amp; Close</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1086,7 +1298,8 @@ border: 1px solid rgba(255,255,255,0.2);
 <script src="vendor/jszip/jszip.min.js"></script>
 <script src="vendor/mammoth/mammoth.browser.min.js"></script>
 <script src="vendor/xlsx/xlsx.full.min.js"></script>
-<script src="app.js?v=184"></script>
+<script src="vendor/jspdf/jspdf.umd.min.js"></script>
+<script src="app.js?v=186"></script>
 
 
 <script>
