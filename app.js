@@ -3893,7 +3893,8 @@ async function imgCombinePdfQueue() {
     if (!pdfQueue.length) return;
 
     showPromptModal('Name for the combined PDF:', 'Combined', async (name) => {
-        if (!name?.trim()) return;
+        if (name === null) { imgClearPdfQueue(); return; } // Cancel/X/backdrop -- exit selection mode entirely, this is now the only way to back out
+        if (!name.trim()) { showToast('Please enter a name', true); return; } // OK pressed with an empty field -- let them retry, don't exit
         const folderPath = currentPath.join('/');
         const { jsPDF } = window.jspdf;
         let pdf = null;
@@ -4612,8 +4613,14 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
 
     if (triggerEl) {
         const rect = triggerEl.getBoundingClientRect();
-        const menuW = 200;
-        const menuH = 180;
+        // Measure the menu's real rendered size -- it's already in the
+        // DOM (appended above) at this point, so offsetWidth/offsetHeight
+        // reflect its actual content, not a guess. A hardcoded height
+        // estimate here previously went stale as menu items were added
+        // over time, silently breaking the bottom-of-screen overflow
+        // check below.
+        const menuW = menu.offsetWidth || 200;
+        const menuH = menu.offsetHeight || 180;
         const vw = window.innerWidth;
         const vh = window.innerHeight;
 
@@ -4624,6 +4631,7 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
         if (left + menuW > vw - 8) left = vw - menuW - 8;
         if (top < 8) top = rect.bottom + 8;
         if (top + menuH > vh - 8) top = vh - menuH - 8;
+        if (top < 8) top = 8; // menu taller than the viewport itself -- pin to top, its own scroll (if any) handles the rest
 
         menu.style.left = left + 'px';
         menu.style.top = top + 'px';
@@ -9405,21 +9413,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const pdfQueueFabEl = document.getElementById('pdfQueueFab');
-    const pdfQueueClearBtn = document.getElementById('pdfQueueClearBtn');
-    if (pdfQueueClearBtn) {
-        const clearAction = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            imgClearPdfQueue();
-        };
-        pdfQueueClearBtn.addEventListener('click', clearAction);
-        pdfQueueClearBtn.addEventListener('touchend', clearAction, { passive: false });
-    }
     if (pdfQueueFabEl) {
-        pdfQueueFabEl.onclick = (e) => {
-            if (e.target.closest('#pdfQueueClearBtn')) return; // handled above
-            imgCombinePdfQueue();
-        };
+        pdfQueueFabEl.onclick = () => imgCombinePdfQueue();
     }
 
     // Rendered immediately, before anything else -- including the lock
