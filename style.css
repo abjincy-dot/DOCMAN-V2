@@ -1663,7 +1663,7 @@ width: 100%;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 0 8px 14px;
+    padding: 10px 18px 10px 14px;
     border-radius: 999px;
     border: none;
     background: linear-gradient(135deg, #3b82f6, #1d4ed8);
@@ -1682,22 +1682,6 @@ width: 100%;
     padding: 2px 8px;
     font-size: 0.75rem;
 }
-.pdf-queue-clear {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 34px;
-    min-height: 34px;
-    margin-left: 6px;
-    padding: 0 14px 0 10px;
-    border-left: 1px solid rgba(255,255,255,0.3);
-    border-radius: 0 999px 999px 0;
-    background: rgba(239,68,68,0.22);
-    color: #fecaca;
-    opacity: 1;
-    touch-action: manipulation;
-}
-.pdf-queue-clear:active { background: rgba(239,68,68,0.4); }
 .dept-add-fab.dept-add-fab-expanded {
     width: 272px;
 }
@@ -5714,6 +5698,8 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     position: fixed;
     z-index: 8001;
     width: 200px;
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
     background: rgba(18, 24, 48, 0.96);
 border: 1px solid rgba(140,100,255,0.7); 
     border-radius: 16px;
