@@ -1,5 +1,5 @@
 const APP_VERSION = '1.0.9';
-const CACHE = 'docman-v168';
+const CACHE = 'docman-v147';
 // Small, critical-path files: install fails if any of these can't be cached
 // (they're tiny, so a failure here means something is actually wrong).
 // (EmbedPDF/PDFium WASM vendor assets removed — PDFs render via the native
@@ -28,14 +28,7 @@ self.addEventListener('fetch', e => {
   // Let these pass straight through to the network/browser instead.
   if (e.request.url.startsWith('blob:') || e.request.url.startsWith('data:')) return;
   e.respondWith(
-    // { cache: 'no-store' } forces this to bypass the browser's own HTTP
-    // cache and always hit the network. Without it, fetch() here was still
-    // subject to normal HTTP caching -- so ./index.html (which has no
-    // cache-busting ?v= param, unlike style.css/app.js) could be served
-    // stale from the browser's disk cache even though this handler tries
-    // network-first. A stale index.html then points at an old style.css?v=
-    // URL, making a freshly-deployed style.css look like it "didn't apply."
-    fetch(e.request, { cache: 'no-store' }).then(res => {
+    fetch(e.request).then(res => {
       if (res.ok) { const c = res.clone(); caches.open(CACHE).then(ca => ca.put(e.request, c)); }
       return res;
     }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))

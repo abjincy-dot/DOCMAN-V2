@@ -74,6 +74,76 @@ function getFileIcon(fileName) {
     return iconMap[ext] || 'fa-file';
 }
 
+// Brand-style metadata for the bigger "proper" file badge (folded-corner
+// card + extension label), matching Adobe Reader red / Word blue /
+// Excel green -- the recognizable colors without using their logos.
+function getFileIconMeta(fileName) {
+    const ext = fileName.split('.').pop().toLowerCase();
+    if (ext === 'pdf') return { label: 'PDF', color: '#e2483d' };
+    if (['doc', 'docx'].includes(ext)) return { label: ext.toUpperCase(), color: '#2b7de9' };
+    if (['xls', 'xlsx', 'csv'].includes(ext)) return { label: ext.toUpperCase(), color: '#21a366' };
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'heic', 'heif'].includes(ext)) return { label: ext.toUpperCase(), color: '#a855f7', isImage: true };
+    return { label: ext.slice(0, 4).toUpperCase() || 'FILE', color: '#64748b' };
+}
+
+// A single inline SVG (generic page-with-fold-and-lines) reused for
+// every non-image file type -- inline SVG renders instantly and
+// doesn't depend on an icon font finishing its own load, unlike the
+// FontAwesome glyphs used elsewhere in the app.
+const FILE_ICON_BADGE_SVG = '<svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/><path d="M9 13h6M9 17h6M9 9h2"/></svg>';
+
+// Renders the bigger, brand-colored "proper" file icon badge (folded
+// top-right corner + extension label) used by createFileCard. Images
+// show a CSS-drawn placeholder (mountains + sun) until their real photo
+// thumbnail loads asynchronously and swaps in -- see
+// wireFileIconThumbnail. Kept as its own function since a few other
+// places that build file rows outside createFileCard can reuse it too.
+function renderFileIconBadge(fileName) {
+    const meta = getFileIconMeta(fileName);
+    if (meta.isImage) {
+        return `
+            <div class="file-icon-badge file-icon-badge-photo">
+                <div class="file-icon-badge-fold"></div>
+                <div class="photo-sun"></div>
+                <div class="photo-mtn1"></div>
+                <div class="photo-mtn2"></div>
+                <img class="file-icon-badge-thumb" alt="">
+            </div>`;
+    }
+    return `
+        <div class="file-icon-badge" style="--badge-color:${meta.color}">
+            <div class="file-icon-badge-fold"></div>
+            ${FILE_ICON_BADGE_SVG}
+            <span class="file-icon-badge-label">${meta.label}</span>
+        </div>`;
+}
+
+// Asynchronously loads an image file's actual pixel data and swaps it
+// in as the badge's thumbnail (progressive enhancement -- the CSS
+// mountain/sun placeholder shows first so the row isn't empty while
+// this loads). Call this right after inserting a card built with
+// renderFileIconBadge() for an image file.
+async function wireFileIconThumbnail(cardEl, file, folderPath) {
+    const imgEl = cardEl.querySelector('.file-icon-badge-thumb');
+    if (!imgEl) return;
+    try {
+        let blob = file.fileData instanceof Blob ? file.fileData : null;
+        if (!blob && file.dataUrl) {
+            imgEl.src = file.dataUrl;
+            imgEl.classList.add('file-icon-badge-thumb-loaded');
+            return;
+        }
+        if (!blob) blob = await loadFileData(folderPath, file.name);
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        imgEl.onload = () => imgEl.classList.add('file-icon-badge-thumb-loaded');
+        imgEl.src = url;
+    } catch (e) {
+        // Leave the mountain/sun placeholder showing -- not worth
+        // surfacing an error just for a thumbnail.
+    }
+}
+
 function getFileType(fileName) {
     const ext = fileName.split('.').pop().toLowerCase();
     if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return 'image';
@@ -82,6 +152,7 @@ function getFileType(fileName) {
     if (['docx'].includes(ext)) return 'word';
     if (['doc'].includes(ext)) return 'word-legacy';
     if (['xls', 'xlsx', 'csv'].includes(ext)) return 'excel';
+    if (['txt'].includes(ext)) return 'text';
     return 'other';
 }
 
@@ -200,8 +271,9 @@ function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColo
     overlay.id = id;
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
     overlay.innerHTML = `
-        <div style="background:#1a1a1a;border:1px solid ${borderColor};border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
-            <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:${isPrompt ? 16 : 24}px;font-family:Inter,sans-serif;line-height:1.5;">${message}</p>
+        <div style="position:relative;background:#1a1a1a;border:1px solid ${borderColor};border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <button id="modalCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
+            <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:${isPrompt ? 16 : 24}px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;">${message}</p>
             ${isPrompt ? `<input id="modalInput" type="text" value="${defaultVal}" style="width:100%;box-sizing:border-box;padding:12px 16px;border-radius:12px;border:1px solid rgba(100,150,255,0.4);background:rgba(255,255,255,0.06);color:#ffffff;font-size:16px;font-family:Inter,sans-serif;outline:none;margin-bottom:20px;">` : ''}
             <div style="display:flex;gap:12px;justify-content:flex-end;">
                 <button id="modalCancel" style="padding:10px 22px;border-radius:40px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#ffffff;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
@@ -219,6 +291,7 @@ function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColo
 
     overlay.querySelector('#modalOk').onclick = () => close(isPrompt ? input?.value : true);
     overlay.querySelector('#modalCancel').onclick = () => close(isPrompt ? null : false);
+    overlay.querySelector('#modalCloseX').onclick = () => close(isPrompt ? null : false);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(isPrompt ? null : false); });
     if (input) input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') close(input.value);
@@ -245,8 +318,9 @@ function showDateModal(message, defaultVal, callback) {
     overlay.id = 'customDateModal';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
     overlay.innerHTML = `
-        <div style="background:#1a1a1a;border:1px solid rgba(245,158,11,0.35);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
-            <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:16px;font-family:Inter,sans-serif;line-height:1.5;">${message}</p>
+        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(245,158,11,0.35);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <button id="dateModalCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
+            <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:16px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;">${message}</p>
             <input id="dateModalInput" type="date" value="${defaultVal || ''}" style="width:100%;box-sizing:border-box;padding:12px 16px;border-radius:12px;border:1px solid rgba(245,158,11,0.4);background:rgba(255,255,255,0.06);color:#ffffff;font-size:16px;font-family:Inter,sans-serif;outline:none;margin-bottom:20px;color-scheme:dark;">
             <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
                 ${defaultVal ? `<button id="dateModalClear" style="padding:10px 18px;border-radius:40px;border:1px solid rgba(239,68,68,0.4);background:transparent;color:#f87171;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Clear</button>` : ''}
@@ -261,6 +335,7 @@ function showDateModal(message, defaultVal, callback) {
 
     overlay.querySelector('#dateModalOk').onclick = () => close(input.value || null);
     overlay.querySelector('#dateModalCancel').onclick = () => close(undefined); // undefined = no change
+    overlay.querySelector('#dateModalCloseX').onclick = () => close(undefined);
     const clearBtn = overlay.querySelector('#dateModalClear');
     if (clearBtn) clearBtn.onclick = () => close(null); // null = explicitly cleared
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(undefined); });
@@ -2155,6 +2230,8 @@ async function openFile(fileName, folderPath) {
         openWordViewer(fileData, fileName);
     } else if (fileType === 'excel') {
         openExcelViewer(fileData, fileName);
+    } else if (fileType === 'text') {
+        openTextViewer(fileData, fileName);
     } else if (fileType === 'word-legacy') {
         showConfirmModal(`Older .doc files can't be previewed in DOCMAN (only .docx).<br>Download "<b>${escapeHtml(fileName)}</b>" to open it in another app?`, (confirmed) => {
             if (confirmed) {
@@ -3748,14 +3825,15 @@ async function imgEditorSaveAsPdf() {
 }
 
 // ============================================================
-// "ADD TO PDF" QUEUE -- combine several images (added one at a time
-// via each file's long-press context menu) into a single multi-page
-// PDF. Deliberately simple: no drag-to-reorder UI, no persistence
-// across app restarts -- just a lightweight in-memory queue for the
-// common case of "pick a few photos, make one PDF".
+// "MERGE TO PDF" SELECTION MODE -- tap "Merge to PDF" on any image to
+// enter a selection mode where every image card in the current folder
+// shows a selectable dot; tapping a card toggles it in/out instead of
+// opening it. The existing bottom-left badge (pdfQueueFab) doubles as
+// both the live count and the "Combine" trigger.
 // ============================================================
 
 let pdfQueue = []; // array of { folderPath, fileName }
+let pdfSelectMode = false;
 
 function imgUpdatePdfQueueBadge() {
     const fab = document.getElementById('pdfQueueFab');
@@ -3765,20 +3843,48 @@ function imgUpdatePdfQueueBadge() {
     countEl.textContent = pdfQueue.length;
 }
 
-function imgAddToPdfQueue(folderPath, fileName) {
-    if (pdfQueue.some(q => q.folderPath === folderPath && q.fileName === fileName)) {
-        showToast('Already added to PDF');
-        return;
+function imgIsInPdfQueue(folderPath, fileName) {
+    return pdfQueue.some(q => q.folderPath === folderPath && q.fileName === fileName);
+}
+
+function imgEnterPdfSelectMode(folderPath, fileName) {
+    pdfSelectMode = true;
+    if (!imgIsInPdfQueue(folderPath, fileName)) {
+        pdfQueue.push({ folderPath, fileName });
     }
-    pdfQueue.push({ folderPath, fileName });
     imgUpdatePdfQueueBadge();
+    render();
+}
+
+// Tapping a card's dot while in select mode -- add if not present,
+// remove if already selected.
+function imgTogglePdfSelection(folderPath, fileName) {
+    const idx = pdfQueue.findIndex(q => q.folderPath === folderPath && q.fileName === fileName);
+    if (idx === -1) {
+        pdfQueue.push({ folderPath, fileName });
+    } else {
+        pdfQueue.splice(idx, 1);
+    }
+    imgUpdatePdfQueueBadge();
+    render();
+}
+
+function imgAddToPdfQueue(folderPath, fileName) {
+    imgEnterPdfSelectMode(folderPath, fileName);
     showToast(`Added to PDF (${pdfQueue.length})`);
 }
 
-function imgClearPdfQueue() {
+function imgExitPdfSelectMode() {
+    pdfSelectMode = false;
     pdfQueue = [];
     imgUpdatePdfQueueBadge();
+    render();
 }
+
+function imgClearPdfQueue() {
+    imgExitPdfSelectMode();
+}
+
 
 async function imgCombinePdfQueue() {
     if (!window.jspdf || !window.jspdf.jsPDF) {
@@ -3846,6 +3952,60 @@ async function imgCombinePdfQueue() {
     });
 }
 
+// "Convert to PDF" -- a single image, straight from its file card's
+// context menu, becomes its own single-page PDF immediately. No queue,
+// no editor -- distinct from "Merge to PDF" (imgAddToPdfQueue), which
+// collects several images to combine into one multi-page PDF later.
+async function imgConvertSingleFileToPdf(folderPath, fileName) {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        showToast('PDF library not available', true);
+        return;
+    }
+    let blob;
+    try {
+        blob = await loadFileData(folderPath, fileName);
+    } catch (e) {
+        showToast('Could not load image', true);
+        return;
+    }
+    if (!blob) { showToast('Could not load image', true); return; }
+
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0);
+    bitmap.close?.();
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+    const pageW = canvas.width * 72 / 96;
+    const pageH = canvas.height * 72 / 96;
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({
+        orientation: pageW > pageH ? 'landscape' : 'portrait',
+        unit: 'pt',
+        format: [pageW, pageH],
+    });
+    pdf.addImage(dataUrl, 'JPEG', 0, 0, pageW, pageH);
+    const pdfBlob = pdf.output('blob');
+
+    const dotIdx = fileName.lastIndexOf('.');
+    const base = dotIdx > -1 ? fileName.slice(0, dotIdx) : fileName;
+    let newName = `${base}.pdf`;
+    let n = 2;
+    const existingNames = new Set((allFiles[folderPath] || []).map(f => f.name));
+    while (existingNames.has(newName)) {
+        newName = `${base}(${n}).pdf`;
+        n++;
+    }
+
+    const pdfFile = new File([pdfBlob], newName, { type: 'application/pdf' });
+    await addFileToCurrentFolder(pdfFile);
+    render();
+    updateStats();
+    showToast(`Converted to ${newName}`);
+}
+
 async function imgEditorReplaceOriginal() {
     const viewer = document.getElementById('imageViewer');
     const folderPath = viewer._currentFolder;
@@ -3875,6 +4035,106 @@ async function imgEditorReplaceOriginal() {
 
 
 
+// Reuses the existing docViewer modal shell (used for Word/Excel) to
+// show plain-text file content in a simple monospace <pre> block.
+async function openTextViewer(fileData, fileName) {
+    const viewer = document.getElementById('docViewer');
+    const body = document.getElementById('docViewerBody');
+    const title = document.getElementById('docViewerTitle');
+
+    title.textContent = fileName;
+    body.innerHTML = '<div class="doc-viewer-unsupported"><i class="fas fa-spinner fa-spin"></i><p>Loading document…</p></div>';
+    viewer._currentData = fileData;
+    viewer._currentName = fileName;
+    viewer.classList.remove('hidden');
+
+    document.getElementById('textZoomInBtn').classList.remove('hidden');
+    document.getElementById('textZoomOutBtn').classList.remove('hidden');
+    textViewerZoom = 1;
+
+    try {
+        const text = await fileData.text();
+        body.innerHTML = `<pre class="text-viewer-content" id="textViewerContent" style="font-size:${0.85 * textViewerZoom}rem">${escapeHtml(text)}</pre>`;
+        wireTextViewerZoom();
+    } catch (e) {
+        console.error('Text preview failed:', e);
+        body.innerHTML = `
+            <div class="doc-viewer-unsupported">
+                <i class="fas fa-file-lines"></i>
+                <p>Couldn't preview this file.</p>
+            </div>`;
+    }
+}
+
+// ---- Text viewer zoom: pinch gesture + +/- buttons, both adjusting
+// font-size. A plain scale-transform zoom would either clip the text or
+// need extra scroll-area math to stay legible; resizing the actual font
+// keeps line-wrapping and scrolling correct at every zoom level. ----
+let textViewerZoom = 1;
+const TEXT_ZOOM_MIN = 0.6;
+const TEXT_ZOOM_MAX = 3;
+
+function applyTextViewerZoom() {
+    const el = document.getElementById('textViewerContent');
+    const body = document.getElementById('docViewerBody');
+    if (!el || !body) return;
+
+    // Changing font-size reflows the content to a different total
+    // height. If we don't compensate, the container's scrollTop stays
+    // the same in pixels while the content height keeps changing every
+    // frame of the pinch, so the visible text appears to jump/shift
+    // instead of zooming in place. Preserving the scroll *ratio*
+    // (not the absolute pixel offset) keeps the same relative reading
+    // position stable through the reflow.
+    const maxScrollBefore = body.scrollHeight - body.clientHeight;
+    const ratio = maxScrollBefore > 0 ? body.scrollTop / maxScrollBefore : 0;
+
+    el.style.fontSize = (0.85 * textViewerZoom) + 'rem';
+
+    const maxScrollAfter = body.scrollHeight - body.clientHeight;
+    if (maxScrollAfter > 0) body.scrollTop = ratio * maxScrollAfter;
+}
+
+function wireTextViewerZoom() {
+    const body = document.getElementById('docViewerBody');
+    const zoomInBtn = document.getElementById('textZoomInBtn');
+    const zoomOutBtn = document.getElementById('textZoomOutBtn');
+    if (!body || body._textZoomWired) {
+        if (zoomInBtn) zoomInBtn.onclick = () => { textViewerZoom = Math.min(TEXT_ZOOM_MAX, textViewerZoom + 0.15); applyTextViewerZoom(); };
+        if (zoomOutBtn) zoomOutBtn.onclick = () => { textViewerZoom = Math.max(TEXT_ZOOM_MIN, textViewerZoom - 0.15); applyTextViewerZoom(); };
+        return;
+    }
+    body._textZoomWired = true;
+
+    if (zoomInBtn) zoomInBtn.onclick = () => { textViewerZoom = Math.min(TEXT_ZOOM_MAX, textViewerZoom + 0.15); applyTextViewerZoom(); };
+    if (zoomOutBtn) zoomOutBtn.onclick = () => { textViewerZoom = Math.max(TEXT_ZOOM_MIN, textViewerZoom - 0.15); applyTextViewerZoom(); };
+
+    let pinchStartDist = 0;
+    let pinchStartZoom = 1;
+    body.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2 && document.getElementById('textViewerContent')) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            pinchStartDist = Math.hypot(dx, dy);
+            pinchStartZoom = textViewerZoom;
+        }
+    }, { passive: false });
+    body.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2 && pinchStartDist > 0 && document.getElementById('textViewerContent')) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.hypot(dx, dy);
+            textViewerZoom = Math.min(TEXT_ZOOM_MAX, Math.max(TEXT_ZOOM_MIN, pinchStartZoom * (dist / pinchStartDist)));
+            applyTextViewerZoom();
+        }
+    }, { passive: false });
+    body.addEventListener('touchend', (e) => {
+        if (e.touches.length < 2) pinchStartDist = 0;
+    });
+}
+
 async function openWordViewer(fileData, fileName) {
     const viewer = document.getElementById('docViewer');
     const body = document.getElementById('docViewerBody');
@@ -3885,6 +4145,8 @@ async function openWordViewer(fileData, fileName) {
     viewer._currentData = fileData;
     viewer._currentName = fileName;
     viewer.classList.remove('hidden');
+    document.getElementById('textZoomInBtn').classList.add('hidden');
+    document.getElementById('textZoomOutBtn').classList.add('hidden');
 
     try {
         const arrayBuffer = await fileData.arrayBuffer();
@@ -3903,6 +4165,8 @@ async function openWordViewer(fileData, fileName) {
 function closeDocViewer() {
     const viewer = document.getElementById('docViewer');
     document.getElementById('docViewerBody').innerHTML = '';
+    document.getElementById('textZoomInBtn').classList.add('hidden');
+    document.getElementById('textZoomOutBtn').classList.add('hidden');
     viewer._currentData = null;
     viewer.classList.add('hidden');
 }
@@ -4282,7 +4546,7 @@ function ensurePinExistsForLock(onReady) {
     });
 }
 
-function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked, onLock, onShare, onAddToPdf, triggerEl }) {
+function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked, onLock, onShare, onConvertToPdf, onAddToPdf, onSetExpiry, triggerEl }) {
     const existing = document.getElementById('ctxMenuOverlay');
     if (existing) existing.remove();
 
@@ -4314,10 +4578,20 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
             <i class="fas fa-share-nodes ctx-item-icon ctx-icon-share"></i>
             <span class="ctx-menu-item-label">Share</span>
         </div>` : ''}
+        ${onConvertToPdf ? `
+        <div class="ctx-menu-item" id="ctxConvertToPdf">
+            <i class="fas fa-file-pdf ctx-item-icon ctx-icon-share"></i>
+            <span class="ctx-menu-item-label">Convert to PDF</span>
+        </div>` : ''}
         ${onAddToPdf ? `
         <div class="ctx-menu-item" id="ctxAddToPdf">
-            <i class="fas fa-file-pdf ctx-item-icon ctx-icon-share"></i>
-            <span class="ctx-menu-item-label">Add to PDF</span>
+            <i class="fas fa-layer-group ctx-item-icon ctx-icon-share"></i>
+            <span class="ctx-menu-item-label">Merge to PDF</span>
+        </div>` : ''}
+        ${onSetExpiry ? `
+        <div class="ctx-menu-item" id="ctxSetExpiry">
+            <i class="fas fa-calendar-days ctx-item-icon ctx-icon-share"></i>
+            <span class="ctx-menu-item-label">Set Expiry Date</span>
         </div>` : ''}
         ${onDelete ? `
         <div class="ctx-menu-divider"></div>
@@ -4371,9 +4645,15 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
     const shareEl = document.getElementById('ctxShare');
     if (shareEl) shareEl.addEventListener('click', () => { haptic.press(); close();
         onShare(); });
+    const convertToPdfEl = document.getElementById('ctxConvertToPdf');
+    if (convertToPdfEl) convertToPdfEl.addEventListener('click', () => { haptic.press(); close();
+        onConvertToPdf(); });
     const addToPdfEl = document.getElementById('ctxAddToPdf');
     if (addToPdfEl) addToPdfEl.addEventListener('click', () => { haptic.press(); close();
         onAddToPdf(); });
+    const setExpiryEl = document.getElementById('ctxSetExpiry');
+    if (setExpiryEl) setExpiryEl.addEventListener('click', () => { haptic.press(); close();
+        onSetExpiry(); });
     const deleteEl = document.getElementById('ctxDelete');
     if (deleteEl) deleteEl.addEventListener('click', () => { haptic.press(); close();
         onDelete(); });
@@ -4384,9 +4664,10 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
 // ============================================================
 
 function createFileCard(file, folderPath, opts = {}) {
-    const iconClass = getFileIcon(file.name);
     const div = document.createElement('div');
-    div.className = 'card file-card';
+    const isImage = getFileType(file.name) === 'image';
+    const isSelected = pdfSelectMode && isImage && imgIsInPdfQueue(folderPath, file.name);
+    div.className = 'card file-card' + (pdfSelectMode ? ' card-select-mode' : '') + (isSelected ? ' card-selected' : '') + (pdfSelectMode && !isImage ? ' card-not-selectable' : '');
     const sizeLabel = getFileSizeLabel(file);
     const nameHtml = opts.highlightQuery ? highlightMatch(file.name, opts.highlightQuery) : escapeHtml(file.name);
     const expiryInfo = getExpiryStatus(file);
@@ -4395,8 +4676,12 @@ function createFileCard(file, folderPath, opts = {}) {
             expiryInfo.status === 'overdue' ? 'Expired' : `${expiryInfo.days}d left`
           }</span>`
         : '';
+    const selectDot = pdfSelectMode && isImage
+        ? `<div class="card-select-dot${isSelected ? ' card-select-dot-checked' : ''}">${isSelected ? '<i class="fas fa-check"></i>' : ''}</div>`
+        : '';
     div.innerHTML = `
-        <div class="card-icon"><i class="fas ${iconClass}"></i></div>
+        ${selectDot}
+        ${renderFileIconBadge(file.name)}
         <div class="card-info">
             <div class="card-filename" title="${escapeHtml(file.name)}">${nameHtml}</div>
             ${sizeLabel ? `<div class="card-meta">${sizeLabel}</div>` : ''}
@@ -4405,6 +4690,23 @@ function createFileCard(file, folderPath, opts = {}) {
         ${file.locked ? '<i class="fas fa-lock card-lock-indicator"></i>' : ''}
         <i class="fas fa-star card-fav-indicator${file.favourite ? '' : ' card-fav-hidden'}"></i>
     `;
+
+    if (isImage) wireFileIconThumbnail(div, file, folderPath);
+
+    // In selection mode, a tap toggles the image in/out of the PDF
+    // queue instead of opening it -- short-circuit before any of the
+    // normal press/tap wiring below.
+    if (pdfSelectMode) {
+        if (isImage) {
+            div.addEventListener('click', () => { haptic.toggle(); imgTogglePdfSelection(folderPath, file.name); });
+            div.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                haptic.toggle();
+                imgTogglePdfSelection(folderPath, file.name);
+            }, { passive: false });
+        }
+        return div;
+    }
 
     let pressTimer = null;
     let longPressTriggered = false;
@@ -4451,6 +4753,7 @@ function createFileCard(file, folderPath, opts = {}) {
                 }),
                 onDelete: () => deleteFileFromFolder(folderPath, file.name),
                 onShare: () => openFileWithGesture(file, folderPath),
+                onConvertToPdf: getFileType(file.name) === 'image' ? () => imgConvertSingleFileToPdf(folderPath, file.name) : null,
                 onAddToPdf: getFileType(file.name) === 'image' ? () => imgAddToPdfQueue(folderPath, file.name) : null,
                 onSetExpiry: () => showDateModal(`Expiry date for "${file.name}":`, file.expiryDate || '', (val) => {
                     if (val === undefined) return; // cancelled, no change
@@ -8635,7 +8938,7 @@ async function handleFiles(files) {
     let firstHeicFailureDetail = null;
     for (let f of files) {
         const fileType = getFileType(f.name);
-        if (['image', 'pdf', 'word', 'word-legacy', 'excel'].includes(fileType)) {
+        if (['image', 'pdf', 'word', 'word-legacy', 'excel', 'text'].includes(fileType)) {
             try {
                 await addFileToCurrentFolder(f);
             } catch (e) {
@@ -8845,7 +9148,7 @@ function showUploadOptions() {
     document.getElementById('optChooseFiles').addEventListener('click', () => {
         close();
         haptic.press();
-        openFilePicker({ accept: '.pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,.doc,.docx,.xls,.xlsx,.csv', capture: null, multiple: true });
+        openFilePicker({ accept: '.pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,.heic,.heif,.doc,.docx,.xls,.xlsx,.csv,.txt', capture: null, multiple: true });
     });
     document.getElementById('optGoogleDrive').addEventListener('click', () => {
         close();
@@ -8861,7 +9164,7 @@ function showUploadOptions() {
         // "Choose Files". If the Drive app isn't installed, the native
         // side falls back to the general chooser automatically.
         openFilePicker({
-            accept: 'x-docman/google-drive,.pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,.doc,.docx,.xls,.xlsx,.csv',
+            accept: 'x-docman/google-drive,.pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,.heic,.heif,.doc,.docx,.xls,.xlsx,.csv,.txt',
             capture: null,
             multiple: true
         });
@@ -9104,13 +9407,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const pdfQueueFabEl = document.getElementById('pdfQueueFab');
     const pdfQueueClearBtn = document.getElementById('pdfQueueClearBtn');
+    if (pdfQueueClearBtn) {
+        const clearAction = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            imgClearPdfQueue();
+        };
+        pdfQueueClearBtn.addEventListener('click', clearAction);
+        pdfQueueClearBtn.addEventListener('touchend', clearAction, { passive: false });
+    }
     if (pdfQueueFabEl) {
         pdfQueueFabEl.onclick = (e) => {
-            if (e.target.closest('#pdfQueueClearBtn')) {
-                e.stopPropagation();
-                imgClearPdfQueue();
-                return;
-            }
+            if (e.target.closest('#pdfQueueClearBtn')) return; // handled above
             imgCombinePdfQueue();
         };
     }
