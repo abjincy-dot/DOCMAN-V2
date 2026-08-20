@@ -3871,7 +3871,6 @@ function imgTogglePdfSelection(folderPath, fileName) {
 
 function imgAddToPdfQueue(folderPath, fileName) {
     imgEnterPdfSelectMode(folderPath, fileName);
-    showToast(`Added to PDF (${pdfQueue.length})`);
 }
 
 function imgExitPdfSelectMode() {
