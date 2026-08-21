@@ -1663,7 +1663,7 @@ width: 100%;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 0 8px 14px;
+    padding: 10px 18px 10px 14px;
     border-radius: 999px;
     border: none;
     background: linear-gradient(135deg, #3b82f6, #1d4ed8);
@@ -1682,22 +1682,6 @@ width: 100%;
     padding: 2px 8px;
     font-size: 0.75rem;
 }
-.pdf-queue-clear {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 34px;
-    min-height: 34px;
-    margin-left: 6px;
-    padding: 0 14px 0 10px;
-    border-left: 1px solid rgba(255,255,255,0.3);
-    border-radius: 0 999px 999px 0;
-    background: rgba(239,68,68,0.22);
-    color: #fecaca;
-    opacity: 1;
-    touch-action: manipulation;
-}
-.pdf-queue-clear:active { background: rgba(239,68,68,0.4); }
 .dept-add-fab.dept-add-fab-expanded {
     width: 272px;
 }
@@ -2504,23 +2488,24 @@ overflow: auto;
 .img-editor-crop-overlay.hidden { display: none; }
 .img-crop-box {
     position: absolute;
-    border: 2px solid #f59e0b;
+    border: 1.5px dashed rgba(255,255,255,0.85);
     box-shadow: 0 0 0 9999px rgba(0,0,0,0.55);
     touch-action: none;
 }
 .img-crop-handle {
     position: absolute;
-    width: 26px;
-    height: 26px;
-    background: #f59e0b;
-    border: 2px solid #fff;
+    width: 16px;
+    height: 16px;
+    background: #fff;
+    border: 2px solid #a855f7;
     border-radius: 50%;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
     touch-action: none;
 }
-.img-crop-handle-tl { top: -13px; left: -13px; cursor: nwse-resize; }
-.img-crop-handle-tr { top: -13px; right: -13px; cursor: nesw-resize; }
-.img-crop-handle-bl { bottom: -13px; left: -13px; cursor: nesw-resize; }
-.img-crop-handle-br { bottom: -13px; right: -13px; cursor: nwse-resize; }
+.img-crop-handle-tl { top: -8px; left: -8px; cursor: nwse-resize; }
+.img-crop-handle-tr { top: -8px; right: -8px; cursor: nesw-resize; }
+.img-crop-handle-bl { bottom: -8px; left: -8px; cursor: nesw-resize; }
+.img-crop-handle-br { bottom: -8px; right: -8px; cursor: nwse-resize; }
 
 .img-scan-overlay {
     position: absolute;
@@ -2535,8 +2520,8 @@ overflow: auto;
     pointer-events: none;
 }
 #imgScanPolygon {
-    fill: rgba(245,158,11,0.15);
-    stroke: #f59e0b;
+    fill: rgba(168,85,247,0.15);
+    stroke: #a855f7;
     stroke-width: 3;
 }
 .img-scan-handle {
@@ -2545,7 +2530,7 @@ overflow: auto;
     height: 28px;
     margin-left: -14px;
     margin-top: -14px;
-    background: #f59e0b;
+    background: #a855f7;
     border: 2px solid #fff;
     border-radius: 50%;
     touch-action: none;
@@ -2575,23 +2560,67 @@ overflow: auto;
     gap: 12px;
 }
 .img-editor-slider-row label {
-    width: 90px;
+    width: 98px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
     color: #cbd5e1;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     font-weight: 600;
+}
+.img-editor-slider-row label i {
+    width: 14px;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 0.8rem;
 }
 .img-editor-slider-row input[type="range"] {
     flex: 1;
-    accent-color: #f59e0b;
+    accent-color: #a855f7;
 }
 .img-slider-value {
     width: 38px;
     flex: 0 0 auto;
     text-align: right;
-    color: #f59e0b;
+    color: #a855f7;
     font-size: 0.8rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
+}
+
+/* Adjust-panel sliders (the IMG_ADJUST_PROPS list) get a custom
+   gradient-fill track instead of the plain accent-color thumb above --
+   --fill is kept in sync with the current value from app.js
+   (imgUpdateSliderFill), both on drag and on programmatic sets
+   (presets/undo/redo/reset). Scoped to this panel only, not
+   .img-editor-slider-row generally, since the text/brush "Size"
+   sliders elsewhere don't have --fill wired up. */
+#imgEditorSliderPanel input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, #a855f7 var(--fill, 50%), #353b4a var(--fill, 50%));
+    outline: none;
+}
+#imgEditorSliderPanel input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    cursor: pointer;
+}
+#imgEditorSliderPanel input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    border: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    cursor: pointer;
 }
 .img-editor-panel-scroll {
     max-height: 46vh;
@@ -2650,8 +2679,8 @@ overflow: auto;
 }
 .img-editor-tool i { font-size: 1.15rem; }
 .img-editor-tool:hover { background: rgba(255,255,255,0.06); color: #e2e8f0; }
-.img-editor-tool.active { background: rgba(245,158,11,0.18); color: #f59e0b; }
-.img-editor-tool.active i { color: #f59e0b; }
+.img-editor-tool.active { background: rgba(168,85,247,0.18); color: #a855f7; }
+.img-editor-tool.active i { color: #a855f7; }
 
 /* Colorful icons -- each tool gets its own accent so the row reads as a
    modern icon grid instead of flat monochrome. Label text stays neutral
@@ -2687,7 +2716,7 @@ overflow: auto;
     cursor: pointer;
 }
 .img-editor-confirm-cancel { background: rgba(255,255,255,0.1); color: #e2e8f0; }
-.img-editor-confirm-apply { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; }
+.img-editor-confirm-apply { background: linear-gradient(135deg, #a855f7, #7c3aed); color: #fff; }
 
 .img-editor-save-row {
     display: flex;
@@ -2728,7 +2757,7 @@ overflow: auto;
     cursor: grab;
     touch-action: none;
     text-shadow: 0 1px 4px rgba(0,0,0,0.4);
-    outline: 2px dashed rgba(245,158,11,0.8);
+    outline: 2px dashed rgba(168,85,247,0.8);
     border-radius: 6px;
     user-select: none;
 }
@@ -2771,9 +2800,9 @@ overflow: auto;
     cursor: pointer;
 }
 .img-text-font.active {
-    border-color: #f59e0b;
-    background: rgba(245,158,11,0.18);
-    color: #f59e0b;
+    border-color: #a855f7;
+    background: rgba(168,85,247,0.18);
+    color: #a855f7;
 }
 .img-text-swatch {
     width: 30px;
@@ -2784,8 +2813,8 @@ overflow: auto;
     padding: 0;
 }
 .img-text-swatch.active {
-    border-color: #f59e0b;
-    box-shadow: 0 0 0 2px rgba(245,158,11,0.4);
+    border-color: #a855f7;
+    box-shadow: 0 0 0 2px rgba(168,85,247,0.4);
 }
 
 .img-brush-swatches {
@@ -2802,8 +2831,8 @@ overflow: auto;
     padding: 0;
 }
 .img-brush-swatch.active {
-    border-color: #f59e0b;
-    box-shadow: 0 0 0 2px rgba(245,158,11,0.4);
+    border-color: #a855f7;
+    box-shadow: 0 0 0 2px rgba(168,85,247,0.4);
 }
 
 .img-exit-modal {
@@ -5714,6 +5743,8 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     position: fixed;
     z-index: 8001;
     width: 200px;
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
     background: rgba(18, 24, 48, 0.96);
 border: 1px solid rgba(140,100,255,0.7); 
     border-radius: 16px;
@@ -6843,6 +6874,14 @@ body.light-mode .doc-tag i { color: #000000 !important; }
     display: flex !important;
     flex-direction: column !important;
     justify-content: center !important;
+}
+/* The folder-card-bg.png asset has the app's dark/orange theme baked
+   into its pixels, so it can't follow the light/dark toggle on its own
+   -- swap it for a plain gradient matching the light theme's card
+   colors instead, keeping the same layout and orange accent text. */
+body.light-mode .current-folder-card {
+    background: linear-gradient(90deg, #e8dcc4 0%, #f0e6d2 100%) !important;
+    border: 1px solid rgba(80, 80, 88, 0.22) !important;
 }
 .current-folder-card::before {
     display: none !important;

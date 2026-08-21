@@ -2437,12 +2437,26 @@ function imgApplySharpenConvolution(canvas, strength) {
 // Populate the starting baseline once the config (and its defaults) exists.
 IMG_ADJUST_PROPS.forEach(p => { imgEditor.adjustBase[p.prop] = p.default; });
 
+// Keeps a slider's --fill CSS variable (the gradient-track fill amount,
+// see #imgEditorSliderPanel input[type="range"] in style.css) in sync
+// with its current value. Called on both live drag (input event) and
+// every programmatic set, since the CSS gradient doesn't update itself
+// the way a native accent-color thumb would.
+function imgUpdateSliderFill(el) {
+    if (!el) return;
+    const min = parseFloat(el.min) || 0;
+    const max = parseFloat(el.max) || 100;
+    const val = parseFloat(el.value);
+    const pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
+    el.style.setProperty('--fill', pct + '%');
+}
+
 // Sets a slider's DOM value AND its numeric value-display span next to
 // it in one call -- every place that sets a slider's value
 // programmatically (presets, undo/redo, reset) needs both kept in sync.
 function imgSetSliderDisplay(p, val) {
     const el = document.getElementById(p.elId);
-    if (el) el.value = val;
+    if (el) { el.value = val; imgUpdateSliderFill(el); }
     const valEl = document.getElementById(p.elId + 'Val');
     if (valEl) valEl.textContent = imgFormatSliderValue(p, val);
 }
@@ -3865,13 +3879,34 @@ function imgTogglePdfSelection(folderPath, fileName) {
     } else {
         pdfQueue.splice(idx, 1);
     }
+
+    // Deselecting the last item should return to the normal (non-select)
+    // view, not linger in select mode with nothing selected.
+    if (pdfQueue.length === 0) {
+        imgExitPdfSelectMode();
+        return;
+    }
+
     imgUpdatePdfQueueBadge();
-    render();
+
+    // Update just this one card's selected/dot state directly instead of
+    // calling render() -- a full re-render rebuilds every card from
+    // scratch, which restarts every image's async thumbnail load and
+    // makes already-loaded thumbnails visibly flicker back to the
+    // placeholder for no reason.
+    const isSelected = idx === -1; // was just added
+    document.querySelectorAll(`.file-card[data-file-name="${CSS.escape(fileName)}"][data-folder-path="${CSS.escape(folderPath)}"]`).forEach(card => {
+        card.classList.toggle('card-selected', isSelected);
+        const dot = card.querySelector('.card-select-dot');
+        if (dot) {
+            dot.classList.toggle('card-select-dot-checked', isSelected);
+            dot.innerHTML = isSelected ? '<i class="fas fa-check"></i>' : '';
+        }
+    });
 }
 
 function imgAddToPdfQueue(folderPath, fileName) {
     imgEnterPdfSelectMode(folderPath, fileName);
-    showToast(`Added to PDF (${pdfQueue.length})`);
 }
 
 function imgExitPdfSelectMode() {
@@ -3894,7 +3929,8 @@ async function imgCombinePdfQueue() {
     if (!pdfQueue.length) return;
 
     showPromptModal('Name for the combined PDF:', 'Combined', async (name) => {
-        if (!name?.trim()) return;
+        if (name === null) { imgClearPdfQueue(); return; } // Cancel/X/backdrop -- exit selection mode entirely, this is now the only way to back out
+        if (!name.trim()) { showToast('Please enter a name', true); return; } // OK pressed with an empty field -- let them retry, don't exit
         const folderPath = currentPath.join('/');
         const { jsPDF } = window.jspdf;
         let pdf = null;
@@ -4613,8 +4649,14 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
 
     if (triggerEl) {
         const rect = triggerEl.getBoundingClientRect();
-        const menuW = 200;
-        const menuH = 180;
+        // Measure the menu's real rendered size -- it's already in the
+        // DOM (appended above) at this point, so offsetWidth/offsetHeight
+        // reflect its actual content, not a guess. A hardcoded height
+        // estimate here previously went stale as menu items were added
+        // over time, silently breaking the bottom-of-screen overflow
+        // check below.
+        const menuW = menu.offsetWidth || 200;
+        const menuH = menu.offsetHeight || 180;
         const vw = window.innerWidth;
         const vh = window.innerHeight;
 
@@ -4625,6 +4667,7 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
         if (left + menuW > vw - 8) left = vw - menuW - 8;
         if (top < 8) top = rect.bottom + 8;
         if (top + menuH > vh - 8) top = vh - menuH - 8;
+        if (top < 8) top = 8; // menu taller than the viewport itself -- pin to top, its own scroll (if any) handles the rest
 
         menu.style.left = left + 'px';
         menu.style.top = top + 'px';
@@ -4665,6 +4708,8 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
 
 function createFileCard(file, folderPath, opts = {}) {
     const div = document.createElement('div');
+    div.dataset.fileName = file.name;
+    div.dataset.folderPath = folderPath;
     const isImage = getFileType(file.name) === 'image';
     const isSelected = pdfSelectMode && isImage && imgIsInPdfQueue(folderPath, file.name);
     div.className = 'card file-card' + (pdfSelectMode ? ' card-select-mode' : '') + (isSelected ? ' card-selected' : '') + (pdfSelectMode && !isImage ? ' card-not-selectable' : '');
@@ -5410,7 +5455,7 @@ function onDeptAddFabTap() {
         // to just the "+" icon right away instead of leaving it expanded.
         const f = document.getElementById('deptAddFab');
         if (f) f.classList.remove('dept-add-fab-expanded');
-    }, 1200);
+    }, 1000);
 }
 
 function addNewDepartment() {
@@ -9406,21 +9451,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const pdfQueueFabEl = document.getElementById('pdfQueueFab');
-    const pdfQueueClearBtn = document.getElementById('pdfQueueClearBtn');
-    if (pdfQueueClearBtn) {
-        const clearAction = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            imgClearPdfQueue();
-        };
-        pdfQueueClearBtn.addEventListener('click', clearAction);
-        pdfQueueClearBtn.addEventListener('touchend', clearAction, { passive: false });
-    }
     if (pdfQueueFabEl) {
-        pdfQueueFabEl.onclick = (e) => {
-            if (e.target.closest('#pdfQueueClearBtn')) return; // handled above
-            imgCombinePdfQueue();
-        };
+        pdfQueueFabEl.onclick = () => imgCombinePdfQueue();
     }
 
     // Rendered immediately, before anything else -- including the lock
@@ -9543,6 +9575,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const v = parseInt(e.target.value, 10);
             imgEditor[p.prop] = v;
             if (valEl) valEl.textContent = imgFormatSliderValue(p, v);
+            imgUpdateSliderFill(el);
             imgEditorRender();
             imgEditorUpdateHistoryButtons();
         });
