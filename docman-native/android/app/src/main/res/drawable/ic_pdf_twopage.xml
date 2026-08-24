@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    FILE LOCATION:
+    android/app/src/main/res/drawable/ic_pdf_twopage.xml
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#E2E8F0">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M3,4h8v16h-8zM13,4h8v16h-8z" />
+</vector>

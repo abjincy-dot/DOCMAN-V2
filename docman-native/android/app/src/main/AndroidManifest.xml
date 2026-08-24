@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- largeHeap: PDFBox loading/re-serializing a large (400+ page) PDF
+         in memory to save annotations blew the default heap and crashed
+         the whole process. Raises the ceiling; PDDocument.save() also
+         catches OutOfMemoryError itself now as a second line of defense. -->
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/full_backup_content"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:largeHeap="true"
+        android:theme="@style/AppTheme">
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".PdfViewerActivity"
+            android:exported="false"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:screenOrientation="portrait"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+    <!-- Permissions -->
+
+    <!-- "Take Photo" launches an implicit camera intent (no CAMERA
+         permission needed for that), but declaring the feature use here
+         keeps Play Store from excluding camera-less devices like some
+         tablets from the listing. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- No INTERNET permission: DOCMAN makes no network calls of its own.
+         Google Drive import now goes through the native Drive app via an
+         intent (that app makes its own network calls under its own
+         permission, not this one), and "Check for Updates" opens the Play
+         Store app rather than checking anything itself. Local WebView
+         asset loading (how the app's own UI is served) is intercepted
+         locally and does not need this permission either. -->
+    <!-- Fingerprint / Face unlock (App Lock) -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+</manifest>

@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DOCMAN</string>
+    <string name="title_activity_main">DOCMAN</string>
+    <string name="package_name">com.oarcel.docman</string>
+    <!-- Unused: Capacitor's default deep-link scheme placeholder, regenerated
+         by `cap sync`. The actual Drive OAuth callback scheme is "docman",
+         hardcoded directly in AndroidManifest.xml's intent-filter, and is
+         not wired to this value. Left in place so `cap sync` doesn't keep
+         re-adding it; do not rely on it for anything. -->
+    <string name="custom_url_scheme">com.oarcel.docman</string>
+</resources>

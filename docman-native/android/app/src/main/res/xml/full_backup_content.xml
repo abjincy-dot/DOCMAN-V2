@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Legacy full-backup rules for devices below Android 12 (API < 31).
+  Same exclusions as data_extraction_rules.xml — see that file for why.
+-->
+<full-backup-content>
+    <exclude domain="file" path="docs/" />
+    <exclude domain="root" path="app_webview/" />
+</full-backup-content>

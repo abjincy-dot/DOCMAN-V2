@@ -1,0 +1,13 @@
+{
+  "appId": "com.oarcel.docman",
+  "appName": "DOCMAN",
+  "webDir": "www",
+  "backgroundColor": "#1a0b2e",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#1a0b2e"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ (API 31+) backup/transfer rules.
+
+  DOCMAN stores user documents under files/docs/ (Filesystem.Directory.DATA)
+  and the PIN hash inside the WebView's localStorage (files/app_webview/).
+  Neither should leave the device via cloud backup, device-to-device
+  transfer, or `adb backup` — that would let someone bypass the in-app
+  PIN/biometric lock entirely by restoring onto another device.
+
+  Everything else (small app prefs, theme, etc.) is left to back up as
+  normal; only these two paths are excluded.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="docs/" />
+        <exclude domain="root" path="app_webview/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="docs/" />
+        <exclude domain="root" path="app_webview/" />
+    </device-transfer>
+</data-extraction-rules>

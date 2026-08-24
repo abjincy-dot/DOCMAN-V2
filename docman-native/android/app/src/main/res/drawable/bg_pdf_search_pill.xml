@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    FILE LOCATION:
+    android/app/src/main/res/drawable/bg_pdf_search_pill.xml
+
+    Same gradient as bg_pdf_dialog.xml (the "More" menu / bookmarks dialog
+    background) so the search nav pill reads as part of the same UI family.
+    Corner radius larger than half the pill's height caps into a full
+    capsule shape regardless of exact height.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:type="linear"
+        android:angle="270"
+        android:startColor="#482150"
+        android:endColor="#090C1F" />
+    <corners android:radius="999dp" />
+    <stroke android:width="1dp" android:color="#38FFFFFF" />
+</shape>
