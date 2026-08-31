@@ -5,18 +5,237 @@
 
 const APP_VERSION = '1.0.0';
 
+const PRIVACY_POLICY_URL = 'https://abjincy-dot.github.io/docman-privacy/';
+
 const SETTINGS_KEY = 'docman_settings_v2';
 const RECENTS_KEY = 'docman_recents_v1';
 const SEARCH_HISTORY_KEY = 'docman_search_history_v1';
+// v2 = legacy unsalted single-pass SHA-256 hex string. v3 = salted PBKDF2
+// (see setPin/verifyPin below) -- existing v2 users are migrated to v3
+// transparently on their next successful unlock, never locked out.
 const PIN_KEY = 'docman_pin_v2';
+const PIN_KEY_V3 = 'docman_pin_v3';
+const PIN_PBKDF2_ITERATIONS = 150000;
+
+// Brute-force protection: after PIN_LOCKOUT_THRESHOLD wrong attempts,
+// each further wrong attempt doubles the wait before another try is
+// accepted (capped), never a permanent lockout. Counters live in
+// localStorage (not IndexedDB) so they survive a fresh page load
+// mid-cooldown, same storage tier the PIN hash itself already uses.
+const PIN_FAIL_KEY = 'docman_pin_fails_v1';
+const PIN_COOLDOWN_KEY = 'docman_pin_cooldown_until_v1';
+const PIN_LOCKOUT_THRESHOLD = 3;
+const PIN_COOLDOWN_CAP_SEC = 300;
 
 // ============================================================
 // UTILITY FUNCTIONS
 // ============================================================
 
+// Legacy-only now (v2 format verification during migration) -- new PINs
+// are never hashed this way, see setPin() below.
 async function hashPin(pin) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function randomSaltHex(byteLen = 16) {
+    const arr = crypto.getRandomValues(new Uint8Array(byteLen));
+    return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function hexToBytes(hex) {
+    const out = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+    return out;
+}
+
+// ============================================================
+// BACKUP ENCRYPTION (password or recovery key, WhatsApp-style)
+// ============================================================
+// Format: [16-byte ASCII magic][16-byte salt][12-byte IV][AES-GCM ciphertext].
+// The magic lets importBackupData() tell an encrypted backup apart from a
+// plain pre-encryption-era .zip export (or an internal Safety Snapshot,
+// which is deliberately never encrypted -- see writeSafetySnapshot()'s own
+// comment) without guessing.
+const BACKUP_ENC_MAGIC = 'DOCMANENCBKUPv1';
+const BACKUP_PBKDF2_ITERATIONS = 210000;
+// Recovery-key alphabet: 32 characters, chosen to exclude visually
+// ambiguous ones (0/O, 1/I) since a person may have to retype this from a
+// screenshot or handwritten note. 32 is a power of two so one random byte
+// masked to 5 bits maps onto it with zero bias.
+const RECOVERY_KEY_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'.slice(0, 32);
+
+// Returns { raw, formatted } -- `raw` is what actually gets used as the
+// encryption secret (no dashes/spaces, so it's stable regardless of how
+// the person re-types it later); `formatted` is the same key broken into
+// 4-character groups purely for on-screen readability.
+function generateRecoveryKey() {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    let raw = '';
+    for (let i = 0; i < 32; i++) raw += RECOVERY_KEY_ALPHABET[bytes[i] & 0x1f];
+    const formatted = raw.match(/.{1,4}/g).join('-');
+    return { raw, formatted };
+}
+
+// A person may type a recovery key back in with the dashes and exact case
+// it was shown in, or without -- but a real password's dashes/spacing/case
+// are meaningful and must never be altered. Since the import prompt
+// accepts either kind of secret in one field with no way to know which
+// was used, this is only ever applied as a SECOND attempt after the raw
+// input fails to decrypt (see importBackupData) -- never blindly, so a
+// password containing a dash is never corrupted before its first try.
+function normalizeRecoveryKeyGuess(secret) {
+    return secret.replace(/[\s-]+/g, '').toUpperCase();
+}
+
+async function deriveBackupKey(secret, saltBytes, usage) {
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw', new TextEncoder().encode(secret), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt: saltBytes, iterations: BACKUP_PBKDF2_ITERATIONS, hash: 'SHA-256' },
+        keyMaterial, { name: 'AES-GCM', length: 256 }, false, [usage]);
+}
+
+async function encryptBackupBlob(plainBlob, secret) {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await deriveBackupKey(secret, salt, 'encrypt');
+    const plainBuf = await plainBlob.arrayBuffer();
+    const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plainBuf);
+    const magicBytes = new TextEncoder().encode(BACKUP_ENC_MAGIC);
+    return new Blob([magicBytes, salt, iv, cipherBuf], { type: 'application/octet-stream' });
+}
+
+// Throws if `secret` is wrong (AES-GCM's auth tag check fails) -- callers
+// use that to show "Incorrect password or recovery key" rather than a
+// generic parse error.
+async function decryptBackupBlob(encBlob, secret) {
+    const buf = new Uint8Array(await encBlob.arrayBuffer());
+    const magicLen = BACKUP_ENC_MAGIC.length;
+    const salt = buf.slice(magicLen, magicLen + 16);
+    const iv = buf.slice(magicLen + 16, magicLen + 16 + 12);
+    const cipher = buf.slice(magicLen + 16 + 12);
+    const key = await deriveBackupKey(secret, salt, 'decrypt');
+    const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipher);
+    return new Blob([plainBuf], { type: 'application/zip' });
+}
+
+async function isEncryptedBackup(blob) {
+    if (blob.size < BACKUP_ENC_MAGIC.length) return false;
+    const head = new Uint8Array(await blob.slice(0, BACKUP_ENC_MAGIC.length).arrayBuffer());
+    const magicBytes = new TextEncoder().encode(BACKUP_ENC_MAGIC);
+    for (let i = 0; i < magicBytes.length; i++) if (head[i] !== magicBytes[i]) return false;
+    return true;
+}
+
+async function hashPinPBKDF2(pin, saltBytes, iterations) {
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits(
+        { name: 'PBKDF2', salt: saltBytes, iterations, hash: 'SHA-256' }, keyMaterial, 256);
+    return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function hasPinStored() {
+    return !!(localStorage.getItem(PIN_KEY_V3) || localStorage.getItem(PIN_KEY));
+}
+
+// Sets (or overwrites) the PIN, always in the current (v3/PBKDF2) format.
+// Also clears any legacy v2 hash and resets the failure/cooldown counters
+// -- a fresh PIN means a fresh brute-force budget.
+async function setPin(pin) {
+    const saltHex = randomSaltHex();
+    const hash = await hashPinPBKDF2(pin, hexToBytes(saltHex), PIN_PBKDF2_ITERATIONS);
+    localStorage.setItem(PIN_KEY_V3, JSON.stringify({ salt: saltHex, hash, iterations: PIN_PBKDF2_ITERATIONS }));
+    localStorage.removeItem(PIN_KEY);
+    resetPinFailures();
+}
+
+// Checks a candidate PIN against whatever's stored. If only a legacy v2
+// hash exists and it matches, transparently upgrades storage to v3 in
+// the same call -- existing users keep working, next unlock onward uses
+// the stronger format, with no separate migration step to forget.
+async function verifyPinOnly(pin) {
+    const v3raw = localStorage.getItem(PIN_KEY_V3);
+    if (v3raw) {
+        try {
+            const { salt, hash, iterations } = JSON.parse(v3raw);
+            const attempt = await hashPinPBKDF2(pin, hexToBytes(salt), iterations || PIN_PBKDF2_ITERATIONS);
+            return attempt === hash;
+        } catch (e) { return false; }
+    }
+    const legacy = localStorage.getItem(PIN_KEY);
+    if (!legacy) return false;
+    const legacyHash = await hashPin(pin);
+    if (legacyHash !== legacy) return false;
+    const saltHex = randomSaltHex();
+    const upgradedHash = await hashPinPBKDF2(pin, hexToBytes(saltHex), PIN_PBKDF2_ITERATIONS);
+    localStorage.setItem(PIN_KEY_V3, JSON.stringify({ salt: saltHex, hash: upgradedHash, iterations: PIN_PBKDF2_ITERATIONS }));
+    localStorage.removeItem(PIN_KEY);
+    return true;
+}
+
+function getPinCooldownRemainingMs() {
+    const until = parseInt(localStorage.getItem(PIN_COOLDOWN_KEY) || '0', 10) || 0;
+    return Math.max(0, until - Date.now());
+}
+
+function resetPinFailures() {
+    localStorage.removeItem(PIN_FAIL_KEY);
+    localStorage.removeItem(PIN_COOLDOWN_KEY);
+}
+
+function recordPinFailure() {
+    const count = (parseInt(localStorage.getItem(PIN_FAIL_KEY) || '0', 10) || 0) + 1;
+    localStorage.setItem(PIN_FAIL_KEY, String(count));
+    if (count >= PIN_LOCKOUT_THRESHOLD) {
+        const overBy = count - PIN_LOCKOUT_THRESHOLD;
+        const delaySec = Math.min(PIN_COOLDOWN_CAP_SEC, 5 * Math.pow(2, overBy));
+        localStorage.setItem(PIN_COOLDOWN_KEY, String(Date.now() + delaySec * 1000));
+    }
+}
+
+// Single entry point every PIN-entry screen should call instead of
+// hashing/comparing directly -- folds in the cooldown check so a screen
+// can't accidentally skip it. Never leaks whether a during-cooldown
+// guess was actually correct (doesn't even check it), and never
+// increments the failure counter for an attempt that was already
+// blocked by cooldown.
+// Disables a PIN keypad grid and shows a live ticking countdown while a
+// cooldown is active -- called both right after the failed attempt that
+// triggered a cooldown, AND when a PIN screen is freshly opened/reopened
+// during an already-active cooldown (from a previous attempt), so the
+// lockout is unmistakable rather than just a toast that scrolls by while
+// the keypad stays fully usable. Returns nothing; re-enables the grid
+// and restores the given base status text on its own once the cooldown
+// elapses.
+function applyPinCooldownUI(gridEl, statusEl, cooldownMs, baseStatusText) {
+    if (!gridEl || cooldownMs <= 0) return;
+    let remaining = cooldownMs;
+    gridEl.style.opacity = '0.35';
+    gridEl.style.pointerEvents = 'none';
+    const tick = () => {
+        if (statusEl) statusEl.textContent = `Too many attempts — try again in ${Math.ceil(remaining / 1000)}s`;
+        remaining -= 1000;
+        if (remaining <= 0) {
+            clearInterval(intervalId);
+            gridEl.style.opacity = '1';
+            gridEl.style.pointerEvents = 'auto';
+            if (statusEl && baseStatusText) statusEl.textContent = baseStatusText;
+        }
+    };
+    tick();
+    const intervalId = setInterval(tick, 1000);
+}
+
+async function checkPinAttempt(pin) {
+    const cooldown = getPinCooldownRemainingMs();
+    if (cooldown > 0) return { ok: false, cooldown };
+    const ok = await verifyPinOnly(pin);
+    if (ok) { resetPinFailures();
+        return { ok: true, cooldown: 0 }; }
+    recordPinFailure();
+    return { ok: false, cooldown: getPinCooldownRemainingMs() };
 }
 
 function escapeHtml(str) {
@@ -236,9 +455,9 @@ function showToast(msg, isErr = false) {
     const span = toast.querySelector('span');
     if (span) span.textContent = msg;
 
-    toast.style.background = isErr
-        ? "linear-gradient(135deg, #ef4444, #dc2626)"
-        : "linear-gradient(135deg, #10b981, #059669)";
+    const icon = toast.querySelector('.toast-icon i');
+    if (icon) icon.className = isErr ? 'fas fa-circle-exclamation' : 'fas fa-circle-check';
+    toast.classList.toggle('error', isErr);
 
     toast.classList.remove('hidden', 'show');
     void toast.offsetWidth;
@@ -255,7 +474,7 @@ function showToast(msg, isErr = false) {
 // MODAL SYSTEM
 // ============================================================
 
-function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColor, callback }) {
+function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColor, callback, inputType = 'text', multiline = false }) {
     const isPrompt = type === 'prompt';
     const id = isPrompt ? 'customPrompt' : 'customConfirm';
     const borderColor = isPrompt ? 'rgba(100,150,255,0.3)' : 'rgba(255,80,80,0.3)';
@@ -274,7 +493,10 @@ function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColo
         <div style="position:relative;background:#1a1a1a;border:1px solid ${borderColor};border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="modalCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:${isPrompt ? 16 : 24}px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;">${message}</p>
-            ${isPrompt ? `<input id="modalInput" type="text" value="${defaultVal}" style="width:100%;box-sizing:border-box;padding:12px 16px;border-radius:12px;border:1px solid rgba(100,150,255,0.4);background:rgba(255,255,255,0.06);color:#ffffff;font-size:16px;font-family:Inter,sans-serif;outline:none;margin-bottom:20px;">` : ''}
+            ${isPrompt ? (multiline
+                ? `<textarea id="modalInput" rows="4" style="width:100%;box-sizing:border-box;padding:12px 16px;border-radius:12px;border:1px solid rgba(100,150,255,0.4);background:rgba(255,255,255,0.06);color:#ffffff;font-size:16px;font-family:Inter,sans-serif;outline:none;margin-bottom:20px;resize:vertical;">${escapeHtml(defaultVal)}</textarea>`
+                : `<input id="modalInput" type="${inputType}" value="${defaultVal}" style="width:100%;box-sizing:border-box;padding:12px 16px;border-radius:12px;border:1px solid rgba(100,150,255,0.4);background:rgba(255,255,255,0.06);color:#ffffff;font-size:16px;font-family:Inter,sans-serif;outline:none;margin-bottom:20px;">`
+            ) : ''}
             <div style="display:flex;gap:12px;justify-content:flex-end;">
                 <button id="modalCancel" style="padding:10px 22px;border-radius:40px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#ffffff;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
                 <button id="modalOk" style="padding:10px 22px;border-radius:40px;border:none;background:${resolvedOkColor};color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">${resolvedOkLabel}</button>
@@ -294,13 +516,21 @@ function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColo
     overlay.querySelector('#modalCloseX').onclick = () => close(isPrompt ? null : false);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(isPrompt ? null : false); });
     if (input) input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') close(input.value);
+        if (e.key === 'Enter' && !multiline) close(input.value);
         if (e.key === 'Escape') close(null);
     });
 }
 
 function showPromptModal(message, defaultVal, callback) {
     showModal({ type: 'prompt', message, defaultVal, callback });
+}
+
+function showTextareaPromptModal(message, defaultVal, callback) {
+    showModal({ type: 'prompt', message, defaultVal, callback, multiline: true });
+}
+
+function showPasswordPromptModal(message, callback) {
+    showModal({ type: 'prompt', message, defaultVal: '', callback, inputType: 'password' });
 }
 
 function showConfirmModal(message, callback, opts = {}) {
@@ -341,6 +571,159 @@ function showDateModal(message, defaultVal, callback) {
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(undefined); });
 }
 
+// Read-only "File Detail" modal -- name, type, size, dates, location,
+// note and tags. Image dimensions are filled in asynchronously once the
+// blob loads, since decoding it isn't worth blocking the modal opening on.
+function showFileDetailModal(file, folderPath) {
+    const existing = document.getElementById('customFileDetailModal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'customFileDetailModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
+
+    const ext = (file.name.split('.').pop() || '').toUpperCase();
+    const isImage = getFileType(file.name) === 'image';
+    const addedLabel = file.uploadedAt ? new Date(file.uploadedAt).toLocaleString() : '—';
+    const expiryLabel = file.expiryDate ? new Date(file.expiryDate + 'T00:00:00').toLocaleDateString() : null;
+
+    const row = (label, value) => `
+        <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.08);">
+            <span style="color:#94a3b8;font-size:0.8rem;">${label}</span>
+            <span style="color:#ffffff;font-size:0.8rem;font-weight:600;text-align:right;max-width:60%;word-break:break-word;">${value}</span>
+        </div>`;
+
+    const tagsHtml = (file.tags && file.tags.length)
+        ? file.tags.map(t => `<span style="background:rgba(244,114,182,0.15);color:#f472b6;border:1px solid rgba(244,114,182,0.35);padding:4px 10px;border-radius:999px;font-size:0.72rem;font-weight:600;">${escapeHtml(t)}</span>`).join('')
+        : '<span style="color:#64748b;font-size:0.8rem;">No tags</span>';
+
+    overlay.innerHTML = `
+        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(96,165,250,0.3);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <button id="fileDetailCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
+            <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:16px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;word-break:break-word;">${escapeHtml(file.name)}</p>
+            <div style="font-family:Inter,sans-serif;">
+                ${row('Type', ext)}
+                ${row('Size', formatBytes(getFileBytes(file)))}
+                <div id="fileDetailDims">${isImage ? row('Dimensions', 'Loading…') : ''}</div>
+                ${row('Added', addedLabel)}
+                ${row('Location', escapeHtml(folderPath || 'Root'))}
+                ${expiryLabel ? row('Expiry', expiryLabel) : ''}
+                ${row('Favourite', file.favourite ? 'Yes' : 'No')}
+                ${row('Locked', file.locked ? 'Yes' : 'No')}
+            </div>
+            <div style="margin-top:14px;">
+                <div style="color:#94a3b8;font-size:0.8rem;margin-bottom:6px;font-family:Inter,sans-serif;">Note</div>
+                <div style="color:#ffffff;font-size:0.85rem;line-height:1.4;white-space:pre-wrap;word-break:break-word;font-family:Inter,sans-serif;">${file.note ? escapeHtml(file.note) : '<span style="color:#64748b;">No note</span>'}</div>
+            </div>
+            <div style="margin-top:14px;">
+                <div style="color:#94a3b8;font-size:0.8rem;margin-bottom:6px;font-family:Inter,sans-serif;">Tags</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;">${tagsHtml}</div>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#fileDetailCloseX').onclick = close;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    if (isImage) {
+        loadFileData(folderPath, file.name).then(blob => {
+            if (!blob) return;
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = () => {
+                const el = document.getElementById('fileDetailDims');
+                if (el) el.innerHTML = row('Dimensions', `${img.naturalWidth} × ${img.naturalHeight}`);
+                URL.revokeObjectURL(url);
+            };
+            img.onerror = () => URL.revokeObjectURL(url);
+            img.src = url;
+        });
+    }
+}
+
+// Quick read-only popup for a file's note, reached by tapping the
+// card's note indicator icon directly -- faster than long-press >
+// File Detail for the common case of just wanting to (re-)read it.
+// Its own Edit button hands off to the same textarea prompt the
+// long-press menu's "Add Note" uses, so both paths stay in sync.
+function showNoteViewModal(file, folderPath) {
+    const existing = document.getElementById('customNoteViewModal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'customNoteViewModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
+    overlay.innerHTML = `
+        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(56,189,248,0.3);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <button id="noteViewCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
+            <p style="color:#94a3b8;font-size:0.72rem;font-weight:600;margin-bottom:8px;font-family:Inter,sans-serif;text-transform:uppercase;letter-spacing:0.04em;margin-right:26px;">Note · ${escapeHtml(file.name)}</p>
+            <div style="color:#ffffff;font-size:0.9rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;font-family:Inter,sans-serif;margin-bottom:22px;">${escapeHtml(file.note || '')}</div>
+            <div style="display:flex;gap:12px;justify-content:flex-end;">
+                <button id="noteViewEditBtn" style="padding:10px 22px;border-radius:40px;border:none;background:linear-gradient(135deg,#38bdf8,#0284c7);color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">Edit</button>
+                <button id="noteViewDeleteBtn" style="padding:10px 22px;border-radius:40px;border:none;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">Delete</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#noteViewCloseX').onclick = close;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('#noteViewEditBtn').onclick = () => {
+        close();
+        showTextareaPromptModal(`Note for "${file.name}":`, file.note || '', (val) => {
+            if (val === null) return;
+            setFileNote(folderPath, file.name, val.trim());
+        });
+    };
+    overlay.querySelector('#noteViewDeleteBtn').onclick = () => {
+        close();
+        showConfirmModal(`Delete the note on "<b>${escapeHtml(file.name)}</b>"?`, (confirmed) => {
+            if (confirmed) setFileNote(folderPath, file.name, '');
+        }, { okLabel: 'Delete', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
+    };
+}
+
+// Same view-then-Edit/Delete pattern as showNoteViewModal above, so
+// tapping the tag icon feels identical to tapping the note icon.
+function showTagViewModal(file, folderPath) {
+    const existing = document.getElementById('customTagViewModal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'customTagViewModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
+    overlay.innerHTML = `
+        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(236,72,153,0.4);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <button id="tagViewCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
+            <p style="color:#94a3b8;font-size:0.72rem;font-weight:600;margin-bottom:8px;font-family:Inter,sans-serif;text-transform:uppercase;letter-spacing:0.04em;margin-right:26px;">Tags · ${escapeHtml(file.name)}</p>
+            <div style="color:#ffffff;font-size:0.9rem;line-height:1.5;word-break:break-word;font-family:Inter,sans-serif;margin-bottom:22px;">${escapeHtml((file.tags || []).join(', '))}</div>
+            <div style="display:flex;gap:12px;justify-content:flex-end;">
+                <button id="tagViewEditBtn" style="padding:10px 22px;border-radius:40px;border:none;background:linear-gradient(135deg,#38bdf8,#0284c7);color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">Edit</button>
+                <button id="tagViewDeleteBtn" style="padding:10px 22px;border-radius:40px;border:none;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">Delete</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#tagViewCloseX').onclick = close;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('#tagViewEditBtn').onclick = () => {
+        close();
+        showPromptModal(`Tags for "${file.name}" (comma separated):`, (file.tags || []).join(', '), (val) => {
+            if (val === null) return;
+            const tags = val.split(',').map(t => t.trim()).filter(Boolean);
+            setFileTags(folderPath, file.name, tags);
+        });
+    };
+    overlay.querySelector('#tagViewDeleteBtn').onclick = () => {
+        close();
+        showConfirmModal(`Delete all tags on "<b>${escapeHtml(file.name)}</b>"?`, (confirmed) => {
+            if (confirmed) setFileTags(folderPath, file.name, []);
+        }, { okLabel: 'Delete', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
+    };
+}
+
 // ============================================================
 // SETTINGS
 // ============================================================
@@ -375,6 +758,66 @@ function loadSettings() {
 
 function saveSettings() {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(docmanSettings));
+    syncAppLockGateToNative();
+}
+
+// Pushes whether App Lock is currently armed into native code
+// (AppLockGate via BiometricAuthPlugin.setEnabled), so PdfViewerActivity
+// knows whether a background/foreground cycle needs to invalidate its
+// session -- see PdfViewerActivity.onResume(). No-op outside the native
+// Android app (window.Capacitor absent) or before isAppLockActive is
+// defined yet at parse time (both are safe optional-chained no-ops).
+function syncAppLockGateToNative() {
+    const plugin = window.Capacitor?.Plugins?.BiometricAuth;
+    if (!plugin || typeof isAppLockActive !== 'function') return;
+    plugin.setEnabled({ enabled: isAppLockActive() }).catch(() => {});
+}
+
+// Used right before PIN verification so the 4th dot's fill is actually
+// visible to a human before the screen swaps away -- a single painted
+// frame (the double-rAF trick used elsewhere in this file) isn't enough
+// here, since the dot itself animates in over a 150ms CSS transition
+// (see updateDots()); waiting only one frame shows it barely started,
+// not filled. 180ms gives that transition time to actually finish.
+function nextPaint() {
+    return new Promise(resolve => setTimeout(resolve, 180));
+}
+
+// Wires a stepper button (+/-) so a press-and-hold repeats `action()`
+// instead of requiring one tap per step -- fires immediately on
+// press (so a quick tap still behaves like a normal click), then after
+// a short pause keeps firing on an interval until released.
+function bindHoldToRepeat(el, action) {
+    if (!el) return;
+    let startTimer = null;
+    let repeatTimer = null;
+    let active = false;
+
+    function stop() {
+        active = false;
+        clearTimeout(startTimer);
+        clearInterval(repeatTimer);
+        startTimer = null;
+        repeatTimer = null;
+    }
+
+    function start(e) {
+        e.preventDefault();
+        if (active) return;
+        active = true;
+        action();
+        startTimer = setTimeout(() => {
+            repeatTimer = setInterval(() => {
+                if (!active) return;
+                action();
+            }, 70);
+        }, 400);
+    }
+
+    el.addEventListener('pointerdown', start);
+    el.addEventListener('pointerup', stop);
+    el.addEventListener('pointercancel', stop);
+    el.addEventListener('pointerleave', stop);
 }
 
 let docmanSettings = loadSettings();
@@ -540,14 +983,14 @@ function ensureFolderPathExists(folderPath) {
     }
 }
 
-function uniqueNameFor(name, existingNames) {
+function uniqueNameFor(name, existingNames, label = 'restored') {
     if (!existingNames.includes(name)) return name;
     const dot = name.lastIndexOf('.');
     const base = dot > 0 ? name.slice(0, dot) : name;
     const ext = dot > 0 ? name.slice(dot) : '';
     let n = 1;
     let candidate;
-    do { candidate = `${base} (restored ${n})${ext}`; n++; } while (existingNames.includes(candidate));
+    do { candidate = `${base} (${label} ${n})${ext}`; n++; } while (existingNames.includes(candidate));
     return candidate;
 }
 
@@ -764,7 +1207,9 @@ function serializeFileEntry(folderPath, f, blobStore) {
             locked: f.locked || false,
             size: f.size || 0,
             fsPath: f.fsPath,
-            expiryDate: f.expiryDate || null
+            expiryDate: f.expiryDate || null,
+            note: f.note || '',
+            tags: f.tags || []
         };
     }
     if (f.fileData instanceof Blob) {
@@ -777,7 +1222,9 @@ function serializeFileEntry(folderPath, f, blobStore) {
             favourite: f.favourite || false,
             locked: f.locked || false,
             size: f.fileData.size || 0,
-            expiryDate: f.expiryDate || null
+            expiryDate: f.expiryDate || null,
+            note: f.note || '',
+            tags: f.tags || []
         };
     }
     if (f.dataUrl) {
@@ -789,7 +1236,9 @@ function serializeFileEntry(folderPath, f, blobStore) {
             favourite: f.favourite || false,
             locked: f.locked || false,
             size: f.size || 0,
-            expiryDate: f.expiryDate || null
+            expiryDate: f.expiryDate || null,
+            note: f.note || '',
+            tags: f.tags || []
         };
     }
     return {
@@ -799,7 +1248,9 @@ function serializeFileEntry(folderPath, f, blobStore) {
         favourite: f.favourite || false,
         locked: f.locked || false,
         size: f.size || 0,
-        expiryDate: f.expiryDate || null
+        expiryDate: f.expiryDate || null,
+        note: f.note || '',
+        tags: f.tags || []
     };
 }
 
@@ -1025,7 +1476,9 @@ async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
                     favourite: existingEntry?.favourite || false,
                     locked: existingEntry?.locked || false,
                     size: blob.size,
-                    expiryDate: existingEntry?.expiryDate || null
+                    expiryDate: existingEntry?.expiryDate || null,
+                    note: existingEntry?.note || '',
+                    tags: existingEntry?.tags || []
                 };
                 fileStore.put(result);
             }
@@ -1048,6 +1501,8 @@ async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
                     locked: existingEntry?.locked || false,
                     size: blob.size,
                     expiryDate: existingEntry?.expiryDate || null,
+                    note: existingEntry?.note || '',
+                    tags: existingEntry?.tags || [],
                     _hasData: true,
                     _isBase64: false
                 };
@@ -1135,6 +1590,30 @@ async function setFileExpiryDate(folderPath, fileName, dateStr) {
     await imgScheduleExpiryNotification(folderPath, fileName, dateStr);
     render();
     showToast(dateStr ? `Expiry date set: ${dateStr}` : 'Expiry date cleared');
+}
+
+async function setFileNote(folderPath, fileName, noteText) {
+    const files = allFiles[folderPath];
+    if (!files) return;
+    const f = files.find(x => x.name === fileName);
+    if (!f) return;
+
+    f.note = noteText || '';
+    await saveFilesForFolder(folderPath);
+    render();
+    showToast(f.note ? 'Note saved' : 'Note cleared');
+}
+
+async function setFileTags(folderPath, fileName, tags) {
+    const files = allFiles[folderPath];
+    if (!files) return;
+    const f = files.find(x => x.name === fileName);
+    if (!f) return;
+
+    f.tags = tags;
+    await saveFilesForFolder(folderPath);
+    render();
+    showToast(tags.length ? `Tags updated: ${tags.join(', ')}` : 'Tags cleared');
 }
 
 // Native local notifications for expiry reminders (3 days before, and
@@ -1242,6 +1721,8 @@ async function loadAllFileMetadata() {
                 fileData: f.fileData instanceof Blob ? f.fileData : null,
                 dataUrl: f.dataUrl || null,
                 expiryDate: f.expiryDate || null,
+                note: f.note || '',
+                tags: f.tags || [],
                 _hasData: !!(f.fsPath || f.fileData instanceof Blob || f.dataUrl),
                 _isBase64: !!(f.dataUrl && typeof f.dataUrl === 'string')
             };
@@ -1286,7 +1767,10 @@ async function migrateBase64ToBlob() {
                         uploadedAt: file.uploadedAt || Date.now(),
                         favourite: file.favourite || false,
                         locked: file.locked || false,
-                        size: blob.size
+                        size: blob.size,
+                        expiryDate: file.expiryDate || null,
+                        note: file.note || '',
+                        tags: file.tags || []
                     };
                     migrated++;
                     folderChanged = true;
@@ -1301,7 +1785,10 @@ async function migrateBase64ToBlob() {
                     uploadedAt: file.uploadedAt || Date.now(),
                     favourite: file.favourite || false,
                     locked: file.locked || false,
-                    size: file.fileData.size || file.size || 0
+                    size: file.fileData.size || file.size || 0,
+                    expiryDate: file.expiryDate || null,
+                    note: file.note || '',
+                    tags: file.tags || []
                 };
                 migrated++;
                 folderChanged = true;
@@ -1350,15 +1837,6 @@ function getFilesystemPlugin() {
     return isNativePlatform() ? window.Capacitor?.Plugins?.Filesystem : null;
 }
 
-function blobToBase64(blob) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
-}
-
 // Single choke point for turning a display filename into a safe native
 // filesystem path segment. Filenames come from the OS file picker, camera,
 // or Google Drive -- all of which hand back whatever name the source file
@@ -1384,6 +1862,35 @@ function fsPathFor(folderPath, fileName) {
     const safeFolder = (folderPath || '').split('/').map(sanitizePathSegment).join('/');
     const safeName = sanitizePathSegment(fileName);
     return 'docs/' + safeFolder + '/' + safeName;
+}
+
+// Same per-segment sanitization as fsPathFor's own folderPath handling,
+// exposed standalone for callers (backup import) that need to sanitize a
+// '/'-joined path string WITHOUT also building a native fsPath from it.
+// Deterministic and context-free (no collision-suffixing) on purpose --
+// so a given raw segment always sanitizes to the same output everywhere
+// it appears, keeping fileSystem/allNotes/folderMeta/fileMetadata keys
+// cross-consistent after a restore even though each is sanitized
+// independently below.
+function sanitizeFolderPathKey(pathStr) {
+    if (!pathStr) return '';
+    return String(pathStr).split('/').map(sanitizePathSegment).join('/');
+}
+
+// Recursively rebuilds a fileSystem-shaped tree with every key passed
+// through sanitizePathSegment, and drops anything that isn't itself a
+// plain nested-object node (arrays, strings, numbers -- a well-formed
+// fileSystem tree never contains those). Used to harden backup import
+// against a manifest whose fileSystem tree was crafted or corrupted
+// rather than produced by DOCMAN's own export.
+function sanitizeFileSystemTree(node) {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return {};
+    const out = {};
+    for (const key of Object.keys(node)) {
+        if (!node[key] || typeof node[key] !== 'object' || Array.isArray(node[key])) continue;
+        out[sanitizePathSegment(key)] = sanitizeFileSystemTree(node[key]);
+    }
+    return out;
 }
 
 // Folder/department names become tree keys that are joined/split on '/'
@@ -1413,9 +1920,27 @@ async function writeFileToFS(folderPath, fileName, blob) {
     const Filesystem = getFilesystemPlugin();
     if (!Filesystem) return null;
     try {
-        const base64 = await blobToBase64(blob);
         const path = fsPathFor(folderPath, fileName);
-        await Filesystem.writeFile({ path, data: base64, directory: 'DATA', recursive: true });
+        // Chunked writes, not one base64 encode of the whole file -- the
+        // Capacitor bridge JSON-serializes each plugin call's arguments into
+        // a single string, so one writeFile() with a huge file's entire
+        // base64 payload can throw OutOfMemoryError before the write even
+        // starts (confirmed with a 150MB PDF import). Same fix as
+        // nativeDownload(); each chunk's bridge payload stays small
+        // regardless of the source file's total size.
+        const CHUNK_BYTES = 4 * 1024 * 1024;
+        let offset = 0;
+        let first = true;
+        while (offset < blob.size) {
+            const chunk = blob.slice(offset, offset + CHUNK_BYTES);
+            const base64 = await blobChunkToBase64(chunk);
+            await Filesystem.writeFile({ path, data: base64, directory: 'DATA', recursive: true, append: !first });
+            first = false;
+            offset += CHUNK_BYTES;
+        }
+        if (blob.size === 0) {
+            await Filesystem.writeFile({ path, data: '', directory: 'DATA', recursive: true });
+        }
 
         // Verify: read it straight back before trusting this write. If this
         // fails, the caller must NOT delete any existing copy of the file —
@@ -1504,8 +2029,12 @@ async function migrateFilesToNativeStorage() {
                     type: f.type || blob.type || 'application/octet-stream',
                     uploadedAt: f.uploadedAt || Date.now(),
                     favourite: f.favourite || false,
+                    locked: f.locked || false,
                     size: blob.size,
-                    fsPath
+                    fsPath,
+                    expiryDate: f.expiryDate || null,
+                    note: f.note || '',
+                    tags: f.tags || []
                 };
                 // Persist the pointer to the new copy BEFORE touching the old
                 // one. If the app is killed between these two lines, the
@@ -1636,7 +2165,8 @@ function getSearchSuggestions(query, limit = 8) {
         if (!isWithinSearchScope(path)) continue;
         if (!allFiles[path]) continue;
         for (const f of allFiles[path]) {
-            if (f.name.toLowerCase().includes(q)) push(f.name, path, getFileIcon(f.name), 'file');
+            const tagMatch = Array.isArray(f.tags) && f.tags.some(t => t.toLowerCase().includes(q));
+            if (f.name.toLowerCase().includes(q) || tagMatch) push(f.name, path, getFileIcon(f.name), 'file');
         }
     }
     for (const path in allNotes) {
@@ -1936,6 +2466,42 @@ async function addFileToCurrentFolder(file) {
     haptic.success();
 }
 
+// Duplicates a file in place (same folder), copying its actual bytes plus
+// favourite/locked/expiry/note/tags -- everything except uploadedAt, which
+// reflects when this copy was actually created.
+async function duplicateFileInFolder(folderPath, fileName) {
+    const files = allFiles[folderPath];
+    if (!files) return;
+    const original = files.find(f => f.name === fileName);
+    if (!original) return;
+
+    const blob = await loadFileData(folderPath, fileName);
+    if (!blob) { showToast('Could not read file to copy', true); return; }
+
+    const newName = uniqueNameFor(fileName, files.map(f => f.name), 'copy');
+    const fsPath = await writeFileToFS(folderPath, newName, blob);
+    const base = {
+        name: newName,
+        type: original.type || blob.type || 'application/octet-stream',
+        uploadedAt: Date.now(),
+        favourite: original.favourite || false,
+        locked: original.locked || false,
+        size: blob.size,
+        expiryDate: original.expiryDate || null,
+        note: original.note || '',
+        tags: original.tags ? [...original.tags] : []
+    };
+    const fileObj = fsPath ? { ...base, fsPath } : { ...base, fileData: blob };
+
+    files.push(fileObj);
+    await saveFilesForFolder(folderPath);
+    trackActivity('added', { name: newName, folderPath, kind: 'file' });
+    render();
+    updateStats();
+    haptic.success();
+    showToast(`Copied as "${newName}"`);
+}
+
 function deleteFileFromFolder(folderPath, fileName) {
     showConfirmModal(`Move "<b>${escapeHtml(fileName)}</b>" to Recycle Bin?`, async (confirmed) => {
         if (confirmed) {
@@ -1947,7 +2513,7 @@ function deleteFileFromFolder(folderPath, fileName) {
                 showToast('Moved to Recycle Bin');
             }
         }
-    });
+    }, { okLabel: 'Move', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
 }
 
 // Renaming a file only ever changes its display name -- the underlying
@@ -1972,6 +2538,167 @@ async function renameFileInFolder(folderPath, oldName, newName) {
             render();
         }
     }
+}
+
+// Every folder path in the tree (departments + every nested subfolder),
+// as {path, label} -- path is the same '/'-joined key allFiles/allNotes
+// use, label is a breadcrumb-style display string. Walks the same
+// `fileSystem` nested-object tree currentPath navigates, so this always
+// matches whatever folders actually exist in the sidebar/grid.
+function collectAllFolderPaths() {
+    const paths = [];
+    const walk = (node, pathArr) => {
+        for (const key of Object.keys(node)) {
+            if (node[key] && typeof node[key] === 'object') {
+                const newPath = [...pathArr, key];
+                paths.push({ path: newPath.join('/'), label: newPath.join(' / ') });
+                walk(node[key], newPath);
+            }
+        }
+    };
+    walk(fileSystem, []);
+    return paths;
+}
+
+// Picker modal for Move: lists every folder except the file's current one.
+// Same dark-card visual language as showModal (showConfirmModal/
+// showPromptModal) so it doesn't look like a bolted-on control.
+function showMoveFileModal(folderPath, fileName) {
+    const existing = document.getElementById('customMoveModal');
+    if (existing) existing.remove();
+
+    const destinations = collectAllFolderPaths().filter(d => d.path !== folderPath);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'customMoveModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
+
+    const rowsHtml = destinations.length
+        ? destinations.map(d => `
+            <div class="move-dest-row" data-path="${escapeHtml(d.path)}" style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.06);margin-bottom:8px;color:#ffffff;font-family:Inter,sans-serif;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-folder" style="color:#a78bfa;"></i>
+                <span>${escapeHtml(d.label)}</span>
+            </div>`).join('')
+        : `<p style="color:#94a3b8;font-family:Inter,sans-serif;font-size:0.85rem;">No other folders to move into.</p>`;
+
+    overlay.innerHTML = `
+        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(167,139,250,0.35);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <button id="moveModalCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
+            <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:16px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;">Move "<b>${escapeHtml(fileName)}</b>" to:</p>
+            <div id="moveDestList">${rowsHtml}</div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#moveModalCloseX').onclick = close;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelectorAll('.move-dest-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const dest = row.dataset.path;
+            close();
+            moveFileToFolder(folderPath, fileName, dest);
+        });
+    });
+}
+
+// Moves a single file's metadata (and, for IndexedDB-blob-stored files,
+// its actual storage key) from one folder to another. Native fsPath
+// files are left physically untouched -- same reasoning as
+// migrateFilesAndNotesPath above: fsPath is never recomputed from
+// folderPath, so only the metadata key needs to move.
+async function moveFileToFolder(oldFolderPath, fileName, newFolderPath) {
+    if (oldFolderPath === newFolderPath) return;
+    const files = allFiles[oldFolderPath];
+    if (!files) return;
+    const idx = files.findIndex(f => f.name === fileName);
+    if (idx === -1) return;
+
+    if (allFiles[newFolderPath]?.some(f => f.name === fileName)) {
+        showToast(`"${fileName}" already exists in that folder`, true);
+        return;
+    }
+
+    const [entry] = files.splice(idx, 1);
+    if (!entry.fsPath) {
+        await renameBlobInDB(oldFolderPath, fileName, newFolderPath, fileName);
+    }
+    if (!allFiles[newFolderPath]) allFiles[newFolderPath] = [];
+    allFiles[newFolderPath].push(entry);
+
+    await saveFilesForFolder(oldFolderPath);
+    await saveFilesForFolder(newFolderPath);
+    trackActivity('modified', { name: fileName, folderPath: newFolderPath, kind: 'file' });
+    render();
+    updateStats();
+    showToast(`Moved to "${newFolderPath.split('/').join(' / ')}"`);
+}
+
+// ============================================================
+// EXPIRING DOCUMENTS PANEL -- tapping the header logo. Surfaces every
+// file with an expiry date set (IDs, insurance, licenses, etc.), grouped
+// by how urgent it is, so the moment DOCMAN opens you can see what needs
+// renewing without digging through folders. Reuses getAllExpiringFiles()
+// (the same data source as the on-load "expiring soon" popup), just with
+// no threshold so every dated file shows, not only the next 7 days.
+// ============================================================
+function showExpiringDocumentsPanel() {
+    haptic.press();
+    const existing = document.getElementById('expiringDocsOverlay');
+    if (existing) existing.remove();
+
+    const entries = getAllExpiringFiles(Infinity);
+    const overlay = document.createElement('div');
+    overlay.id = 'expiringDocsOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:10vh;overflow-y:auto;';
+
+    const rowsHtml = entries.length ? entries.map(({ file, folderPath, status, days }) => {
+        const pill = status === 'overdue'
+            ? `<span style="background:rgba(239,68,68,0.15);color:#f87171;border-radius:20px;padding:3px 10px;font-size:0.72rem;font-weight:700;white-space:nowrap;">${Math.abs(days)}d overdue</span>`
+            : status === 'soon'
+                ? `<span style="background:rgba(245,158,11,0.15);color:#fbbf24;border-radius:20px;padding:3px 10px;font-size:0.72rem;font-weight:700;white-space:nowrap;">${days === 0 ? 'Today' : days + 'd left'}</span>`
+                : `<span style="background:rgba(255,255,255,0.08);color:#94a3b8;border-radius:20px;padding:3px 10px;font-size:0.72rem;font-weight:600;white-space:nowrap;">${days}d left</span>`;
+        return `
+            <div class="expdoc-row" data-folder="${escapeHtml(folderPath)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.06);margin-bottom:8px;cursor:pointer;">
+                <i class="fas ${getFileIcon(file.name)}" style="color:#94a3b8;font-size:1.1rem;flex-shrink:0;"></i>
+                <div style="flex:1;min-width:0;">
+                    <div style="color:#fff;font-size:0.87rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Inter,sans-serif;">${escapeHtml(file.name)}</div>
+                    <div style="color:#64748b;font-size:0.74rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Inter,sans-serif;">${escapeHtml(folderPath.split('/').join(' / ') || 'Root')}</div>
+                </div>
+                ${pill}
+            </div>`;
+    }).join('') : `
+        <div class="fav-empty" style="text-align:center;padding:40px 20px;color:#94a3b8;">
+            <i class="fas fa-calendar-check" style="font-size:2rem;margin-bottom:12px;display:block;color:#4b5563;"></i>
+            <p style="margin:0;font-family:Inter,sans-serif;font-size:0.9rem;">No documents have an expiry date set.</p>
+            <p style="margin:8px 0 0;font-family:Inter,sans-serif;font-size:0.78rem;color:#64748b;">Long-press a file → set an expiry date to get reminders here before it lapses.</p>
+        </div>`;
+
+    const overdueCount = entries.filter(e => e.status === 'overdue').length;
+    const soonCount = entries.filter(e => e.status === 'soon').length;
+    const summary = entries.length
+        ? `${overdueCount ? overdueCount + ' overdue' : ''}${overdueCount && soonCount ? ', ' : ''}${soonCount ? soonCount + ' expiring soon' : ''}${!overdueCount && !soonCount ? entries.length + ' upcoming' : ''}`
+        : '';
+
+    overlay.innerHTML = `
+        <div style="position:relative;background:linear-gradient(160deg, #16283c 0%, #0e1a2a 55%, #0a1420 100%);border:1px solid rgba(255, 140, 40, 0.4);border-radius:20px;padding:28px 24px;width:100%;max-width:400px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(255, 140, 40, 0.15);">
+            <button id="expiringDocsCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
+            <p style="color:#ffffff;font-size:0.98rem;font-weight:700;margin:0 0 4px;margin-right:26px;font-family:Inter,sans-serif;"><i class="fas fa-calendar-days" style="color:#f59e0b;margin-right:6px;"></i>Expiring Documents</p>
+            ${summary ? `<p style="color:#94a3b8;font-size:0.8rem;margin:0 0 18px;font-family:Inter,sans-serif;">${summary}</p>` : '<div style="margin-bottom:10px;"></div>'}
+            <div id="expiringDocsList">${rowsHtml}</div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#expiringDocsCloseX').onclick = close;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelectorAll('.expdoc-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const folderPath = row.dataset.folder;
+            close();
+            currentPath = folderPath ? folderPath.split('/') : [];
+            render();
+        });
+    });
 }
 
 // ============================================================
@@ -2163,7 +2890,7 @@ async function openFileWithGesture(fileEntry, folderPath) {
             ? fileEntry.fileData
             : await loadFileData(folderPath, fileEntry.name);
         if (!fileData) { showToast('File not found or could not be loaded', true); return; }
-        await nativeDownload(fileData, fileEntry.name);
+        await nativeDownload(fileData, fileEntry.name, fileEntry.fsPath);
         return;
     }
 
@@ -2179,7 +2906,7 @@ async function openFileWithGesture(fileEntry, folderPath) {
                 // fall through to normal openFile
             }
         }
-        await handlePdfFile(fileEntry.fileData, fileEntry.name, folderPath);
+        await handlePdfFile(fileEntry.fileData, fileEntry.name, folderPath, fileEntry.fsPath);
         return;
     }
 
@@ -2225,7 +2952,8 @@ async function openFile(fileName, folderPath) {
     if (fileType === 'image') {
         openImageViewer(fileData, fileName, folderPath);
     } else if (fileType === 'pdf') {
-        await handlePdfFile(fileData, fileName, folderPath);
+        const meta = allFiles[folderPath]?.find(f => f.name === fileName);
+        await handlePdfFile(fileData, fileName, folderPath, meta?.fsPath);
     } else if (fileType === 'word') {
         openWordViewer(fileData, fileName);
     } else if (fileType === 'excel') {
@@ -2442,9 +3170,22 @@ IMG_ADJUST_PROPS.forEach(p => { imgEditor.adjustBase[p.prop] = p.default; });
 // programmatically (presets, undo/redo, reset) needs both kept in sync.
 function imgSetSliderDisplay(p, val) {
     const el = document.getElementById(p.elId);
-    if (el) el.value = val;
+    if (el) { el.value = val; imgUpdateSliderFill(el); }
     const valEl = document.getElementById(p.elId + 'Val');
     if (valEl) valEl.textContent = imgFormatSliderValue(p, val);
+}
+
+// Drives the slider track's filled portion (see .img-editor-slider-row
+// input[type="range"]'s gradient, which reads --fill-percent) -- a plain
+// range input has no built-in "filled up to the thumb" look, and these
+// sliders don't share one min/max (brightness is -100..100, opacity is
+// 0..100, hue is 0..360), so the percent has to be computed per-slider
+// rather than hardcoded.
+function imgUpdateSliderFill(el) {
+    if (!el) return;
+    const min = parseFloat(el.min), max = parseFloat(el.max), val = parseFloat(el.value);
+    const pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
+    el.style.setProperty('--fill-percent', pct + '%');
 }
 
 // Offset-style sliders (brightness/contrast/exposure/saturation) show a
@@ -4157,7 +4898,28 @@ function wireTextViewerZoom() {
     });
 }
 
+// Mammoth/SheetJS both parse synchronously on the main thread (no Web
+// Worker) -- a large file doesn't reliably throw the way a corrupted one
+// does, it just makes the WebView janky/unresponsive for however long
+// parsing takes. There's no hard size that guarantees trouble, so this
+// warns and lets the person decide rather than silently refusing a
+// legitimate large document.
+const DOC_PREVIEW_WARN_BYTES = 30 * 1024 * 1024;
+
+function confirmLargeDocPreview(fileData, kind) {
+    if (fileData.size <= DOC_PREVIEW_WARN_BYTES) return Promise.resolve(true);
+    const mb = (fileData.size / (1024 * 1024)).toFixed(1);
+    return new Promise((resolve) => {
+        showConfirmModal(
+            `This ${kind} is ${mb} MB and may be slow or use significant memory to preview here. Continue?`,
+            (ok) => resolve(!!ok),
+            { okLabel: 'Preview Anyway', okColor: 'linear-gradient(135deg,#ff6b4a,#e91e8c)' }
+        );
+    });
+}
+
 async function openWordViewer(fileData, fileName) {
+    if (!(await confirmLargeDocPreview(fileData, 'document'))) return;
     const viewer = document.getElementById('docViewer');
     const body = document.getElementById('docViewerBody');
     const title = document.getElementById('docViewerTitle');
@@ -4198,6 +4960,7 @@ function closeDocViewer() {
 // ============================================================
 
 async function openExcelViewer(fileData, fileName) {
+    if (!(await confirmLargeDocPreview(fileData, 'spreadsheet'))) return;
     const viewer = document.getElementById('sheetViewer');
     const body = document.getElementById('sheetViewerBody');
     const tabs = document.getElementById('sheetViewerTabs');
@@ -4273,55 +5036,47 @@ function closeSheetViewer() {
 let isSharing = false;
 let shareTimeout = null;
 
-async function handlePdfFile(fileData, fileName, folderPath) {
+async function handlePdfFile(fileData, fileName, folderPath, fsPath) {
     const openMode = docmanSettings.pdfOpen || 'docman';
+    const nativeViewerEligible = openMode === 'docman' && isNativePlatform() && isAndroid() && window.Capacitor?.Plugins?.PdfNative;
+
+    // Size threshold is checked BEFORE deciding native-vs-external -- it
+    // used to only run on the fallback path below, so the native viewer
+    // branch's early return meant "PDFs larger than this use External
+    // App" was silently never enforced on Android with the native viewer
+    // enabled (the default). The setting now applies uniformly.
+    const fileSizeMB = fileData.size / (1024 * 1024);
+    const thresholdBytes = (docmanSettings.pdfThreshold || 50) * 1024 * 1024;
+    const overThreshold = fileData.size >= thresholdBytes;
 
     // NATIVE ANDROID: hand off to the native PdfiumAndroid viewer. Renders
     // outside the WebView — smooth zoom, no lag, no WASM memory ceiling.
-    if (openMode === 'docman' && isNativePlatform() && isAndroid() && window.Capacitor?.Plugins?.PdfNative) {
-        await openPdfViewerNative(fileData, fileName, folderPath);
+    if (nativeViewerEligible && !overThreshold) {
+        await openPdfViewerNative(fileData, fileName, folderPath, fsPath);
         return;
     }
 
-    // User-configured size threshold — kept as a general safety net for
-    // anything not going through the native viewer.
-    const fileSizeMB = fileData.size / (1024 * 1024);
-    const thresholdBytes = (docmanSettings.pdfThreshold || 50) * 1024 * 1024;
-    if (fileData.size >= thresholdBytes) {
+    if (nativeViewerEligible && overThreshold) {
         showToast('PDF is ' + fileSizeMB.toFixed(1) + ' MB (over ' + (docmanSettings.pdfThreshold || 50) + ' MB threshold) — opening externally.', false);
-        await sharePdfExternally(fileData, fileName);
-        return;
     }
 
-    // Everything else — External mode selected, non-Android platform, or the
-    // native plugin isn't available — shares out to the system PDF app.
-    await sharePdfExternally(fileData, fileName);
-}
-
-function isIOS() {
-    // Covers iPhone/iPad Safari and Chrome-for-iOS (which is WebKit under the
-    // hood too -- Apple requires all iOS browsers to use WebKit). Also catches
-    // iPadOS 13+ which reports as "Macintosh" but exposes touch support, unlike
-    // real Macs.
-    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    // Everything else — External mode selected, non-Android platform, the
+    // native plugin isn't available, or it was eligible but over the
+    // threshold above — shares out to the system PDF app.
+    await sharePdfExternally(fileData, fileName, fsPath);
 }
 
 function isAndroid() {
     return /android/i.test(navigator.userAgent);
 }
 
-function isSamsungBrowser() {
-    return /SamsungBrowser/i.test(navigator.userAgent);
-}
-
-async function sharePdfExternally(fileData, fileName) {
+async function sharePdfExternally(fileData, fileName, fsPath) {
     // On native (Capacitor) Android, the WebView's navigator.share() is
     // unreliable — it can silently no-op instead of throwing. The native
     // Capacitor Share plugin reliably triggers the OS chooser, so use that
     // directly whenever we're actually running as a native app.
     if (isNativePlatform()) {
-        await nativeDownload(fileData, fileName);
+        await nativeDownload(fileData, fileName, fsPath);
         return;
     }
 
@@ -4416,23 +5171,66 @@ async function sharePdfExternally(fileData, fileName) {
     }
 }
 
-async function nativeDownload(blob, fileName) {
+// Reads one Blob chunk as base64 -- split out of nativeDownload's chunked
+// write loop below purely so each chunk's FileReader promise is its own
+// clean closure.
+function blobChunkToBase64(chunk) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(chunk);
+    });
+}
+
+async function nativeDownload(blob, fileName, fsPath) {
     const Filesystem = window.Capacitor?.Plugins?.Filesystem;
     const Share = window.Capacitor?.Plugins?.Share;
 
     if (Filesystem && Share) {
         try {
-            const reader = new FileReader();
-            const base64 = await new Promise((resolve, reject) => {
-                reader.onload = () => resolve(reader.result.split(',')[1]);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-            const result = await Filesystem.writeFile({
-                path: fileName,
-                data: base64,
-                directory: 'CACHE'
-            });
+            if (fsPath) {
+                // Already sitting in the app's own native storage -- resolve
+                // a URI to that EXISTING file and share it directly, no
+                // re-encode/re-copy at all. Skips the chunked write below
+                // entirely, which for a large already-imported file was
+                // spending real, user-visible time re-writing bytes that
+                // were already sitting on disk under a different path --
+                // same wasted-copy shape the native PDF viewer's own
+                // openPdfViewerNative() fsPath fast path already fixed.
+                try {
+                    const { uri } = await Filesystem.getUri({ path: fsPath, directory: 'DATA' });
+                    expectNativeReturn();
+                    await Share.share({ title: fileName, url: uri });
+                    return;
+                } catch (e) {
+                    console.warn('fsPath share fast path failed, falling back to chunked copy:', e);
+                }
+            }
+            // Written in bounded-size chunks rather than one base64 encode
+            // of the WHOLE file -- the Capacitor JS<->native bridge JSON-
+            // serializes every plugin call's arguments into a single
+            // string, so a single writeFile() with a huge file's entire
+            // base64 payload can throw OutOfMemoryError before the write
+            // even starts (confirmed with a 150MB PDF share). Each chunk's
+            // bridge payload stays small regardless of the source file's
+            // total size.
+            const CHUNK_BYTES = 4 * 1024 * 1024;
+            let offset = 0;
+            let first = true;
+            while (offset < blob.size) {
+                const chunk = blob.slice(offset, offset + CHUNK_BYTES);
+                const base64 = await blobChunkToBase64(chunk);
+                await Filesystem.writeFile({
+                    path: fileName,
+                    data: base64,
+                    directory: 'CACHE',
+                    append: !first
+                });
+                first = false;
+                offset += CHUNK_BYTES;
+            }
+            const result = await Filesystem.getUri({ path: fileName, directory: 'CACHE' });
             expectNativeReturn();
             await Share.share({ title: fileName, url: result.uri });
             return;
@@ -4490,15 +5288,49 @@ async function shareNote(note) {
 // NATIVE ANDROID PDF VIEWER (PdfiumAndroid — renders outside WebView)
 // ============================================================
 
-async function openPdfViewerNative(fileData, fileName, folderPath) {
+async function openPdfViewerNative(fileData, fileName, folderPath, fsPath) {
     const PdfNative = window.Capacitor?.Plugins?.PdfNative;
     const Filesystem = getFilesystemPlugin();
-    if (!PdfNative || !Filesystem) { await sharePdfExternally(fileData, fileName); return; }
+    if (!PdfNative || !Filesystem) { await sharePdfExternally(fileData, fileName, fsPath); return; }
     try {
-        const base64 = await blobToBase64(fileData);
-        const tmpPath = 'docman-view.pdf';
-        await Filesystem.writeFile({ path: tmpPath, data: base64, directory: 'CACHE' });
-        const { uri } = await Filesystem.getUri({ path: tmpPath, directory: 'CACHE' });
+        let uri;
+        if (fsPath) {
+            // Already sitting in the app's own native storage -- just
+            // resolve a URI to that EXISTING file and open it directly.
+            // No base64 encode, no writeFile, no copy at all: the old
+            // path here always re-read the whole file into a JS Blob,
+            // base64-encoded it, and shipped that as one giant string
+            // through the Capacitor JS<->native bridge (which JSON-
+            // serializes call arguments) just to write an identical copy
+            // back out to CACHE -- for a large file (confirmed with a
+            // 150MB test PDF) that bridge payload alone throws
+            // OutOfMemoryError before the viewer ever opens. PdfViewerActivity
+            // is the same app, so no FileProvider/content-URI dance is
+            // needed either -- a direct path/URI to its own storage works.
+            ({ uri } = await Filesystem.getUri({ path: fsPath, directory: 'DATA' }));
+        } else {
+            // No fsPath yet (file still only exists as an IndexedDB blob,
+            // e.g. freshly restored from backup) -- fall back to the
+            // original copy-through-the-bridge approach. Only a real risk
+            // for a large file in this state, which should be rare: this
+            // app promotes imported files to native fsPath storage in the
+            // normal case.
+            const tmpPath = 'docman-view.pdf';
+            const CHUNK_BYTES = 4 * 1024 * 1024;
+            let offset = 0;
+            let first = true;
+            while (offset < fileData.size) {
+                const chunk = fileData.slice(offset, offset + CHUNK_BYTES);
+                const base64 = await blobChunkToBase64(chunk);
+                await Filesystem.writeFile({ path: tmpPath, data: base64, directory: 'CACHE', append: !first });
+                first = false;
+                offset += CHUNK_BYTES;
+            }
+            if (fileData.size === 0) {
+                await Filesystem.writeFile({ path: tmpPath, data: '', directory: 'CACHE' });
+            }
+            ({ uri } = await Filesystem.getUri({ path: tmpPath, directory: 'CACHE' }));
+        }
 
         // Continue Reading — stable per-document key, independent of the
         // reusable cache file path above. See getPdfDocId() for format.
@@ -4520,7 +5352,7 @@ async function openPdfViewerNative(fileData, fileName, folderPath) {
         await PdfNative.openPdf({ path: uri, title: fileName, docId, initialPage });
     } catch (e) {
         console.warn('Native PDF viewer failed, falling back to external share:', e);
-        await sharePdfExternally(fileData, fileName);
+        await sharePdfExternally(fileData, fileName, fsPath);
     }
 }
 
@@ -4555,7 +5387,7 @@ window.closePdfViewer = closePdfViewer;
 // onReady only runs if a PIN ends up in place (either it already existed,
 // or the person just created one).
 function ensurePinExistsForLock(onReady) {
-    if (localStorage.getItem(PIN_KEY)) { onReady();
+    if (hasPinStored()) { onReady();
         return; }
     showModal({
         type: 'confirm',
@@ -4569,7 +5401,7 @@ function ensurePinExistsForLock(onReady) {
     });
 }
 
-function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked, onLock, onShare, onConvertToPdf, onAddToPdf, onSetExpiry, triggerEl }) {
+function showCardContextMenu({ title, isFav, onFav, onRename, onMove, onDelete, isLocked, onLock, onShare, onConvertToPdf, onAddToPdf, onSetExpiry, onEdit, onCopy, onAddNote, onEditTags, onDetail, triggerEl }) {
     const existing = document.getElementById('ctxMenuOverlay');
     if (existing) existing.remove();
 
@@ -4591,10 +5423,25 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
             <i class="fas fa-lock ctx-item-icon ctx-icon-lock"></i>
             <span class="ctx-menu-item-label">${isLocked ? 'Unlock' : 'Lock'}</span>
         </div>` : ''}
+        ${onEdit ? `
+        <div class="ctx-menu-item" id="ctxEdit">
+            <i class="fas fa-pen-to-square ctx-item-icon ctx-icon-edit"></i>
+            <span class="ctx-menu-item-label">Edit</span>
+        </div>` : ''}
         ${onRename ? `
         <div class="ctx-menu-item" id="ctxRename">
             <i class="fas fa-pen ctx-item-icon ctx-icon-rename"></i>
             <span class="ctx-menu-item-label">Rename</span>
+        </div>` : ''}
+        ${onCopy ? `
+        <div class="ctx-menu-item" id="ctxCopy">
+            <i class="fas fa-copy ctx-item-icon ctx-icon-move"></i>
+            <span class="ctx-menu-item-label">Copy</span>
+        </div>` : ''}
+        ${onMove ? `
+        <div class="ctx-menu-item" id="ctxMove">
+            <i class="fas fa-folder-tree ctx-item-icon ctx-icon-move"></i>
+            <span class="ctx-menu-item-label">Move</span>
         </div>` : ''}
         ${onShare ? `
         <div class="ctx-menu-item" id="ctxShare">
@@ -4611,10 +5458,25 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
             <i class="fas fa-layer-group ctx-item-icon ctx-icon-share"></i>
             <span class="ctx-menu-item-label">Merge to PDF</span>
         </div>` : ''}
+        ${onAddNote ? `
+        <div class="ctx-menu-item" id="ctxAddNote">
+            <i class="fas fa-note-sticky ctx-item-icon ctx-icon-note"></i>
+            <span class="ctx-menu-item-label">Add Note</span>
+        </div>` : ''}
+        ${onEditTags ? `
+        <div class="ctx-menu-item" id="ctxEditTags">
+            <i class="fas fa-tags ctx-item-icon ctx-icon-tags"></i>
+            <span class="ctx-menu-item-label">Tags</span>
+        </div>` : ''}
         ${onSetExpiry ? `
         <div class="ctx-menu-item" id="ctxSetExpiry">
             <i class="fas fa-calendar-days ctx-item-icon ctx-icon-share"></i>
             <span class="ctx-menu-item-label">Set Expiry Date</span>
+        </div>` : ''}
+        ${onDetail ? `
+        <div class="ctx-menu-item" id="ctxDetail">
+            <i class="fas fa-circle-info ctx-item-icon ctx-icon-detail"></i>
+            <span class="ctx-menu-item-label">File Detail</span>
         </div>` : ''}
         ${onDelete ? `
         <div class="ctx-menu-divider"></div>
@@ -4645,7 +5507,12 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
         const menuW = menu.offsetWidth || 200;
         const menuH = menu.offsetHeight || 180;
         const vw = window.innerWidth;
-        const vh = window.innerHeight;
+        // Bottom bound excludes the safe-area inset (gesture nav bar) --
+        // window.innerHeight on a full-screen WebView includes that zone,
+        // so clamping to it alone still lets a tall menu's last item (e.g.
+        // Delete) land underneath the nav bar.
+        const safeBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom')) || 0;
+        const vh = window.innerHeight - safeBottom;
 
         let left = rect.right - menuW;
         let top = rect.top - menuH - 8;
@@ -4669,9 +5536,18 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
     const lockEl = document.getElementById('ctxLock');
     if (lockEl) lockEl.addEventListener('click', () => { haptic.press(); close();
         onLock(); });
+    const editEl = document.getElementById('ctxEdit');
+    if (editEl) editEl.addEventListener('click', () => { haptic.press(); close();
+        onEdit(); });
     const renameEl = document.getElementById('ctxRename');
     if (renameEl) renameEl.addEventListener('click', () => { haptic.press(); close();
         onRename(); });
+    const copyEl = document.getElementById('ctxCopy');
+    if (copyEl) copyEl.addEventListener('click', () => { haptic.press(); close();
+        onCopy(); });
+    const moveEl = document.getElementById('ctxMove');
+    if (moveEl) moveEl.addEventListener('click', () => { haptic.press(); close();
+        onMove(); });
     const shareEl = document.getElementById('ctxShare');
     if (shareEl) shareEl.addEventListener('click', () => { haptic.press(); close();
         onShare(); });
@@ -4681,9 +5557,18 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, isLocked
     const addToPdfEl = document.getElementById('ctxAddToPdf');
     if (addToPdfEl) addToPdfEl.addEventListener('click', () => { haptic.press(); close();
         onAddToPdf(); });
+    const addNoteEl = document.getElementById('ctxAddNote');
+    if (addNoteEl) addNoteEl.addEventListener('click', () => { haptic.press(); close();
+        onAddNote(); });
+    const editTagsEl = document.getElementById('ctxEditTags');
+    if (editTagsEl) editTagsEl.addEventListener('click', () => { haptic.press(); close();
+        onEditTags(); });
     const setExpiryEl = document.getElementById('ctxSetExpiry');
     if (setExpiryEl) setExpiryEl.addEventListener('click', () => { haptic.press(); close();
         onSetExpiry(); });
+    const detailEl = document.getElementById('ctxDetail');
+    if (detailEl) detailEl.addEventListener('click', () => { haptic.press(); close();
+        onDetail(); });
     const deleteEl = document.getElementById('ctxDelete');
     if (deleteEl) deleteEl.addEventListener('click', () => { haptic.press(); close();
         onDelete(); });
@@ -4715,7 +5600,11 @@ function createFileCard(file, folderPath, opts = {}) {
         ${selectDot}
         ${renderFileIconBadge(file.name)}
         <div class="card-info">
-            <div class="card-filename" title="${escapeHtml(file.name)}">${nameHtml}</div>
+            <div class="card-filename-row">
+                <div class="card-filename" title="${escapeHtml(file.name)}">${nameHtml}</div>
+                ${file.note ? `<div class="card-icon-btn card-note-btn" role="button" aria-label="View note"><i class="fas fa-note-sticky"></i></div>` : ''}
+                ${file.tags && file.tags.length ? `<div class="card-icon-btn card-tag-btn" role="button" aria-label="View tags"><i class="fas fa-tag"></i></div>` : ''}
+            </div>
             ${sizeLabel ? `<div class="card-meta">${sizeLabel}</div>` : ''}
         </div>
         ${expiryBadge}
@@ -4738,6 +5627,42 @@ function createFileCard(file, folderPath, opts = {}) {
             }, { passive: false });
         }
         return div;
+    }
+
+    // Tapping the note icon button opens a quick read-only popup.
+    // .card-note-btn is registered in attachPressEffects()'s selector list
+    // (same as .dept-hub-knob, the home-screen info button) so it gets the
+    // shared touchstart-level haptic + stopPropagation handling for free --
+    // that alone keeps the tap from ever reaching the card's own touchstart,
+    // which would otherwise arm its long-press timer. The click handler
+    // below still needs its own stopPropagation (pressHandler only guards
+    // touchstart/mousedown, not the later click) and mirrors
+    // showInfoDelayed()'s pattern: the popup opens after a short delay so
+    // the press-feedback haptic has time to land first, rather than firing
+    // the instant the tap completes.
+    if (file.note) {
+        const noteBtn = div.querySelector('.card-note-btn');
+        if (noteBtn) {
+            noteBtn.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
+            noteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                setTimeout(() => showNoteViewModal(file, folderPath), 260);
+            });
+        }
+    }
+
+    // Same pattern as the note button above, including the view-then-
+    // Edit/Delete popup (showTagViewModal) rather than jumping straight
+    // into the edit prompt.
+    if (file.tags && file.tags.length) {
+        const tagBtn = div.querySelector('.card-tag-btn');
+        if (tagBtn) {
+            tagBtn.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
+            tagBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                setTimeout(() => showTagViewModal(file, folderPath), 260);
+            });
+        }
     }
 
     let pressTimer = null;
@@ -4783,14 +5708,30 @@ function createFileCard(file, folderPath, opts = {}) {
                 onRename: () => showPromptModal('Rename file:', file.name, (newName) => {
                     if (newName?.trim()) renameFileInFolder(folderPath, file.name, newName.trim());
                 }),
+                onMove: () => showMoveFileModal(folderPath, file.name),
                 onDelete: () => deleteFileFromFolder(folderPath, file.name),
                 onShare: () => openFileWithGesture(file, folderPath),
+                onEdit: isImage ? async () => {
+                    await openFile(file.name, folderPath);
+                    await openImageEditor();
+                } : null,
+                onCopy: () => duplicateFileInFolder(folderPath, file.name),
                 onConvertToPdf: getFileType(file.name) === 'image' ? () => imgConvertSingleFileToPdf(folderPath, file.name) : null,
                 onAddToPdf: getFileType(file.name) === 'image' ? () => imgAddToPdfQueue(folderPath, file.name) : null,
+                onAddNote: () => showTextareaPromptModal(`Note for "${file.name}":`, file.note || '', (val) => {
+                    if (val === null) return; // cancelled
+                    setFileNote(folderPath, file.name, val.trim());
+                }),
+                onEditTags: () => showPromptModal(`Tags for "${file.name}" (comma separated):`, (file.tags || []).join(', '), (val) => {
+                    if (val === null) return; // cancelled
+                    const tags = val.split(',').map(t => t.trim()).filter(Boolean);
+                    setFileTags(folderPath, file.name, tags);
+                }),
                 onSetExpiry: () => showDateModal(`Expiry date for "${file.name}":`, file.expiryDate || '', (val) => {
                     if (val === undefined) return; // cancelled, no change
                     setFileExpiryDate(folderPath, file.name, val);
                 }),
+                onDetail: () => showFileDetailModal(file, folderPath),
                 isLocked: !!file.locked,
                 onLock: () => {
                     const files = allFiles[folderPath];
@@ -5089,12 +6030,13 @@ function createFolderSearchResultCard(name, fullPath, query) {
     return div;
 }
 
-function createCard(title, onClick, isFolder = false, fullPath = null) {
+function createCard(title, onClick, isFolder = false, fullPath = null, fileCount = null) {
     const div = document.createElement('div');
     div.className = isFolder ? 'card glow-folder' : 'card';
     const isFav = isFolder && fullPath && !!(folderMeta[fullPath] && folderMeta[fullPath].favourite);
     const isLockedFolder = isFolder && fullPath && !!(folderMeta[fullPath] && folderMeta[fullPath].locked);
-    div.innerHTML = `<div class="card-icon"><img src="Images/settings-tray.png" class="card-icon-tray-img" alt=""></div><div class="card-filename">${escapeHtml(title)}</div><div class="card-buttons"></div>` +
+    div.innerHTML = `<div class="card-filename">${escapeHtml(title)}</div><div class="card-buttons"></div>` +
+        (isFolder && fullPath && fileCount !== null ? `<span class="card-folder-count">${fileCount} ${fileCount === 1 ? 'file' : 'files'}</span>` : '') +
         (isLockedFolder ? '<i class="fas fa-lock card-lock-indicator"></i>' : '') +
         (isFolder && fullPath ? `<i class="fas fa-star card-fav-indicator${isFav ? '' : ' card-fav-hidden'}"></i>` : '');
 
@@ -5191,7 +6133,7 @@ function createCard(title, onClick, isFolder = false, fullPath = null) {
                 updateStats();
                 showToast('Moved to Recycle Bin');
             }
-        });
+        }, { okLabel: 'Move', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
     };
 
     const startPress = (e) => {
@@ -5393,7 +6335,7 @@ function deleteCurrentFolder() {
             updateStats();
             showToast('Moved to Recycle Bin');
         }
-    });
+    }, { okLabel: 'Move', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
 }
 
 function addNewFolder() {
@@ -5442,7 +6384,7 @@ function onDeptAddFabTap() {
         // to just the "+" icon right away instead of leaving it expanded.
         const f = document.getElementById('deptAddFab');
         if (f) f.classList.remove('dept-add-fab-expanded');
-    }, 1200);
+    }, 800);
 }
 
 function addNewDepartment() {
@@ -5751,7 +6693,9 @@ function render() {
                 if (!isWithinSearchScope(path)) continue;
                 if (allFiles[path]) {
                     allFiles[path].forEach(f => {
-                        if (f.name.toLowerCase().includes(query)) {
+                        const nameMatch = f.name.toLowerCase().includes(query);
+                        const tagMatch = Array.isArray(f.tags) && f.tags.some(t => t.toLowerCase().includes(query));
+                        if (nameMatch || tagMatch) {
                             results.push({ ...f, folder: path, type: 'file' });
                         }
                     });
@@ -6018,6 +6962,7 @@ function render() {
     if (!isRoot && hasSubfolders) {
         const subKeys = sortFolderKeys(Object.keys(folder), folder, currentPath);
         subKeys.forEach((key, i) => {
+            const subCount = countDepartmentFiles(folder[key], [...currentPath, key]);
             const folderCard = createCard(key, () => {
                 guardFolderEntry([...currentPath, key], () => {
                     navigateWithPageTurn(() => {
@@ -6025,7 +6970,7 @@ function render() {
                         render();
                     }, 'forward');
                 });
-            }, true, [...currentPath, key].join('/'));
+            }, true, [...currentPath, key].join('/'), subCount);
             contentDiv.appendChild(folderCard);
         });
     }
@@ -6107,6 +7052,14 @@ function drawDeptConnectors() {
 
     const old = wrapper.querySelector('.dept-connector-svg');
     if (old) old.remove();
+
+    // Drawn as plain SVG (not CSS), so it doesn't pick up theme colors on
+    // its own -- these were hardcoded white for the dark theme, which is
+    // exactly invisible against a light background.
+    const isLight = document.body.classList.contains('light-mode');
+    const wireStroke = isLight ? 'rgba(60,45,30,0.55)' : 'rgba(255,255,255,0.85)';
+    const hubDotFill = isLight ? 'rgba(60,45,30,0.85)' : 'rgba(255,255,255,0.95)';
+    const badgeDotFill = isLight ? 'rgba(60,45,30,0.65)' : 'rgba(255,255,255,0.75)';
 
     const hubCircle = wrapper.querySelector('.dept-hub-circle');
     const badges = wrapper.querySelectorAll('.dept-pill-icon');
@@ -6235,7 +7188,7 @@ function drawDeptConnectors() {
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttribute('d', pathD);
         path.setAttribute('fill', 'none');
-        path.setAttribute('stroke', 'rgba(255,255,255,0.85)');
+        path.setAttribute('stroke', wireStroke);
         path.setAttribute('stroke-width', '1.8');
         path.setAttribute('stroke-linecap', 'round');
         path.setAttribute('stroke-linejoin', 'round');
@@ -6245,7 +7198,7 @@ function drawDeptConnectors() {
         hDot.setAttribute('cx', dotX);
         hDot.setAttribute('cy', y2);
         hDot.setAttribute('r', '4');
-        hDot.setAttribute('fill', 'rgba(255,255,255,0.95)');
+        hDot.setAttribute('fill', hubDotFill);
         hDot.setAttribute('stroke', 'rgba(245,168,0,0.55)');
         hDot.setAttribute('stroke-width', '1.5');
         svg.appendChild(hDot);
@@ -6254,7 +7207,7 @@ function drawDeptConnectors() {
         bDot.setAttribute('cx', d.x1);
         bDot.setAttribute('cy', d.y1);
         bDot.setAttribute('r', '3');
-        bDot.setAttribute('fill', 'rgba(255,255,255,0.75)');
+        bDot.setAttribute('fill', badgeDotFill);
         svg.appendChild(bDot);
     });
 
@@ -6359,7 +7312,7 @@ function attachDepartmentPressEffects() {
                         render();
                         updateStats();
                         showToast('Moved to Recycle Bin');
-                    });
+                    }, { okLabel: 'Move', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
                 }
             });
         };
@@ -6641,8 +7594,15 @@ function openFavouritesView() {
 
     const favView = document.getElementById('favouritesView');
     favView.classList.remove('hidden');
-    requestAnimationFrame(() => favView.classList.add('fav-view-visible'));
-    updateDeptAddFabVisibility();
+    // updateDeptAddFabVisibility() must run inside this same rAF callback,
+    // after fav-view-visible actually lands -- calling it synchronously
+    // right after scheduling the rAF (as a separate statement here) reads
+    // the class before the browser has applied it, so the FAB's "is any
+    // overlay open" check always sees the pre-open state and never hides it.
+    requestAnimationFrame(() => {
+        favView.classList.add('fav-view-visible');
+        updateDeptAddFabVisibility();
+    });
 
     const favBackBtn = document.getElementById('favViewBackBtn');
     // Bound directly to touchend (with preventDefault to stop the follow-up
@@ -6822,8 +7782,10 @@ function openRecentsView() {
 
     const view = document.getElementById('recentsView');
     view.classList.remove('hidden');
-    requestAnimationFrame(() => view.classList.add('fav-view-visible'));
-    updateDeptAddFabVisibility();
+    requestAnimationFrame(() => {
+        view.classList.add('fav-view-visible');
+        updateDeptAddFabVisibility();
+    });
 
     document.querySelectorAll('#recentsSubtabRow .subtab-btn').forEach(btn => {
         btn.onclick = () => { haptic.press();
@@ -6954,8 +7916,10 @@ function openDashboardView() {
     renderDashboardView();
     const view = document.getElementById('dashboardView');
     view.classList.remove('hidden');
-    requestAnimationFrame(() => view.classList.add('fav-view-visible'));
-    updateDeptAddFabVisibility();
+    requestAnimationFrame(() => {
+        view.classList.add('fav-view-visible');
+        updateDeptAddFabVisibility();
+    });
 
     const backBtn = document.getElementById('dashboardViewBackBtn');
     const backAction = (e) => { if (e) e.preventDefault();
@@ -7027,8 +7991,10 @@ function openRecycleBinView() {
     renderRecycleBinList();
     const view = document.getElementById('recycleBinView');
     view.classList.remove('hidden');
-    requestAnimationFrame(() => view.classList.add('fav-view-visible'));
-    updateDeptAddFabVisibility();
+    requestAnimationFrame(() => {
+        view.classList.add('fav-view-visible');
+        updateDeptAddFabVisibility();
+    });
 
     const backBtn = document.getElementById('recycleBinViewBackBtn');
     const backAction = (e) => { if (e) e.preventDefault();
@@ -7120,6 +8086,12 @@ function applyTheme(theme) {
     localStorage.setItem('docman_theme', theme);
     updateThemeIcon();
     applyThemePickUI();
+    // The department connector wires are drawn as plain SVG with their
+    // stroke/fill colors picked at draw time (see drawDeptConnectors),
+    // not CSS -- so they don't repaint on their own when the theme class
+    // flips. Without this they'd stay whatever color they were last
+    // drawn with until something else happens to trigger a redraw.
+    drawDeptConnectorsWhenStable();
 }
 
 function applyThemePickUI() {
@@ -7205,7 +8177,7 @@ function getAutoLockMs() {
 }
 
 function isAppLockActive() {
-    return !!(docmanSettings.appLock && localStorage.getItem(PIN_KEY));
+    return !!(docmanSettings.appLock && hasPinStored());
 }
 
 // Timestamp of the last successful unlock -- used as a short cooldown
@@ -7416,7 +8388,7 @@ function showAppLockScreen(onUnlock) {
             <div id="alPinView" style="position:absolute;top:0;left:0;right:0;opacity:${biometricReady ? '0' : '1'};pointer-events:${biometricReady ? 'none' : 'auto'};">
                 <div style="width:64px;height:64px;background:linear-gradient(135deg,#ff6b4a,#e91e8c);border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:1.8rem;">🔒</div>
                 <p style="color:#f8fafc;font-size:1.1rem;font-weight:700;margin:0 0 4px;font-family:Inter,sans-serif;">DOCMAN Locked</p>
-                <p style="color:#94a3b8;font-size:0.8rem;margin:0 0 26px;font-family:Inter,sans-serif;">Enter your PIN to continue</p>
+                <p id="alPinSubtitle" style="color:#94a3b8;font-size:0.8rem;margin:0 0 26px;font-family:Inter,sans-serif;">Enter your PIN to continue</p>
                 <div id="alDots" style="display:flex;justify-content:center;gap:14px;margin-bottom:28px;">
                     ${[0, 1, 2, 3].map(i => `<div id="alDot${i}" style="width:15px;height:15px;border-radius:50%;background:rgba(255,255,255,0.12);border:2px solid rgba(255,255,255,0.22);transition:all 0.15s;"></div>`).join('')}
                 </div>
@@ -7434,9 +8406,18 @@ function showAppLockScreen(onUnlock) {
     const bioView = overlay.querySelector('#alBioView');
     const pinView = overlay.querySelector('#alPinView');
     const bioStatus = overlay.querySelector('#alBioStatus');
+    const alGrid = overlay.querySelector('#alGrid');
+    const alPinSubtitle = overlay.querySelector('#alPinSubtitle');
+
+    // Cover the case where this screen is opened (or the person switches
+    // from the biometric view to the PIN pad) while a cooldown from an
+    // earlier failed attempt is still counting down -- without this, the
+    // countdown only ever started at the moment of a fresh failure, so
+    // closing and reopening (or just switching views) silently gave back
+    // a fully live keypad mid-cooldown.
+    applyPinCooldownUI(alGrid, alPinSubtitle, getPinCooldownRemainingMs(), 'Enter your PIN to continue');
 
     let entered = '';
-    const storedPin = localStorage.getItem(PIN_KEY) || '';
 
     // Pure compositor-level opacity/pointer-events flips -- both views were
     // already laid out and painted from frame one, so there's no display
@@ -7617,13 +8598,18 @@ function showAppLockScreen(onUnlock) {
             updateDots();
             console.log('[DOCMAN-LOCK]', Date.now(), 'handleKeyPress: dot updated, entered.length=', entered.length);
             if (entered.length === 4) {
-                const enteredHash = await hashPin(entered);
-                console.log('[DOCMAN-LOCK]', Date.now(), 'handleKeyPress: hash compared');
-                if (enteredHash === storedPin) {
+                await nextPaint();
+                const attempt = await checkPinAttempt(entered);
+                console.log('[DOCMAN-LOCK]', Date.now(), 'handleKeyPress: pin checked');
+                if (attempt.ok) {
                     unlock();
                 } else {
                     haptic.warning();
-                    showToast('Incorrect PIN', true);
+                    if (attempt.cooldown > 0) {
+                        applyPinCooldownUI(alGrid, alPinSubtitle, attempt.cooldown, 'Enter your PIN to continue');
+                    } else {
+                        showToast('Incorrect PIN', true);
+                    }
                     entered = '';
                     updateDots();
                     shake();
@@ -7675,7 +8661,7 @@ function showPinVerifyModal(title, callback) {
         <div style="background:#1a1a1a;border:1px solid rgba(239,68,68,0.4);border-radius:24px;padding:28px 24px;width:100%;max-width:320px;box-shadow:0 24px 60px rgba(0,0,0,0.7);text-align:center;">
             <div style="width:48px;height:48px;background:linear-gradient(135deg,#ef4444,#dc2626);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.4rem;">🔒</div>
             <p style="color:#e2e8f0;font-size:0.95rem;font-weight:700;margin:0 0 6px;font-family:Inter,sans-serif;">${title}</p>
-            <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 20px;font-family:Inter,sans-serif;">Enter your 4-digit PIN to confirm</p>
+            <p id="pinVerifySubtitle" style="color:#94a3b8;font-size:0.78rem;margin:0 0 20px;font-family:Inter,sans-serif;">Enter your 4-digit PIN to confirm</p>
             <div id="pinVerifyDots" style="display:flex;justify-content:center;gap:12px;margin-bottom:24px;">
                 ${[0,1,2,3].map(i => `<div id="pvDot${i}" style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.25);transition:all 0.15s;"></div>`).join('')}
             </div>
@@ -7688,8 +8674,14 @@ function showPinVerifyModal(title, callback) {
         </div>`;
     document.body.appendChild(overlay);
 
+    const pinVerifyGrid = overlay.querySelector('#pinVerifyGrid');
+    const pinVerifySubtitle = overlay.querySelector('#pinVerifySubtitle');
+    // Same reasoning as showAppLockScreen's own call to this -- covers
+    // reopening this modal (e.g. tapping a different locked file) while
+    // a cooldown from an earlier failed attempt is still counting down.
+    applyPinCooldownUI(pinVerifyGrid, pinVerifySubtitle, getPinCooldownRemainingMs(), 'Enter your 4-digit PIN to confirm');
+
     let entered = '';
-    const storedPin = localStorage.getItem(PIN_KEY) || '';
 
     function updateDots() {
         for (let i = 0; i < 4; i++) {
@@ -7744,13 +8736,18 @@ function showPinVerifyModal(title, callback) {
             entered += k;
             updateDots();
             if (entered.length === 4) {
-                const enteredHash = await hashPin(entered);
-                if (enteredHash === storedPin) {
+                await nextPaint();
+                const attempt = await checkPinAttempt(entered);
+                if (attempt.ok) {
                     overlay.remove();
                     callback(true);
                 } else {
                     haptic.warning();
-                    showToast('Incorrect PIN', true);
+                    if (attempt.cooldown > 0) {
+                        applyPinCooldownUI(pinVerifyGrid, pinVerifySubtitle, attempt.cooldown, 'Enter your 4-digit PIN to confirm');
+                    } else {
+                        showToast('Incorrect PIN', true);
+                    }
                     entered = '';
                     updateDots();
                     shakeModal();
@@ -7809,14 +8806,14 @@ function promptSetPin(callback) {
         const pin = val.trim();
         if (!/^\d{4}$/.test(pin)) { showToast('PIN must be exactly 4 digits', true);
             callback(false); return; }
-        localStorage.setItem(PIN_KEY, await hashPin(pin));
+        await setPin(pin);
         showToast('PIN saved');
         callback(true);
     });
 }
 
 function updatePinStatusUI() {
-    const hasPin = !!localStorage.getItem(PIN_KEY);
+    const hasPin = hasPinStored();
     const sub = document.getElementById('pinStatusSub');
     const changeCard = document.getElementById('changePinCard');
     const lockToggle = document.getElementById('appLockToggle');
@@ -7944,76 +8941,426 @@ function showLockedItemsDialog() {
 // EXPORT / IMPORT
 // ============================================================
 
-async function exportBackupData() {
+// Backups are always encrypted now (WhatsApp-style: a password you choose,
+// or a recovery key DOCMAN generates for you) -- this replaces the old
+// "this is unencrypted, continue?" warning with picking HOW it's secured.
+function exportBackupData() {
+    const existing = document.getElementById('backupEncChoiceModal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'backupEncChoiceModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
+    overlay.innerHTML = `
+        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(255,107,74,0.35);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <button id="encChoiceCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
+            <p style="color:#ffffff;font-size:0.98rem;font-weight:700;margin:0 0 6px;margin-right:26px;font-family:Inter,sans-serif;">Secure Your Backup</p>
+            <p style="color:#94a3b8;font-size:0.82rem;margin:0 0 18px;font-family:Inter,sans-serif;line-height:1.5;">Your backup is encrypted so only you can restore it. Choose how:</p>
+            <button id="encChoicePassword" style="touch-action:manipulation;width:100%;text-align:left;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#ffffff;cursor:pointer;font-family:Inter,sans-serif;margin-bottom:10px;">
+                <div style="font-weight:600;font-size:0.9rem;"><i class="fas fa-key" style="color:#ff6b4a;margin-right:8px;"></i>Create a Password</div>
+                <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px;">Choose your own password — easy to remember</div>
+            </button>
+            <button id="encChoiceRecoveryKey" style="touch-action:manipulation;width:100%;text-align:left;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#ffffff;cursor:pointer;font-family:Inter,sans-serif;">
+                <div style="font-weight:600;font-size:0.9rem;"><i class="fas fa-dice" style="color:#a78bfa;margin-right:8px;"></i>Generate a Recovery Key</div>
+                <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px;">DOCMAN creates a strong random key for you</div>
+            </button>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#encChoiceCloseX').onclick = close;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('#encChoicePassword').onclick = () => { close(); promptBackupPassword(); };
+    overlay.querySelector('#encChoiceRecoveryKey').onclick = () => { close(); startRecoveryKeyExportFlow(); };
+}
+
+function promptBackupPassword() {
+    showPasswordPromptModal('Create a password for this backup (at least 6 characters). You\'ll need it to restore.', (pw) => {
+        if (pw === null) return;
+        pw = pw.trim();
+        if (pw.length < 6) { showToast('Password must be at least 6 characters', true); promptBackupPassword(); return; }
+        showPasswordPromptModal('Confirm your password:', (pw2) => {
+            if (pw2 === null) return;
+            if (pw2.trim() !== pw) { showToast('Passwords do not match', true); promptBackupPassword(); return; }
+            doExportBackupDataEncrypted(pw);
+        });
+    });
+}
+
+function startRecoveryKeyExportFlow() {
+    const key = generateRecoveryKey();
+    showRecoveryKeyRevealModal(key.formatted, () => doExportBackupDataEncrypted(key.raw));
+}
+
+// One-time reveal screen -- the raw key is never shown again after this
+// closes (DOCMAN itself never stores it either), so the person must save
+// it now or lose access to this specific backup permanently.
+function showRecoveryKeyRevealModal(formattedKey, onContinue) {
+    const existing = document.getElementById('recoveryKeyModal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'recoveryKeyModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(8px);padding:20px;padding-top:10vh;overflow-y:auto;';
+    overlay.innerHTML = `
+        <div style="background:#1a1a1a;border:1px solid rgba(167,139,250,0.4);border-radius:20px;padding:28px 24px;width:100%;max-width:380px;box-shadow:0 24px 60px rgba(0,0,0,0.7);">
+            <p style="color:#ffffff;font-size:0.98rem;font-weight:700;margin:0 0 6px;font-family:Inter,sans-serif;"><i class="fas fa-key" style="color:#a78bfa;margin-right:6px;"></i>Your Recovery Key</p>
+            <p style="color:#94a3b8;font-size:0.82rem;margin:0 0 16px;font-family:Inter,sans-serif;line-height:1.5;">This is shown only once. Save this securely — <b style="color:#f87171;">it cannot be recovered if lost</b>, and without it this backup can never be restored.</p>
+            <div id="recoveryKeyText" style="background:rgba(255,255,255,0.06);border:1px solid rgba(167,139,250,0.3);border-radius:12px;padding:16px;font-family:'IBM Plex Mono',monospace;font-size:1rem;letter-spacing:0.03em;color:#e2e8f0;text-align:center;word-break:break-all;margin-bottom:14px;">${formattedKey}</div>
+            <button id="recoveryKeyCopyBtn" style="touch-action:manipulation;width:100%;padding:11px;border-radius:40px;border:1px solid rgba(167,139,250,0.4);background:transparent;color:#c4b5fd;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;margin-bottom:16px;"><i class="fas fa-copy"></i>&nbsp; Copy to Clipboard</button>
+            <label style="display:flex;align-items:flex-start;gap:10px;color:#e2e8f0;font-size:0.82rem;font-family:Inter,sans-serif;margin-bottom:18px;cursor:pointer;">
+                <input type="checkbox" id="recoveryKeySavedCheck" style="margin-top:2px;width:16px;height:16px;flex-shrink:0;">
+                <span>I've saved this recovery key securely</span>
+            </label>
+            <div style="display:flex;gap:10px;">
+                <button id="recoveryKeyCancelBtn" style="touch-action:manipulation;flex:1;padding:12px;border-radius:40px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#94a3b8;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
+                <button id="recoveryKeyContinueBtn" disabled style="touch-action:manipulation;flex:1;padding:12px;border-radius:40px;border:none;background:rgba(167,139,250,0.3);color:rgba(255,255,255,0.5);cursor:not-allowed;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">Continue</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const check = overlay.querySelector('#recoveryKeySavedCheck');
+    const continueBtn = overlay.querySelector('#recoveryKeyContinueBtn');
+    check.onchange = () => {
+        continueBtn.disabled = !check.checked;
+        continueBtn.style.background = check.checked ? 'linear-gradient(135deg,#a78bfa,#7c3aed)' : 'rgba(167,139,250,0.3)';
+        continueBtn.style.color = check.checked ? '#fff' : 'rgba(255,255,255,0.5)';
+        continueBtn.style.cursor = check.checked ? 'pointer' : 'not-allowed';
+    };
+    overlay.querySelector('#recoveryKeyCopyBtn').onclick = async () => {
+        try {
+            await navigator.clipboard.writeText(formattedKey);
+            showToast('Recovery key copied');
+        } catch (e) {
+            showToast('Could not copy — please save it manually', true);
+        }
+    };
+    overlay.querySelector('#recoveryKeyCancelBtn').onclick = () => overlay.remove();
+    continueBtn.onclick = () => {
+        if (!check.checked) return;
+        overlay.remove();
+        onContinue();
+    };
+}
+
+// Builds a full backup zip of the CURRENT in-memory state (same format
+// importBackupData() reads). Shared by the user-facing Backup & Export
+// action and the automatic pre-restore safety snapshot below, so both
+// stay byte-for-byte compatible with the one restore code path.
+async function buildBackupZipBlob() {
+    const manifest = {
+        fileSystem,
+        allNotes,
+        deptColors,
+        folderMeta,
+        exportedAt: new Date().toISOString(),
+        version: APP_VERSION,
+        format: 'docman-zip-v1'
+    };
+
+    manifest.fileMetadata = {};
+    for (const path in allFiles) {
+        if (allFiles[path]) {
+            manifest.fileMetadata[path] = allFiles[path].map(f => ({
+                name: f.name,
+                type: f.type,
+                uploadedAt: f.uploadedAt,
+                favourite: f.favourite || false,
+                locked: f.locked || false,
+                size: f.size || 0,
+                expiryDate: f.expiryDate || null,
+                note: f.note || '',
+                tags: f.tags || []
+            }));
+        }
+    }
+
+    const zip = new JSZip();
+    zip.file('manifest.json', JSON.stringify(manifest));
+    const filesFolder = zip.folder('files');
+
+    // Pull every file's actual content (lazy-loading blobs as needed) into the zip.
+    // Zip entry path mirrors folderPath/fileName so import can match it back to its folder.
+    for (const path in allFiles) {
+        for (const f of (allFiles[path] || [])) {
+            try {
+                const blob = await loadFileData(path, f.name);
+                if (blob) {
+                    filesFolder.file(path + '/' + f.name, blob);
+                } else {
+                    console.warn('No data found for', path, f.name, '— skipping content, metadata only');
+                }
+            } catch (e) {
+                console.warn('Failed to read file for backup:', path, f.name, e);
+            }
+        }
+    }
+
+    return zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+}
+
+async function doExportBackupDataEncrypted(secret) {
     showToast('Preparing backup…');
     try {
-        const manifest = {
-            fileSystem,
-            allNotes,
-            deptColors,
-            folderMeta,
-            exportedAt: new Date().toISOString(),
-            version: APP_VERSION,
-            format: 'docman-zip-v1'
-        };
+        const zipBlob = await buildBackupZipBlob();
+        const encBlob = await encryptBackupBlob(zipBlob, secret);
+        const backupFileName = `docman-backup-${Date.now()}.dbak`;
 
-        manifest.fileMetadata = {};
-        for (const path in allFiles) {
-            if (allFiles[path]) {
-                manifest.fileMetadata[path] = allFiles[path].map(f => ({
-                    name: f.name,
-                    type: f.type,
-                    uploadedAt: f.uploadedAt,
-                    favourite: f.favourite || false,
-                    locked: f.locked || false,
-                    size: f.size || 0
-                }));
+        // Also saved directly into the phone's own Documents folder --
+        // visible in Files/My Files with no extra step. Android's share
+        // sheet (used below) only lists apps that register to RECEIVE
+        // shared content, and a local file manager like Samsung's My Files
+        // typically doesn't, so there was previously no way to get a copy
+        // onto the device itself without routing through a cloud app first.
+        let savedLocally = false;
+        try {
+            await writeBlobToFSChunked(encBlob, backupFileName, 'DOCUMENTS');
+            savedLocally = true;
+            // The write itself succeeded, but Android's MediaStore index
+            // (what Files/My Files actually queries to list "Documents")
+            // has no idea the file exists until something scans it --
+            // without this, it's on disk but invisible until the next
+            // full device media scan, sometimes hours later. Best-effort:
+            // the file is still genuinely saved even if this part fails.
+            try {
+                const Filesystem = getFilesystemPlugin();
+                const { uri } = await Filesystem.getUri({ path: backupFileName, directory: 'DOCUMENTS' });
+                const absPath = uri.startsWith('file://') ? decodeURIComponent(uri.slice('file://'.length)) : uri;
+                await window.Capacitor?.Plugins?.PdfNative?.scanFile({ path: absPath });
+            } catch (e) {
+                console.warn('Media scan trigger failed (file still saved):', e);
             }
+        } catch (e) {
+            console.warn('Could not save backup to Documents, share-only:', e);
         }
 
-        const zip = new JSZip();
-        zip.file('manifest.json', JSON.stringify(manifest));
-        const filesFolder = zip.folder('files');
-
-        // Pull every file's actual content (lazy-loading blobs as needed) into the zip.
-        // Zip entry path mirrors folderPath/fileName so import can match it back to its folder.
-        for (const path in allFiles) {
-            for (const f of (allFiles[path] || [])) {
-                try {
-                    const blob = await loadFileData(path, f.name);
-                    if (blob) {
-                        filesFolder.file(path + '/' + f.name, blob);
-                    } else {
-                        console.warn('No data found for', path, f.name, '— skipping content, metadata only');
-                    }
-                } catch (e) {
-                    console.warn('Failed to read file for backup:', path, f.name, e);
-                }
-            }
-        }
-
-        const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-        const backupFileName = `docman-backup-${Date.now()}.zip`;
-        await nativeDownload(zipBlob, backupFileName);
-        showToast('Backup exported');
+        await nativeDownload(encBlob, backupFileName);
+        showToast(savedLocally ? 'Encrypted backup saved to Documents' : 'Encrypted backup exported');
     } catch (err) {
         console.error('Backup export failed:', err);
         showToast('Could not export backup', true);
     }
 }
 
+// ============================================================
+// SAFETY SNAPSHOTS — automatic backup taken right before a restore
+// commits, so a wrong/mistaken ZIP import (a real risk: restore
+// replaces ALL data with no other undo, not even the Recycle Bin) has
+// a way back. Written silently to the app's own native storage (no
+// share sheet, no user action) and pruned to the most recent few.
+// ============================================================
+
+const SAFETY_SNAPSHOT_DIR = 'safety_snapshots';
+const SAFETY_SNAPSHOT_KEEP = 3;
+
+// Writes `blob` to native storage in bounded chunks -- same OOM-safety
+// reasoning as writeFileToFS/nativeDownload (see their comments): a
+// single whole-file base64 write can throw OutOfMemoryError on the
+// Capacitor JS<->native bridge for a large backup.
+async function writeBlobToFSChunked(blob, path, directory) {
+    const Filesystem = getFilesystemPlugin();
+    const CHUNK_BYTES = 4 * 1024 * 1024;
+    let offset = 0;
+    let first = true;
+    while (offset < blob.size) {
+        const chunk = blob.slice(offset, offset + CHUNK_BYTES);
+        const base64 = await blobChunkToBase64(chunk);
+        await Filesystem.writeFile({ path, data: base64, directory, recursive: true, append: !first });
+        first = false;
+        offset += CHUNK_BYTES;
+    }
+    if (blob.size === 0) {
+        await Filesystem.writeFile({ path, data: '', directory, recursive: true });
+    }
+}
+
+// Returns { ok: true } on success or { ok: false, error } — callers
+// must treat a failed snapshot as a reason to ABORT the restore rather
+// than proceed without a safety net.
+async function writeSafetySnapshot() {
+    const Filesystem = getFilesystemPlugin();
+    if (!Filesystem) return { ok: false, error: new Error('Filesystem plugin unavailable') };
+    try {
+        const zipBlob = await buildBackupZipBlob();
+        const path = `${SAFETY_SNAPSHOT_DIR}/pre-restore-${Date.now()}.zip`;
+        await writeBlobToFSChunked(zipBlob, path, 'DATA');
+
+        // Prune to the most recent SAFETY_SNAPSHOT_KEEP — best-effort,
+        // never blocks the restore that's about to happen.
+        try {
+            const listing = await Filesystem.readdir({ path: SAFETY_SNAPSHOT_DIR, directory: 'DATA' });
+            const files = (listing.files || [])
+                .map(f => (typeof f === 'string' ? f : f.name))
+                .filter(name => name && name.endsWith('.zip'))
+                .sort();
+            const toDelete = files.slice(0, Math.max(0, files.length - SAFETY_SNAPSHOT_KEEP));
+            for (const name of toDelete) {
+                try { await Filesystem.deleteFile({ path: `${SAFETY_SNAPSHOT_DIR}/${name}`, directory: 'DATA' }); } catch (e) { /* best effort */ }
+            }
+        } catch (e) {
+            console.warn('Safety snapshot prune failed (non-fatal):', e);
+        }
+
+        return { ok: true };
+    } catch (e) {
+        console.error('Safety snapshot write failed:', e);
+        return { ok: false, error: e };
+    }
+}
+
+// Lists existing snapshots, newest first, as { name, path, whenLabel }.
+async function listSafetySnapshots() {
+    const Filesystem = getFilesystemPlugin();
+    if (!Filesystem) return [];
+    try {
+        const listing = await Filesystem.readdir({ path: SAFETY_SNAPSHOT_DIR, directory: 'DATA' });
+        const names = (listing.files || [])
+            .map(f => (typeof f === 'string' ? f : f.name))
+            .filter(name => name && name.endsWith('.zip'))
+            .sort()
+            .reverse();
+        return names.map(name => {
+            const m = name.match(/pre-restore-(\d+)\.zip/);
+            const ts = m ? parseInt(m[1], 10) : null;
+            return {
+                name,
+                path: `${SAFETY_SNAPSHOT_DIR}/${name}`,
+                whenLabel: ts ? new Date(ts).toLocaleString() : name
+            };
+        });
+    } catch (e) {
+        return [];
+    }
+}
+
+function showSafetySnapshotsModal() {
+    const existing = document.getElementById('safetySnapshotsModal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'safetySnapshotsModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
+    overlay.innerHTML = `
+        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(167,139,250,0.35);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <button id="snapModalCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
+            <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:6px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;">Safety Snapshots</p>
+            <p style="color:#94a3b8;font-size:0.8rem;margin-bottom:16px;font-family:Inter,sans-serif;line-height:1.4;">Auto-saved right before each restore. Restoring one replaces your current data, same as any backup import.</p>
+            <div id="snapList"><p style="color:#94a3b8;font-family:Inter,sans-serif;font-size:0.85rem;">Loading…</p></div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#snapModalCloseX').onclick = close;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    listSafetySnapshots().then(snaps => {
+        const listEl = overlay.querySelector('#snapList');
+        if (!snaps.length) {
+            listEl.innerHTML = `<p style="color:#94a3b8;font-family:Inter,sans-serif;font-size:0.85rem;">No safety snapshots yet — one is saved automatically before your next restore.</p>`;
+            return;
+        }
+        listEl.innerHTML = snaps.map(s => `
+            <div class="snap-row" data-path="${escapeHtml(s.path)}" style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.06);margin-bottom:8px;color:#ffffff;font-family:Inter,sans-serif;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-clock-rotate-left" style="color:#a78bfa;"></i>
+                <span>${escapeHtml(s.whenLabel)}</span>
+            </div>`).join('');
+        listEl.querySelectorAll('.snap-row').forEach(row => {
+            row.addEventListener('click', async () => {
+                const path = row.dataset.path;
+                close();
+                try {
+                    const blob = await readBlobFromFS(path);
+                    if (!blob) { showToast('Could not read that snapshot', true); return; }
+                    importBackupData(blob);
+                } catch (e) {
+                    console.error('Failed to load safety snapshot:', e);
+                    showToast('Could not read that snapshot', true);
+                }
+            });
+        });
+    });
+}
+
 function importBackupData(file) {
     (async () => {
         try {
-            const zip = await JSZip.loadAsync(file);
+            // Encrypted user-exported backups need the password/recovery
+            // key before anything else can happen. Internal Safety
+            // Snapshots (see writeSafetySnapshot()) are deliberately never
+            // encrypted -- no magic header, so they fall straight through
+            // to JSZip below exactly as before, with no prompt.
+            let zipSource = file;
+            if (await isEncryptedBackup(file)) {
+                const secret = await new Promise(resolve => {
+                    showPasswordPromptModal('Enter the password or recovery key for this backup:', resolve);
+                });
+                if (secret === null) return;
+                const trimmed = secret.trim();
+                let decrypted = null;
+                try {
+                    decrypted = await decryptBackupBlob(file, trimmed);
+                } catch (e) {
+                    // First attempt used exactly what was typed (correct
+                    // for a real password). Retry once assuming it was a
+                    // recovery key typed with its display dashes/casing.
+                    try {
+                        decrypted = await decryptBackupBlob(file, normalizeRecoveryKeyGuess(trimmed));
+                    } catch (e2) {
+                        showToast('Incorrect password or recovery key', true);
+                        return;
+                    }
+                }
+                zipSource = decrypted;
+            }
+
+            const zip = await JSZip.loadAsync(zipSource);
             const manifestEntry = zip.file('manifest.json');
             if (!manifestEntry) { showToast('Invalid backup file', true); return; }
 
             const manifest = JSON.parse(await manifestEntry.async('string'));
-            if (!manifest.fileSystem) { showToast('Invalid backup file', true); return; }
+            if (!manifest.fileSystem || typeof manifest.fileSystem !== 'object' || Array.isArray(manifest.fileSystem)) {
+                showToast('Invalid backup file', true); return;
+            }
+
+            // Zip-bomb / oversized-import protection -- reject BEFORE the
+            // confirm dialog (and before reading a single file's bytes out
+            // of the zip) rather than discovering the problem partway
+            // through restore. Limits are generous enough that no
+            // legitimate DOCMAN-exported backup should ever hit them.
+            const IMPORT_MAX_FILES = 20000;
+            const IMPORT_MAX_TOTAL_BYTES = 5 * 1024 * 1024 * 1024;
+            const IMPORT_MAX_SINGLE_FILE_BYTES = 500 * 1024 * 1024;
+            let declaredFileCount = 0, declaredTotalBytes = 0;
+            const fileMetaIsObject = manifest.fileMetadata && typeof manifest.fileMetadata === 'object' && !Array.isArray(manifest.fileMetadata);
+            if (fileMetaIsObject) {
+                for (const path in manifest.fileMetadata) {
+                    const list = manifest.fileMetadata[path];
+                    if (!Array.isArray(list)) continue;
+                    for (const f of list) {
+                        declaredFileCount++;
+                        declaredTotalBytes += (f && typeof f.size === 'number' && f.size > 0) ? f.size : 0;
+                    }
+                }
+            }
+            if (declaredFileCount > IMPORT_MAX_FILES) {
+                showToast('Backup contains too many files (' + declaredFileCount + ') to import safely', true);
+                return;
+            }
+            if (declaredTotalBytes > IMPORT_MAX_TOTAL_BYTES) {
+                showToast('Backup is too large to import safely', true);
+                return;
+            }
 
             showConfirmModal('This will <b>replace all current data</b> (including the Recycle Bin) with the backup. Continue?', async (ok) => {
                 if (!ok) return;
+
+                showToast('Saving safety snapshot…');
+                const snapshotResult = await writeSafetySnapshot();
+                if (!snapshotResult.ok) {
+                    console.error('Aborting restore: safety snapshot failed', snapshotResult.error);
+                    showToast('Could not save a safety snapshot, so the restore was cancelled to avoid unrecoverable data loss. Try again, or free up storage space.', true);
+                    return;
+                }
 
                 showToast('Restoring backup…');
 
@@ -8051,40 +9398,87 @@ function importBackupData(file) {
                     }
                 }
 
-                const stagedFileSystem = manifest.fileSystem || {};
-                const stagedNotes = manifest.allNotes || {};
-                const stagedDeptColors = manifest.deptColors || {};
-                const stagedFolderMeta = manifest.folderMeta || {};
+                // Every folder/file name coming out of the manifest is
+                // untrusted (a crafted or corrupted zip, not necessarily
+                // one DOCMAN itself produced) -- run every key through the
+                // same sanitizePathSegment-based helpers the rest of the
+                // app already uses for user-typed names, so a '../' or a
+                // raw path separator can never end up embedded as a
+                // literal fileSystem/notes/folderMeta key. Deterministic
+                // per segment (see sanitizeFolderPathKey/sanitizeFileSystemTree's
+                // own comments), so the same raw path sanitizes to the same
+                // key everywhere it's used below, keeping fileSystem/
+                // allNotes/folderMeta/allFiles cross-linked correctly.
+                const stagedFileSystem = sanitizeFileSystemTree(manifest.fileSystem);
+                const stagedNotes = {};
+                if (manifest.allNotes && typeof manifest.allNotes === 'object' && !Array.isArray(manifest.allNotes)) {
+                    for (const path in manifest.allNotes) {
+                        if (Array.isArray(manifest.allNotes[path])) stagedNotes[sanitizeFolderPathKey(path)] = manifest.allNotes[path];
+                    }
+                }
+                const stagedDeptColors = {};
+                if (manifest.deptColors && typeof manifest.deptColors === 'object' && !Array.isArray(manifest.deptColors)) {
+                    for (const dept in manifest.deptColors) {
+                        stagedDeptColors[sanitizePathSegment(dept)] = manifest.deptColors[dept];
+                    }
+                }
+                const stagedFolderMeta = {};
+                if (manifest.folderMeta && typeof manifest.folderMeta === 'object' && !Array.isArray(manifest.folderMeta)) {
+                    for (const path in manifest.folderMeta) {
+                        stagedFolderMeta[sanitizeFolderPathKey(path)] = manifest.folderMeta[path];
+                    }
+                }
                 const stagedFiles = {};
 
+                const IMPORT_MAX_SINGLE_FILE_BYTES = 500 * 1024 * 1024;
                 let readFailures = 0;
-                if (manifest.fileMetadata) {
+                if (fileMetaIsObject) {
                     for (const path in manifest.fileMetadata) {
-                        if (!manifest.fileMetadata[path]) continue;
-                        stagedFiles[path] = [];
-                        for (const f of manifest.fileMetadata[path]) {
-                            const zipEntry = zip.file('files/' + path + '/' + f.name);
+                        const list = manifest.fileMetadata[path];
+                        if (!Array.isArray(list)) continue;
+                        const safePath = sanitizeFolderPathKey(path);
+                        if (!stagedFiles[safePath]) stagedFiles[safePath] = [];
+                        for (const f of list) {
+                            if (!f || typeof f.name !== 'string') { readFailures++; continue; }
                             let fileData = null;
-                            if (zipEntry) {
-                                try {
-                                    fileData = await zipEntry.async('blob');
-                                } catch (e) {
-                                    console.warn('Failed to read file from backup:', path, f.name, e);
+                            if (typeof f.size === 'number' && f.size > IMPORT_MAX_SINGLE_FILE_BYTES) {
+                                // Oversized single entry -- skip reading its
+                                // bytes (the expensive/risky part) but still
+                                // keep the metadata row so the restore
+                                // surfaces it as a readable failure instead
+                                // of silently vanishing.
+                                console.warn('Skipping oversized file in backup:', path, f.name, f.size);
+                                readFailures++;
+                            } else {
+                                // Zip entry lookup uses the RAW (pre-sanitize)
+                                // path/name -- that's how the zip was actually
+                                // packed on export; only the STAGED in-memory
+                                // key/name below need to be the sanitized ones.
+                                const zipEntry = zip.file('files/' + path + '/' + f.name);
+                                if (zipEntry) {
+                                    try {
+                                        fileData = await zipEntry.async('blob');
+                                    } catch (e) {
+                                        console.warn('Failed to read file from backup:', path, f.name, e);
+                                        readFailures++;
+                                    }
+                                } else {
+                                    // Metadata references a file the zip doesn't actually
+                                    // contain -- surface this rather than silently
+                                    // restoring a phantom entry with no content.
                                     readFailures++;
                                 }
-                            } else {
-                                // Metadata references a file the zip doesn't actually
-                                // contain -- surface this rather than silently
-                                // restoring a phantom entry with no content.
-                                readFailures++;
                             }
-                            stagedFiles[path].push({
-                                name: f.name,
+                            stagedFiles[safePath].push({
+                                name: sanitizePathSegment(f.name),
                                 type: f.type || 'application/octet-stream',
                                 uploadedAt: f.uploadedAt || Date.now(),
                                 favourite: f.favourite || false,
                                 locked: f.locked || false,
                                 size: f.size || (fileData ? fileData.size : 0),
+                                expiryDate: f.expiryDate || null,
+                                note: f.note || '',
+                                tags: f.tags || [],
                                 fileData: fileData,
                                 _hasData: !!fileData,
                                 _isBase64: false
@@ -8139,9 +9533,9 @@ function importBackupData(file) {
                         true
                     );
                 } else {
-                    showToast('Data imported successfully');
+                    showToast('Data imported successfully. Previous data saved under Settings → Safety Snapshots.');
                 }
-            });
+            }, { okLabel: 'Restore & Replace', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
         } catch (err) {
             console.error('Backup import failed:', err);
             showToast('Failed to read backup: ' + err.message, true);
@@ -8264,7 +9658,7 @@ async function doEraseAllData() {
 }
 
 function clearAllAppData() {
-    const hasPin = !!localStorage.getItem(PIN_KEY);
+    const hasPin = hasPinStored();
     if (hasPin) {
         showPinVerifyModal('Erase All Data', (verified) => {
             if (!verified) return;
@@ -8278,7 +9672,7 @@ function clearAllAppData() {
             if (val === null) return;
             const pin = val.trim();
             if (!/^\d{4}$/.test(pin)) { showToast('PIN must be exactly 4 digits', true); return; }
-            localStorage.setItem(PIN_KEY, await hashPin(pin));
+            await setPin(pin);
             showToast('PIN saved. Enter it again to confirm erase.');
             showPinVerifyModal('Confirm Erase All Data', (verified) => {
                 if (!verified) return;
@@ -8629,20 +10023,20 @@ function initSettingsPage() {
 
     const thresholdVal = document.getElementById('pdfThresholdVal');
     thresholdVal.textContent = docmanSettings.pdfThreshold;
-    document.getElementById('pdfThresholdDown').onclick = () => {
+    bindHoldToRepeat(document.getElementById('pdfThresholdDown'), () => {
         if (docmanSettings.pdfThreshold > 1) {
             docmanSettings.pdfThreshold--;
             thresholdVal.textContent = docmanSettings.pdfThreshold;
             saveSettings();
         }
-    };
-    document.getElementById('pdfThresholdUp').onclick = () => {
+    });
+    bindHoldToRepeat(document.getElementById('pdfThresholdUp'), () => {
         if (docmanSettings.pdfThreshold < 500) {
             docmanSettings.pdfThreshold++;
             thresholdVal.textContent = docmanSettings.pdfThreshold;
             saveSettings();
         }
-    };
+    });
 
     // Favorites & Recents
     const showRecentsToggle = document.getElementById('showRecentsToggle');
@@ -8667,20 +10061,20 @@ function initSettingsPage() {
 
     const recentsLimitVal = document.getElementById('recentsLimitVal');
     recentsLimitVal.textContent = docmanSettings.recentsLimit;
-    document.getElementById('recentsLimitDown').onclick = () => {
+    bindHoldToRepeat(document.getElementById('recentsLimitDown'), () => {
         if (docmanSettings.recentsLimit > 5) {
             docmanSettings.recentsLimit -= 5;
             recentsLimitVal.textContent = docmanSettings.recentsLimit;
             saveSettings();
         }
-    };
-    document.getElementById('recentsLimitUp').onclick = () => {
+    });
+    bindHoldToRepeat(document.getElementById('recentsLimitUp'), () => {
         if (docmanSettings.recentsLimit < 100) {
             docmanSettings.recentsLimit += 5;
             recentsLimitVal.textContent = docmanSettings.recentsLimit;
             saveSettings();
         }
-    };
+    });
 
     document.getElementById('clearRecentsBtn').onclick = () => {
         showConfirmModal('Clear your recent documents history?', (ok) => {
@@ -8688,7 +10082,7 @@ function initSettingsPage() {
             saveActivityLog([]);
             renderFavoritesPanel();
             showToast('Recents cleared');
-        });
+        }, { okLabel: 'Clear', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
     };
 
     // Search Settings
@@ -8718,18 +10112,33 @@ function initSettingsPage() {
             if (!ok) return;
             localStorage.removeItem(SEARCH_HISTORY_KEY);
             showToast('Search history cleared');
-        });
+        }, { okLabel: 'Clear', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
     };
 
     // Security
     const appLockToggle = document.getElementById('appLockToggle');
     appLockToggle.onchange = () => {
-        if (appLockToggle.checked && !localStorage.getItem(PIN_KEY)) {
+        if (appLockToggle.checked && !hasPinStored()) {
             promptSetPin((success) => {
                 if (success) {
                     docmanSettings.appLock = true;
                     saveSettings();
                 } else {
+                    appLockToggle.checked = false;
+                }
+                updatePinStatusUI();
+            });
+        } else if (!appLockToggle.checked && hasPinStored()) {
+            // Turning App Lock OFF must prove the person doing it is the
+            // owner -- otherwise anyone holding an already-unlocked phone
+            // (picked up mid-session, borrowed, glanced-at-and-grabbed)
+            // could walk into Settings and silently strip protection for
+            // every future lock/unlock cycle without ever entering a PIN.
+            appLockToggle.checked = true; // hold the switch on until verified
+            showPinVerifyModal('Confirm PIN to turn off App Lock', (ok) => {
+                if (ok) {
+                    docmanSettings.appLock = false;
+                    saveSettings();
                     appLockToggle.checked = false;
                 }
                 updatePinStatusUI();
@@ -8740,7 +10149,19 @@ function initSettingsPage() {
             updatePinStatusUI();
         }
     };
-    document.getElementById('changePinBtn').onclick = () => promptSetPin(() => {});
+    document.getElementById('changePinBtn').onclick = () => {
+        // Same reasoning as turning App Lock off: changing the PIN is
+        // itself a way to defeat App Lock (set a new one, unlock with
+        // that instead) -- so it must require the CURRENT PIN first,
+        // not just require that a PIN exists.
+        if (hasPinStored()) {
+            showPinVerifyModal('Confirm current PIN to change it', (ok) => {
+                if (ok) promptSetPin(() => {});
+            });
+        } else {
+            promptSetPin(() => {});
+        }
+    };
 
     const biometricToggleEl = document.getElementById('biometricToggle');
     if (biometricToggleEl) {
@@ -8786,6 +10207,7 @@ function initSettingsPage() {
 
     // Storage
     document.getElementById('exportDataBtn').onclick = exportBackupData;
+    document.getElementById('safetySnapshotsBtn').onclick = showSafetySnapshotsModal;
     document.getElementById('clearAllDataBtn').onclick = clearAllAppData;
     document.getElementById('viewStorageDetailsBtn').onclick = () => {
         showSettingsScreen('settingsPanel-storageDetail');
@@ -8814,6 +10236,11 @@ function initSettingsPage() {
     // market:// gets routed to the Play Store app itself.
     document.getElementById('checkUpdatesBtn').onclick = () => {
         window.open('market://details?id=com.oarcel.docman', '_system');
+    };
+
+    const privacyPolicyBtn = document.getElementById('privacyPolicyBtn');
+    if (privacyPolicyBtn) privacyPolicyBtn.onclick = () => {
+        window.open(PRIVACY_POLICY_URL, '_system');
     };
 
     applyTheme(docmanSettings.theme || 'dark');
@@ -8887,6 +10314,7 @@ function attachPressEffects() {
         '.rename-file-btn', '.delete-file-btn', '.rename-note-btn',
         '.delete-note-btn', '.clear-search', '.modal-close',
         '.modal-footer button', '.breadcrumb-item', '.card', '.dept-oval',
+        '.card-note-btn', '.card-tag-btn',
         '#closeImageViewer', '#closeDocViewer', '#shareDocViewerBtn',
         '#closeSheetViewer', '#shareSheetViewerBtn', '.doc-viewer-sheet-tab'
     ];
@@ -9469,6 +10897,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     await enforceAppLockGate();
+    syncAppLockGateToNative();
 
     // Inject version
     const vEls = ['aboutVersionBadge', 'aboutVersionRow', 'deptInfoVersion'];
@@ -9563,6 +10992,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const v = parseInt(e.target.value, 10);
             imgEditor[p.prop] = v;
             if (valEl) valEl.textContent = imgFormatSliderValue(p, v);
+            imgUpdateSliderFill(el);
             imgEditorRender();
             imgEditorUpdateHistoryButtons();
         });
@@ -9704,6 +11134,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     document.getElementById('clearSearchBtn').addEventListener('click', clearSearch);
     document.getElementById('homeBtn').addEventListener('click', goHome);
+    const appLogoBtn = document.getElementById('appLogoBtn');
+    if (appLogoBtn) appLogoBtn.addEventListener('click', showExpiringDocumentsPanel);
     document.getElementById('uploadBtn').addEventListener('click', showUploadOptions);
 
     const sortBtnEl = document.getElementById('sortBtn');
@@ -9893,7 +11325,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.addEventListener('touchstart', function(e) {
-        if (e.target.tagName === 'IMG' || e.target.classList.contains('logo-tray-icon') ||
+        if (e.target.tagName === 'IMG' ||
             e.target.classList.contains('header-gear-icon') || e.target.classList.contains('home-icon-img')) {
             e.preventDefault();
         }

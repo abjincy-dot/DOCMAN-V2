@@ -20,7 +20,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/inter/inter.css">
-<link rel="stylesheet" href="style.css?v=185">
+<link rel="stylesheet" href="vendor/sacramento/sacramento.css">
+<link rel="stylesheet" href="style.css?v=219">
 
 </head>
 <body>
@@ -360,11 +361,11 @@ border: 1px solid rgba(255,255,255,0.2);
 <div class="app">
   <div class="top-panel">
   <header class="header">
-<div class="logo"><div class="logo-inner"><div class="logo-tray-icon"></div></div></div>
+<div class="logo" id="appLogoBtn" role="button" tabindex="0" aria-label="Expiring documents"><div class="logo-inner"><div class="logo-tray-icon"></div></div></div>
 
     <div class="header-title">
       <h1><span class="logo-doc">DOC</span><span class="logo-man">MAN</span></h1>
-      <span class="doc-tag"><i class="fas fa-shield-alt"></i> Document Manager</span>
+      <span class="doc-tag">Document Manager</span>
     </div>
     <div class="header-dots"></div>
     <button id="settingsBtn" class="header-gear-btn" aria-label="Settings">
@@ -451,46 +452,54 @@ border: 1px solid rgba(255,255,255,0.2);
 
   <!-- Favourites View -->
   <div id="favouritesView" class="favourites-view hidden">
-    <div class="fav-view-header">
-    <button class="fav-view-back" id="favViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
-      <div class="fav-view-title"><i class="fas fa-heart"></i> Favourites</div>
+    <div class="fav-view-card">
+      <div class="fav-view-header">
+        <button class="fav-view-back" id="favViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+        <div class="fav-view-title"><i class="fas fa-heart"></i> Favourites</div>
+      </div>
+      <div id="favViewList" class="fav-view-list"></div>
     </div>
-    <div id="favViewList" class="fav-view-list"></div>
   </div>
 
   <!-- Recent Documents View -->
   <div id="recentsView" class="favourites-view hidden">
-    <div class="fav-view-header">
-      <button class="fav-view-back" id="recentsViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
-      <div class="fav-view-title"><i class="fas fa-clock-rotate-left"></i> Recent</div>
+    <div class="fav-view-card">
+      <div class="fav-view-header">
+        <button class="fav-view-back" id="recentsViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+        <div class="fav-view-title"><i class="fas fa-clock-rotate-left"></i> Recent</div>
+      </div>
+      <div class="subtab-row" id="recentsSubtabRow">
+        <button class="subtab-btn active" data-recents-tab="continue">Continue Reading</button>
+        <button class="subtab-btn" data-recents-tab="opened">Opened</button>
+        <button class="subtab-btn" data-recents-tab="added">Added</button>
+        <button class="subtab-btn" data-recents-tab="modified">Modified</button>
+      </div>
+      <div id="recentsViewList" class="fav-view-list"></div>
     </div>
-    <div class="subtab-row" id="recentsSubtabRow">
-      <button class="subtab-btn active" data-recents-tab="continue">Continue Reading</button>
-      <button class="subtab-btn" data-recents-tab="opened">Opened</button>
-      <button class="subtab-btn" data-recents-tab="added">Added</button>
-      <button class="subtab-btn" data-recents-tab="modified">Modified</button>
-    </div>
-    <div id="recentsViewList" class="fav-view-list"></div>
   </div>
 
   <!-- Storage Dashboard View -->
   <div id="dashboardView" class="favourites-view hidden">
-    <div class="fav-view-header">
-      <button class="fav-view-back" id="dashboardViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
-      <div class="fav-view-title"><i class="fas fa-chart-pie"></i> Storage Dashboard</div>
+    <div class="fav-view-card">
+      <div class="fav-view-header">
+        <button class="fav-view-back" id="dashboardViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+        <div class="fav-view-title"><i class="fas fa-chart-pie"></i> Storage Dashboard</div>
+      </div>
+      <div id="dashboardViewBody" class="fav-view-list dashboard-body"></div>
     </div>
-    <div id="dashboardViewBody" class="fav-view-list dashboard-body"></div>
   </div>
 
   <!-- Recycle Bin View -->
   <div id="recycleBinView" class="favourites-view hidden">
-    <div class="fav-view-header">
-      <button class="fav-view-back" id="recycleBinViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
-      <div class="fav-view-title"><i class="fas fa-trash-can"></i> Recycle Bin</div>
-      <button id="emptyRecycleBinBtn" class="recycle-empty-btn" title="Empty Recycle Bin" aria-label="Empty Recycle Bin"><i class="fas fa-broom"></i></button>
+    <div class="fav-view-card">
+      <div class="fav-view-header">
+        <button class="fav-view-back" id="recycleBinViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+        <div class="fav-view-title"><i class="fas fa-trash-can"></i> Recycle Bin</div>
+        <button id="emptyRecycleBinBtn" class="recycle-empty-btn" title="Empty Recycle Bin" aria-label="Empty Recycle Bin"><i class="fas fa-broom"></i></button>
+      </div>
+      <div class="recycle-bin-note"><i class="fas fa-circle-info"></i> Items are kept for 30 days, then removed automatically.</div>
+      <div id="recycleBinViewList" class="fav-view-list"></div>
     </div>
-    <div class="recycle-bin-note"><i class="fas fa-circle-info"></i> Items are kept for 30 days, then removed automatically.</div>
-    <div id="recycleBinViewList" class="fav-view-list"></div>
   </div>
 
 
@@ -527,8 +536,8 @@ border: 1px solid rgba(255,255,255,0.2);
 
 <div id="imageViewer" class="image-viewer hidden">
   <div class="image-viewer-header">
-    <button id="closeImageViewer" class="neon-icon-btn" aria-label="Close"><img src="Images/close-neon-icon.png" alt="Close"></button>
-    <button id="openImageEditorBtn" class="neon-icon-btn" aria-label="Edit"><img src="Images/edit-neon-icon.png" alt="Edit"></button>
+    <button id="closeImageViewer" class="viewer-ring-btn viewer-ring-btn-close viewer-ring-btn-pill" aria-label="Close"><i class="fas fa-xmark"></i><span>Close</span></button>
+    <button id="openImageEditorBtn" class="viewer-ring-btn viewer-ring-btn-edit viewer-ring-btn-pill" aria-label="Edit"><i class="fas fa-pen"></i><span>Edit</span></button>
   </div>
   <div class="image-viewer-body">
     <img id="viewerImage" src="" alt="">
@@ -574,51 +583,61 @@ border: 1px solid rgba(255,255,255,0.2);
 
   <div class="img-editor-panel img-editor-panel-scroll" id="imgEditorSliderPanel">
     <div class="img-editor-slider-row">
+      <i class="fas fa-sun img-slider-icon"></i>
       <label>Brightness</label>
       <input type="range" id="imgSliderBrightness" min="-100" max="100" value="0">
       <span class="img-slider-value" id="imgSliderBrightnessVal">0</span>
     </div>
     <div class="img-editor-slider-row">
+      <i class="fas fa-circle-half-stroke img-slider-icon"></i>
       <label>Contrast</label>
       <input type="range" id="imgSliderContrast" min="-100" max="100" value="0">
       <span class="img-slider-value" id="imgSliderContrastVal">0</span>
     </div>
     <div class="img-editor-slider-row">
+      <i class="fas fa-aperture img-slider-icon"></i>
       <label>Exposure</label>
       <input type="range" id="imgSliderExposure" min="-100" max="100" value="0">
       <span class="img-slider-value" id="imgSliderExposureVal">0</span>
     </div>
     <div class="img-editor-slider-row">
+      <i class="fas fa-droplet img-slider-icon"></i>
       <label>Saturation</label>
       <input type="range" id="imgSliderSaturation" min="-100" max="100" value="0">
       <span class="img-slider-value" id="imgSliderSaturationVal">0</span>
     </div>
     <div class="img-editor-slider-row">
+      <i class="fas fa-palette img-slider-icon"></i>
       <label>Hue</label>
       <input type="range" id="imgSliderHue" min="0" max="360" value="0">
       <span class="img-slider-value" id="imgSliderHueVal">0</span>
     </div>
     <div class="img-editor-slider-row">
+      <i class="fas fa-water img-slider-icon"></i>
       <label>Blur</label>
       <input type="range" id="imgSliderBlur" min="0" max="20" value="0">
       <span class="img-slider-value" id="imgSliderBlurVal">0</span>
     </div>
     <div class="img-editor-slider-row">
+      <i class="fas fa-swatchbook img-slider-icon"></i>
       <label>Sepia</label>
       <input type="range" id="imgSliderSepia" min="0" max="100" value="0">
       <span class="img-slider-value" id="imgSliderSepiaVal">0</span>
     </div>
     <div class="img-editor-slider-row">
+      <i class="fas fa-square img-slider-icon"></i>
       <label>Opacity</label>
       <input type="range" id="imgSliderOpacity" min="0" max="100" value="100">
       <span class="img-slider-value" id="imgSliderOpacityVal">100</span>
     </div>
     <div class="img-editor-slider-row">
+      <i class="fas fa-yin-yang img-slider-icon"></i>
       <label>Invert</label>
       <input type="range" id="imgSliderInvert" min="0" max="100" value="0">
       <span class="img-slider-value" id="imgSliderInvertVal">0</span>
     </div>
     <div class="img-editor-slider-row">
+      <i class="fas fa-bolt img-slider-icon"></i>
       <label>Sharpen</label>
       <input type="range" id="imgSliderSharpen" min="0" max="100" value="0">
       <span class="img-slider-value" id="imgSliderSharpenVal">0</span>
@@ -726,7 +745,7 @@ border: 1px solid rgba(255,255,255,0.2);
 
 <div id="docViewer" class="doc-viewer hidden">
   <div class="doc-viewer-header">
-    <button id="closeDocViewer" class="neon-icon-btn" aria-label="Close"><img src="Images/close-neon-icon.png" alt="Close"></button>
+    <button id="closeDocViewer" class="viewer-ring-btn viewer-ring-btn-close" aria-label="Close"><i class="fas fa-xmark"></i></button>
     <div class="doc-viewer-title" id="docViewerTitle"></div>
     <div class="doc-viewer-actions">
       <button id="textZoomOutBtn" class="doc-viewer-action-btn hidden" title="Zoom out" aria-label="Zoom out"><i class="fas fa-magnifying-glass-minus"></i></button>
@@ -739,7 +758,7 @@ border: 1px solid rgba(255,255,255,0.2);
 
 <div id="sheetViewer" class="doc-viewer hidden">
   <div class="doc-viewer-header">
-    <button id="closeSheetViewer" class="neon-icon-btn" aria-label="Close"><img src="Images/close-neon-icon.png" alt="Close"></button>
+    <button id="closeSheetViewer" class="viewer-ring-btn viewer-ring-btn-close" aria-label="Close"><i class="fas fa-xmark"></i></button>
     <div class="doc-viewer-title" id="sheetViewerTitle"></div>
     <div class="doc-viewer-actions">
       <button id="shareSheetViewerBtn" class="doc-viewer-action-btn" title="Share / Export" aria-label="Share or export"><i class="fas fa-share-nodes"></i></button>
@@ -848,6 +867,11 @@ border: 1px solid rgba(255,255,255,0.2);
         <div class="settings-item-text"><span class="settings-item-title">Import Data</span><span class="settings-item-sub">Restore from a backup file</span></div>
         <i class="fas fa-chevron-right settings-item-arrow"></i>
       </button>
+      <button class="settings-action-row" id="safetySnapshotsBtn">
+        <div class="settings-item-icon settings-icon-search"><i class="fas fa-clock-rotate-left"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Safety Snapshots</span><span class="settings-item-sub">Auto-saved right before each restore — undo a wrong import</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
     </div>
     <div class="settings-group-title">Danger Zone</div>
     <div class="settings-card">
@@ -856,7 +880,7 @@ border: 1px solid rgba(255,255,255,0.2);
         <div class="settings-item-text"><span class="settings-item-title">Erase All Data</span><span class="settings-item-sub">Permanently delete everything in DOCMAN</span></div>
       </button>
     </div>
-    <input type="file" id="importFileInput" accept=".zip" class="input-hidden">
+    <input type="file" id="importFileInput" accept=".zip,.dbak,application/zip,application/octet-stream,*/*" class="input-hidden">
   </div>
 </div>
 
@@ -1132,7 +1156,7 @@ border: 1px solid rgba(255,255,255,0.2);
   </div>
   <div class="settings-panel-body">
     <div class="about-card">
-      <div class="about-icon"><i class="fas fa-folder-open"></i></div>
+      <div class="about-icon"><img src="Images/about.png" alt="DOCMAN" class="about-icon-img"></div>
       <div class="about-name">DOCMAN</div>
       <div class="about-tagline">Document Manager</div>
       <div class="about-version-badge">Version <span id="aboutVersionBadge">—</span></div>
@@ -1151,7 +1175,53 @@ border: 1px solid rgba(255,255,255,0.2);
         <div class="settings-item-text"><span class="settings-item-title">Check for Updates</span><span class="settings-item-sub">See if a new version is available</span></div>
       </button>
     </div>
+    <div class="settings-group-title">Legal</div>
+    <div class="settings-card">
+      <button class="settings-action-row" id="privacyPolicyBtn">
+        <div class="settings-item-icon settings-icon-security"><i class="fas fa-user-shield"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Privacy Policy</span><span class="settings-item-sub">What DOCMAN does and doesn't do with your data</span></div>
+      </button>
+      <button class="settings-item" data-panel="licenses">
+        <div class="settings-item-icon settings-icon-storage"><i class="fas fa-scale-balanced"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Open Source Licenses</span><span class="settings-item-sub">Third-party software used in DOCMAN</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+    </div>
     <div class="about-footer">DOCMAN · Offline-first Document Manager</div>
+  </div>
+</div>
+
+<!-- Open Source Licenses Panel -->
+<div id="settingsPanel-licenses" class="settings-screen">
+  <div class="settings-header">
+    <button class="settings-back-btn settings-panel-back" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+    <div class="settings-header-title"><h2>Open Source Licenses</h2><span>Third-party software used in DOCMAN</span></div>
+  </div>
+  <div class="settings-panel-body">
+    <div class="settings-group-title">Native (Android)</div>
+    <div class="settings-card">
+      <div class="about-info-row"><span>AndroidX / Jetpack libraries</span><b>Apache-2.0</b></div>
+      <div class="about-info-row"><span>Capacitor (native runtime)</span><b>MIT</b></div>
+      <div class="about-info-row"><span>android-pdf-viewer (pdfium fork)</span><b>Apache-2.0</b></div>
+      <div class="about-info-row"><span>PDFBox Android</span><b>Apache-2.0</b></div>
+      <div class="about-info-row about-info-row-last"><span>Google ML Kit (text recognition)</span><b>Proprietary — Google APIs Terms of Service, not open source</b></div>
+    </div>
+    <div class="settings-group-title">Web layer</div>
+    <div class="settings-card">
+      <div class="about-info-row"><span>Capacitor plugins (JS)</span><b>MIT</b></div>
+      <div class="about-info-row"><span>JSZip</span><b>MIT / GPLv3 (dual)</b></div>
+      <div class="about-info-row"><span>jsPDF</span><b>MIT</b></div>
+      <div class="about-info-row"><span>Mammoth.js</span><b>BSD-2-Clause</b></div>
+      <div class="about-info-row"><span>SheetJS (xlsx, Community Edition)</span><b>Apache-2.0</b></div>
+      <div class="about-info-row"><span>heic2any</span><b>MIT</b></div>
+      <div class="about-info-row about-info-row-last"><span>Font Awesome Free</span><b>Icons CC BY 4.0, fonts SIL OFL 1.1, code MIT</b></div>
+    </div>
+    <div class="settings-group-title">Fonts</div>
+    <div class="settings-card">
+      <div class="about-info-row"><span>Inter</span><b>SIL OFL 1.1</b></div>
+      <div class="about-info-row about-info-row-last"><span>Sacramento</span><b>SIL OFL 1.1</b></div>
+    </div>
+    <div class="about-footer">Copyright notices for each library belong to their respective authors.</div>
   </div>
 </div>
 
@@ -1235,12 +1305,22 @@ border: 1px solid rgba(255,255,255,0.2);
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">📄</div>
-    <div class="dept-info-help-text"><b>Viewing PDFs</b> — Tap any file to open it. Pinch to zoom, use the rotate button for landscape drawings, and the mark tool to circle a spot to point something out. If a PDF has a table of contents, a bookmarks button lets you jump between sections.</div>
+    <div class="dept-info-help-text"><b>Viewing &amp; Editing PDFs</b> — Tap any file to open it in DOCMAN's built-in reader. Pinch to zoom, rotate for landscape drawings, switch to Night Mode or two-page Spread view, and use the mark tool to circle a spot. Search inside the text, jump to a page via Bookmarks/Thumbnails, and pick up where you left off with Continue Reading. From the More menu you can select &amp; copy text, add a Highlight, drop in a Signature, fill out form fields, Redact sensitive areas, Crop a page, or Export a copy — all saved as a new file so your original is never touched. Password-protected PDFs prompt for the password automatically.</div>
   </div>
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">📝</div>
     <div class="dept-info-help-text"><b>Notes</b> — Switch to the Notes tab to write and save quick text notes inside any folder, alongside your files.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🔒</div>
+    <div class="dept-info-help-text"><b>Lock a File or Folder</b> — Long-press any file or folder and choose <b>Lock</b> to require your PIN before it opens — useful for sensitive documents inside a shared department.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🛡️</div>
+    <div class="dept-info-help-text"><b>App Lock &amp; Security</b> — Turn on App Lock in Settings to require your PIN (and optionally fingerprint or face unlock) every time DOCMAN opens or comes back from the background. Wrong PINs are rate-limited with a cooldown.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1259,8 +1339,13 @@ border: 1px solid rgba(255,255,255,0.2);
   </div>
 
   <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">💾</div>
+    <div class="dept-info-help-text"><b>Backup &amp; Restore</b> — In Settings, Backup &amp; Export saves everything to a single encrypted file, protected by a password you choose or a recovery key DOCMAN generates for you — save it somewhere safe, since it can't be recovered if lost. Import Data restores from one — since this replaces all current data, DOCMAN automatically saves a Safety Snapshot of what was there right before, viewable under Settings → Safety Snapshots, so a wrong import is never permanent.</div>
+  </div>
+
+  <div class="dept-info-help-row">
     <div class="dept-info-help-icon">⚙️</div>
-    <div class="dept-info-help-text"><b>Settings</b> — Tap the gear icon for backup &amp; restore and other app preferences.</div>
+    <div class="dept-info-help-text"><b>Settings</b> — Tap the gear icon for App Lock, PDF viewer preferences, backup &amp; restore, and other app preferences.</div>
   </div>
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">🕓</div>
@@ -1292,14 +1377,13 @@ border: 1px solid rgba(255,255,255,0.2);
 
 
 <div id="toast" class="toast hidden"><div class="toast-icon"><i class="fas fa-check-circle"></i></div><span></span></div>
-<div id="loadingOverlay" class="loading-overlay hidden"><div class="loading-spinner"><div class="spinner-ring"></div><div class="spinner-ring"></div><div class="spinner-ring"></div></div><p>Loading...</p></div>
 
 
 <script src="vendor/jszip/jszip.min.js"></script>
 <script src="vendor/mammoth/mammoth.browser.min.js"></script>
 <script src="vendor/xlsx/xlsx.full.min.js"></script>
 <script src="vendor/jspdf/jspdf.umd.min.js"></script>
-<script src="app.js?v=186"></script>
+<script src="app.js?v=202"></script>
 
 
 <script>

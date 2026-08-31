@@ -1,5 +1,4 @@
-const APP_VERSION = '1.0.9';
-const CACHE = 'docman-v147';
+const CACHE = 'docman-v181';
 // Small, critical-path files: install fails if any of these can't be cached
 // (they're tiny, so a failure here means something is actually wrong).
 // (EmbedPDF/PDFium WASM vendor assets removed — PDFs render via the native
@@ -20,6 +19,15 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  // Only http(s) requests are ever cacheable here -- chrome-extension:,
+  // capacitor:, content:, and anything else Cache.put() doesn't support
+  // would otherwise reach caches.open(CACHE).then(ca => ca.put(...)) below
+  // and throw there (unawaited, so a silent unhandled rejection rather
+  // than a crash, but still worth not doing). blob:/data: are covered by
+  // this too, but kept as their own explicit check below since the
+  // comment there explains a different, unrelated reason they must pass
+  // through untouched.
+  if (!e.request.url.startsWith('http')) return;
   // blob: (and data:) URLs are only resolvable in the context that created
   // them. Re-fetching a blob: URL from inside the service worker's own
   // context always fails, which used to fall through to the catch() below
