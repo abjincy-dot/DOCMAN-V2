@@ -1,0 +1,1447 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
+<title>DOCMAN | Document Manager</title>
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="DOCMAN">
+<meta name="theme-color" content="#0e0e0e">
+<!-- iOS Icons -->
+<link rel="apple-touch-icon" href="icons/icon-180x180.png">
+<link rel="apple-touch-icon" sizes="120x120" href="icons/icon-120x120.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152x152.png">
+<link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167x167.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180x180.png">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
+<link rel="stylesheet" href="vendor/inter/inter.css">
+<link rel="stylesheet" href="vendor/sacramento/sacramento.css">
+<link rel="stylesheet" href="style.css?v=237">
+
+</head>
+<body>
+
+
+<!-- SPLASH SCREEN -->
+
+<style>
+html, body { margin:0; padding:0; height:100%; background:#0e0e0e; font-family: 'Inter', sans-serif; }
+
+#splashScreen {
+position: fixed;
+inset: 0;
+background: linear-gradient(135deg, #0a1128 0%, #0f1535 50%, #0a1128 100%);
+z-index: 99999;
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+gap: 20px;
+perspective: 1500px;
+transform-style: preserve-3d;
+overflow: hidden;
+}
+
+#splashScreen::before {
+content: '';
+position: fixed;
+inset: 0;
+background: radial-gradient(circle at 50% 50%, rgba(99,102,241,0.25) 0%, transparent 50%);
+z-index: 0;
+pointer-events: none;
+animation: splashGradientShift 8s ease-in-out infinite;
+}
+
+#splashScreen::after {
+content: '';
+position: fixed;
+inset: 0;
+background: radial-gradient(circle at -20% 80%, rgba(139,92,246,0.2), transparent 60%),
+radial-gradient(circle at 120% 20%, rgba(6,182,212,0.15), transparent 60%);
+z-index: 0;
+pointer-events: none;
+animation: splashGradientShift2 10s ease-in-out infinite;
+}
+
+.splash-bg-layer {
+  position: absolute; inset: 0; overflow: hidden; z-index: 0;
+}
+.splash-orb {
+  position: absolute; border-radius: 50%;
+}
+.splash-orb-1 {
+  width: 300px; height: 300px;
+  background: radial-gradient(circle, rgba(99,102,241,0.3), transparent);
+  top: -10%; left: -5%;
+  animation: splashFloat1 6s ease-in-out infinite;
+}
+.splash-orb-2 {
+  width: 250px; height: 250px;
+  background: radial-gradient(circle, rgba(139,92,246,0.25), transparent);
+  bottom: 5%; right: -10%;
+  animation: splashFloat2 8s ease-in-out infinite;
+}
+@keyframes splashFloat1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(20px,-30px) scale(1.1); } }
+@keyframes splashFloat2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-30px,20px) scale(1.08); } }
+
+.splash-container {
+position: relative;
+z-index: 2;
+display: flex;
+flex-direction: column;
+align-items: center;
+gap: 28px;
+}
+
+.splash-icon-wrapper {
+position: relative;
+width: 160px;
+height: 160px;
+display: flex;
+align-items: center;
+justify-content: center;
+opacity: 0;
+transform: scale(0.85) translateY(8px);
+transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+.splash-icon-wrapper.show {
+opacity: 1;
+transform: scale(1) translateY(0);
+}
+
+.splash-icon {
+width: 140px;
+height: 140px;
+border-radius: 36px;
+background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%);
+background-size: 200% 200%;
+display: flex;
+align-items: center;
+justify-content: center;
+font-size: 72px;
+position: relative;
+filter: drop-shadow(0 30px 60px rgba(99,102,241,0.5));
+animation: splashIcon3D 6s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite,
+splashGradientAnim 4s ease-in-out infinite;
+transform-style: preserve-3d;
+will-change: transform;
+}
+
+.splash-icon::before {
+content: '';
+position: absolute;
+inset: 0;
+border-radius: 36px;
+background: linear-gradient(135deg,
+rgba(255,255,255,0.75) -20%,
+rgba(255,255,255,0.3) 30%,
+rgba(255,255,255,0.1) 50%,
+rgba(255,255,255,0) 100%);
+z-index: 2;
+pointer-events: none;
+animation: splashShineWave 2.5s ease-in-out infinite;
+}
+
+.splash-icon::after {
+content: '';
+position: absolute;
+inset: -8px;
+border-radius: 40px;
+border: 2px solid transparent;
+background: linear-gradient(135deg, rgba(99,102,241,0.6), rgba(139,92,246,0.6), rgba(6,182,212,0.6)) border-box;
+-webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+-webkit-mask-composite: xor;
+mask-composite: exclude;
+animation: splashRingRotate 3s linear infinite;
+z-index: 1;
+}
+
+.splash-icon > * {
+position: relative;
+z-index: 3;
+}
+
+.splash-icon img {
+width: 100%;
+height: 100%;
+border-radius: 36px;
+object-fit: cover;
+}
+
+.splash-title {
+font-family: 'Inter', sans-serif;
+font-size: 3rem;
+font-weight: 800;
+color: white;
+letter-spacing: 8px;
+position: relative;
+z-index: 2;
+display: flex;
+text-shadow: 0 0 30px rgba(99, 102, 241, 0.4);
+opacity: 0;
+transform: translateY(8px);
+transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+.splash-title.show {
+opacity: 1;
+transform: translateY(0);
+}
+
+.splash-title span {
+display: inline-block;
+}
+
+.splash-title span:nth-child(1) { animation-delay: 0.12s, 1.4s; }
+.splash-title span:nth-child(2) { animation-delay: 0.24s, 1.4s; }
+.splash-title span:nth-child(3) { animation-delay: 0.36s, 1.4s; }
+.splash-title span:nth-child(4) { animation-delay: 0.48s, 1.4s; }
+.splash-title span:nth-child(5) { animation-delay: 0.60s, 1.4s; }
+.splash-title span:nth-child(6) { animation-delay: 0.72s, 1.4s; }
+
+@keyframes splashLetterFromIcon {
+0% { opacity: 0; transform: translate(0, -130px) scale(0.3); filter: blur(6px); }
+70% { opacity: 1; filter: blur(0); }
+100% { opacity: 1; transform: translate(0, 0) scale(1); filter: blur(0); }
+}
+
+@keyframes splashLetterSpread {
+0% { transform: translateX(0); }
+100% { transform: translateX(var(--spread-x)); }
+}
+
+.splash-cursor { display: none; }
+
+.splash-sub {
+font-family: 'Inter', sans-serif;
+font-size: 1rem;
+color: rgba(192,192,200,0.75);
+letter-spacing: 4px;
+position: relative;
+z-index: 2;
+font-weight: 300;
+text-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
+opacity: 0;
+transform: translateY(8px);
+transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+.splash-sub.show {
+opacity: 1;
+transform: translateY(0);
+}
+
+.splash-loader {
+width: 80px;
+height: 6px;
+background: rgba(255,255,255,0.1);
+border-radius: 10px;
+overflow: hidden;
+animation: splashLoaderScale 0.8s ease-out 0.2s both;
+position: relative;
+z-index: 2;
+box-shadow: 0 0 20px rgba(99,102,241,0.2);
+}
+
+.splash-loader-bar {
+height: 100%;
+background: linear-gradient(90deg,
+#6366f1 0%,
+#8b5cf6 30%,
+#06b6d4 60%,
+#3b82f6 100%);
+background-size: 200% 100%;
+border-radius: 10px;
+animation: splashLoadBar 1.5s ease-in-out forwards,
+splashGradientFlow 3s ease-in-out infinite;
+box-shadow: 0 0 20px rgba(99,102,241,0.7),
+0 0 40px rgba(139,92,246,0.4);
+border: 1px solid rgba(255,255,255,0.2);
+}
+
+@keyframes splashGradientShift {
+0%, 100% { background: radial-gradient(circle at 50% 50%, rgba(99,102,241,0.25) 0%, transparent 50%); }
+50% { background: radial-gradient(circle at 40% 60%, rgba(99,102,241,0.35) 0%, transparent 60%); }
+}
+
+@keyframes splashGradientShift2 {
+0%, 100% { transform: scale(1); opacity: 0.8; }
+50% { transform: scale(1.1); opacity: 0.6; }
+}
+
+@keyframes splashIcon3D {
+0% { transform: perspective(2000px) translateZ(0px) rotateX(0deg) rotateY(0deg) scale(1); }
+25% { transform: perspective(2000px) translateZ(50px) rotateX(-10deg) rotateY(15deg) scale(1.08); }
+50% { transform: perspective(2000px) translateZ(100px) rotateX(5deg) rotateY(-5deg) scale(1.12); }
+75% { transform: perspective(2000px) translateZ(50px) rotateX(10deg) rotateY(-15deg) scale(1.08); }
+100% { transform: perspective(2000px) translateZ(0px) rotateX(0deg) rotateY(0deg) scale(1); }
+}
+
+@keyframes splashGradientAnim {
+0%, 100% { background-position: 0% 50%; }
+50% { background-position: 100% 50%; }
+}
+
+@keyframes splashShineWave {
+0% { transform: translateX(-100%); opacity: 0; }
+20% { opacity: 1; }
+100% { transform: translateX(200%); opacity: 0; }
+}
+
+@keyframes splashRingRotate {
+0% { transform: rotate(0deg) scale(1); }
+50% { transform: rotate(180deg) scale(1.05); }
+100% { transform: rotate(360deg) scale(1); }
+}
+
+@keyframes splashTitleSlideIn {
+0% { opacity: 0; transform: translateY(30px) scaleY(0.8); letter-spacing: 12px; }
+100% { opacity: 1; transform: translateY(0) scaleY(1); letter-spacing: 8px; }
+}
+
+@keyframes splashTitleGlow {
+0%, 100% { text-shadow: 0 0 30px rgba(99, 102, 241, 0.4); }
+50% { text-shadow: 0 0 50px rgba(99, 102, 241, 0.8), 0 0 80px rgba(139, 92, 246, 0.5); }
+}
+
+@keyframes splashSubSlideIn {
+0% { opacity: 0; transform: translateY(20px) scaleX(0.9); }
+100% { opacity: 1; transform: translateY(0) scaleX(1); }
+}
+
+@keyframes splashSubFade {
+0%, 100% { opacity: 0.85; }
+50% { opacity: 1; }
+}
+
+@keyframes splashLoaderScale {
+0% { opacity: 0; transform: scale(0.6); }
+100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes splashLoadBar {
+0% { width: 0%; }
+60% { width: 85%; }
+100% { width: 100%; }
+}
+
+@keyframes splashGradientFlow {
+0%, 100% { background-position: 0% 50%; }
+50% { background-position: 100% 50%; }
+}
+</style>
+
+<div id="splashScreen">
+  <div class="splash-bg-layer">
+    <div class="splash-orb splash-orb-1"></div>
+    <div class="splash-orb splash-orb-2"></div>
+  </div>
+  <div class="splash-container">
+    <div class="splash-icon-wrapper">
+      <div class="splash-icon"><img src="Images/splash-icon.png" alt="DOCMAN logo"></div>
+    </div>
+    <div class="splash-title"><span style="--spread-x:-15px">D</span><span style="--spread-x:-9px">O</span><span style="--spread-x:-3px">C</span><span style="--spread-x:3px">M</span><span style="--spread-x:9px">A</span><span style="--spread-x:15px">N</span><span class="splash-cursor"></span></div>
+    <div class="splash-sub">DOCUMENT MANAGER</div>
+    <div class="splash-loader">
+      <div class="splash-loader-bar"></div>
+    </div>
+  </div>
+</div>
+
+
+
+
+<div class="app">
+  <div class="top-panel">
+  <header class="header">
+<div class="logo" id="appLogoBtn" role="button" tabindex="0" aria-label="Expiring documents"><div class="logo-inner"><div class="logo-tray-icon"></div></div></div>
+
+    <div class="header-title">
+      <h1><span class="logo-doc">DOC</span><span class="logo-man">MAN</span></h1>
+      <span class="doc-tag">Document Manager</span>
+    </div>
+    <div class="header-dots"></div>
+    <button id="settingsBtn" class="header-gear-btn" aria-label="Settings">
+     
+        
+ <div class="header-gear-icon"></div>
+         
+               
+    </button>
+  </header>
+
+
+
+  <div class="top-bar">
+  
+  
+<button id="homeBtn" class="btn-back hidden"><img src="Images/Home.png" class="home-icon-img" alt="Home"></button>
+
+
+    <div class="type-selector">
+      <div id="fileNoteToggle" class="ft-toggle active-files">
+        <div class="ft-toggle-track"></div>
+        <span class="ft-toggle-label ft-toggle-label-files">FILES</span>
+        <span class="ft-toggle-label ft-toggle-label-notes">NOTES</span>
+        <div class="ft-toggle-thumb"></div>
+        <button class="ft-toggle-zone ft-toggle-zone-files" onclick="setActiveTab('pdfs')" aria-label="Files"></button>
+        <button class="ft-toggle-zone ft-toggle-zone-notes" onclick="setActiveTab('notes')" aria-label="Notes"></button>
+      </div>
+      <button id="pdfTabBtn" class="hidden"></button>
+      <button id="notesTabBtn" class="hidden"></button>
+    </div>
+    <div class="search-container">
+      <svg class="search-icon-svg" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352a144 144 0 1 0 0-288 144 144 0 1 0 0 288z"/></svg>
+      <input type="text" id="searchInput" placeholder="Search" autocomplete="off">
+      <button id="clearSearchBtn" class="clear-search hidden" aria-label="Clear search"><i class="fas fa-times"></i></button>
+      <i class="fas fa-filter search-filter-icon" aria-hidden="true"></i>
+      <div id="searchSuggestions" class="search-suggestions hidden"></div>
+    </div>
+    <div class="top-bar-actions">
+      <button id="uploadBtn" class="btn-upload"><i class="fas fa-cloud-upload-alt"></i><span>Upload</span></button>
+      <button id="newNoteBtn" class="btn-upload hidden"><i class="fas fa-plus"></i><span>New Note</span></button>
+    </div>
+    <input type="file" id="fileInput" multiple>
+  </div>
+
+
+  <div class="stats-bar">
+    <!-- Folder/File/Note totals are shown in the department hub's "i" info
+         panel (showInfo()) already -- kept alive here (hidden, not removed)
+         purely so existing JS ids/updateStats() keep working untouched. -->
+    <div class="stats-bar-counts-hidden" style="display:none">
+      <span id="folderCount">0</span>
+      <span id="fileCount">0</span>
+      <span id="notesCount">0</span>
+    </div>
+
+    <!-- favCount kept alive (hidden) purely so updateStats() keeps working;
+         the Favorite pill button itself was removed -- that action now
+         lives as a Favourite button on the folder-toolbar instead, and the
+         full favourites list is reachable from Settings > Favorites & Recents. -->
+    <div class="fav-count-hidden"><span id="favCount">0</span></div>
+
+    <div class="stat-icon-col">
+      <button id="recentStatItem" class="stat-icon-btn stat-icon-btn-recent" title="Recent" aria-label="Recent Documents"><i class="fas fa-clock-rotate-left"></i></button>
+      <span class="stat-icon-label">Recent</span>
+    </div>
+    <span class="stats-bar-divider"></span>
+    <div class="stat-icon-col">
+      <button id="sortBtn" class="stat-icon-btn stat-icon-btn-sort" aria-label="Sort" title="Sort"><i class="fas fa-sort"></i></button>
+      <span class="stat-icon-label">Sort</span>
+    </div>
+    <span class="stats-bar-divider"></span>
+    <div class="stat-icon-col">
+      <button id="dashboardStatItem" class="stat-icon-btn stat-icon-btn-dashboard" title="Storage Dashboard" aria-label="Storage Dashboard"><i class="fas fa-chart-pie"></i></button>
+      <span class="stat-icon-label">Dashboard</span>
+    </div>
+    <span class="stats-bar-divider"></span>
+    <div class="stat-icon-col">
+      <button id="recycleBinStatItem" class="stat-icon-btn stat-icon-btn-recyclebin" title="Recycle Bin" aria-label="Recycle Bin"><img src="Images/recyclebin-icon.png" alt="Recycle Bin" class="recyclebin-icon-img"></button>
+      <span class="stat-icon-label">Recycle Bin</span>
+    </div>
+  </div> <!-- stats-bar close -->
+  </div> <!-- top-panel close -->
+
+  <!-- Favourites View -->
+  <div id="favouritesView" class="favourites-view hidden">
+    <div class="fav-view-card">
+      <div class="fav-view-header">
+        <button class="fav-view-back" id="favViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+        <div class="fav-view-title"><i class="fas fa-heart"></i> Favourites</div>
+      </div>
+      <div id="favViewList" class="fav-view-list"></div>
+    </div>
+  </div>
+
+  <!-- Recent Documents View -->
+  <div id="recentsView" class="favourites-view hidden">
+    <div class="fav-view-card">
+      <div class="fav-view-header">
+        <button class="fav-view-back" id="recentsViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+        <div class="fav-view-title"><i class="fas fa-clock-rotate-left"></i> Recent</div>
+      </div>
+      <div class="subtab-row" id="recentsSubtabRow">
+        <button class="subtab-btn active" data-recents-tab="continue">Continue Reading</button>
+        <button class="subtab-btn" data-recents-tab="opened">Opened</button>
+        <button class="subtab-btn" data-recents-tab="added">Added</button>
+        <button class="subtab-btn" data-recents-tab="modified">Modified</button>
+      </div>
+      <div id="recentsViewList" class="fav-view-list"></div>
+    </div>
+  </div>
+
+  <!-- Storage Dashboard View -->
+  <div id="dashboardView" class="favourites-view hidden">
+    <div class="fav-view-card">
+      <div class="fav-view-header">
+        <button class="fav-view-back" id="dashboardViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+        <div class="fav-view-title"><i class="fas fa-chart-pie"></i> Storage Dashboard</div>
+      </div>
+      <div id="dashboardViewBody" class="fav-view-list dashboard-body"></div>
+    </div>
+  </div>
+
+  <!-- Recycle Bin View -->
+  <div id="recycleBinView" class="favourites-view hidden">
+    <div class="fav-view-card">
+      <div class="fav-view-header">
+        <button class="fav-view-back" id="recycleBinViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+        <div class="fav-view-title"><i class="fas fa-trash-can"></i> Recycle Bin</div>
+        <button id="emptyRecycleBinBtn" class="recycle-empty-btn" title="Empty Recycle Bin" aria-label="Empty Recycle Bin"><i class="fas fa-broom"></i></button>
+      </div>
+      <div class="recycle-bin-note"><i class="fas fa-circle-info"></i> Items are kept for 30 days, then removed automatically.</div>
+      <div id="recycleBinViewList" class="fav-view-list"></div>
+    </div>
+  </div>
+
+
+
+  <nav id="breadcrumb" class="breadcrumb"></nav>
+  <div id="departmentsSection"></div>
+  <div id="searchInfo" class="search-result-info hidden"></div>
+  <div id="content" class="content"></div>
+</div>
+
+<!-- "Add Department" floating button -- deliberately OUTSIDE .app. .app has
+     a permanent (non-"none") transform from its entrance-reveal animation
+     (ends at translateY(0) scale(1), not transform:none, due to
+     animation-fill-mode:forwards), which makes it the containing block for
+     any position:fixed descendant instead of the real viewport. Keeping
+     this button as a direct <body> child avoids that entirely. -->
+<button class="dept-add-fab" id="deptAddFab" aria-label="Add Department — Create New Department">
+    <img src="Images/add-dept-halfpill-icon.png?v=1" alt="" class="dept-add-fab-collapsed">
+    <img src="Images/add-department-halfpill-fullbtn.png?v=1" alt="Add Department — Create New Department" class="dept-add-fab-full">
+</button>
+
+<!-- "Add to PDF" queue -- lets the user long-press several images (one
+     at a time, via the existing per-card context menu) and combine them
+     into a single multi-page PDF. Deliberately a direct <body> child,
+     same containing-block reason as deptAddFab above. -->
+<button class="pdf-queue-fab hidden" id="pdfQueueFab" aria-label="Combine selected images into a PDF">
+    <i class="fas fa-file-pdf"></i>
+    <span id="pdfQueueCount">0</span>
+    <span class="pdf-queue-label">Combine to PDF</span>
+</button>
+
+
+<!-- Image Viewer Modal -->
+
+<div id="imageViewer" class="image-viewer hidden">
+  <div class="image-viewer-header">
+    <button id="closeImageViewer" class="viewer-ring-btn viewer-ring-btn-close viewer-ring-btn-pill" aria-label="Close"><i class="fas fa-xmark"></i><span>Close</span></button>
+    <button id="openImageEditorBtn" class="viewer-ring-btn viewer-ring-btn-edit viewer-ring-btn-pill" aria-label="Edit"><i class="fas fa-pen"></i><span>Edit</span></button>
+  </div>
+  <div class="image-viewer-body">
+    <img id="viewerImage" src="" alt="">
+  </div>
+</div>
+
+<!-- Image Editor (Phase 1: crop, rotate, flip, brightness, contrast,
+     undo/redo, reset, zoom/pan, save-as-new/replace. Phase 2: saturation,
+     grayscale, B&W/document mode, add text). Opens on top of imageViewer,
+     editing the same file. -->
+<div id="imageEditor" class="image-editor hidden">
+  <div class="img-editor-header">
+    <button id="imgEditorCancelBtn" class="img-editor-icon-btn" aria-label="Cancel"><i class="fas fa-xmark"></i></button>
+    <div class="img-editor-title">Edit Image</div>
+    <div class="img-editor-header-actions">
+      <button id="imgEditorUndoBtn" class="img-editor-icon-btn" aria-label="Undo" disabled><i class="fas fa-rotate-left"></i></button>
+      <button id="imgEditorRedoBtn" class="img-editor-icon-btn" aria-label="Redo" disabled><i class="fas fa-rotate-right"></i></button>
+      <button id="imgEditorResetBtn" class="img-editor-icon-btn" aria-label="Reset to original"><i class="fas fa-arrows-rotate"></i></button>
+    </div>
+  </div>
+
+  <div class="img-editor-canvas-wrap" id="imgEditorCanvasWrap">
+    <canvas id="imgEditorCanvas"></canvas>
+    <div class="img-editor-crop-overlay hidden" id="imgEditorCropOverlay">
+      <div class="img-crop-box" id="imgCropBox">
+        <div class="img-crop-handle img-crop-handle-tl" data-handle="tl"></div>
+        <div class="img-crop-handle img-crop-handle-tr" data-handle="tr"></div>
+        <div class="img-crop-handle img-crop-handle-bl" data-handle="bl"></div>
+        <div class="img-crop-handle img-crop-handle-br" data-handle="br"></div>
+      </div>
+    </div>
+    <div class="img-text-overlay hidden" id="imgTextOverlay" contenteditable="false">Text</div>
+    <div class="img-scan-overlay hidden" id="imgScanOverlay">
+      <svg class="img-scan-svg" id="imgScanSvg" preserveAspectRatio="none">
+        <polygon id="imgScanPolygon" points="" />
+      </svg>
+      <div class="img-scan-handle" id="imgScanHandleTL" data-corner="0"></div>
+      <div class="img-scan-handle" id="imgScanHandleTR" data-corner="1"></div>
+      <div class="img-scan-handle" id="imgScanHandleBR" data-corner="2"></div>
+      <div class="img-scan-handle" id="imgScanHandleBL" data-corner="3"></div>
+    </div>
+  </div>
+
+  <div class="img-editor-panel img-editor-panel-scroll" id="imgEditorSliderPanel">
+    <div class="img-editor-slider-row">
+      <i class="fas fa-sun img-slider-icon"></i>
+      <label>Brightness</label>
+      <input type="range" id="imgSliderBrightness" min="-100" max="100" value="0">
+      <span class="img-slider-value" id="imgSliderBrightnessVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <i class="fas fa-circle-half-stroke img-slider-icon"></i>
+      <label>Contrast</label>
+      <input type="range" id="imgSliderContrast" min="-100" max="100" value="0">
+      <span class="img-slider-value" id="imgSliderContrastVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <i class="fas fa-aperture img-slider-icon"></i>
+      <label>Exposure</label>
+      <input type="range" id="imgSliderExposure" min="-100" max="100" value="0">
+      <span class="img-slider-value" id="imgSliderExposureVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <i class="fas fa-droplet img-slider-icon"></i>
+      <label>Saturation</label>
+      <input type="range" id="imgSliderSaturation" min="-100" max="100" value="0">
+      <span class="img-slider-value" id="imgSliderSaturationVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <i class="fas fa-palette img-slider-icon"></i>
+      <label>Hue</label>
+      <input type="range" id="imgSliderHue" min="0" max="360" value="0">
+      <span class="img-slider-value" id="imgSliderHueVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <i class="fas fa-water img-slider-icon"></i>
+      <label>Blur</label>
+      <input type="range" id="imgSliderBlur" min="0" max="20" value="0">
+      <span class="img-slider-value" id="imgSliderBlurVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <i class="fas fa-swatchbook img-slider-icon"></i>
+      <label>Sepia</label>
+      <input type="range" id="imgSliderSepia" min="0" max="100" value="0">
+      <span class="img-slider-value" id="imgSliderSepiaVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <i class="fas fa-square img-slider-icon"></i>
+      <label>Opacity</label>
+      <input type="range" id="imgSliderOpacity" min="0" max="100" value="100">
+      <span class="img-slider-value" id="imgSliderOpacityVal">100</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <i class="fas fa-yin-yang img-slider-icon"></i>
+      <label>Invert</label>
+      <input type="range" id="imgSliderInvert" min="0" max="100" value="0">
+      <span class="img-slider-value" id="imgSliderInvertVal">0</span>
+    </div>
+    <div class="img-editor-slider-row">
+      <i class="fas fa-bolt img-slider-icon"></i>
+      <label>Sharpen</label>
+      <input type="range" id="imgSliderSharpen" min="0" max="100" value="0">
+      <span class="img-slider-value" id="imgSliderSharpenVal">0</span>
+    </div>
+
+    <div class="img-preset-row" id="imgPresetRow">
+      <button class="img-preset-btn" data-preset="original">Original</button>
+      <button class="img-preset-btn" data-preset="vintage">Vintage</button>
+      <button class="img-preset-btn" data-preset="cold">Cold</button>
+      <button class="img-preset-btn" data-preset="warm">Warm</button>
+      <button class="img-preset-btn" data-preset="dramatic">Dramatic</button>
+      <button class="img-preset-btn" data-preset="darken">Darken</button>
+    </div>
+  </div>
+
+  <div class="img-editor-panel" id="imgEditorTextPanel">
+    <input type="text" id="imgTextInput" class="img-text-input" placeholder="Enter text" value="Text">
+    <div class="img-text-fonts" id="imgTextFonts">
+      <button class="img-text-font active" data-font="Arial, sans-serif" style="font-family:Arial, sans-serif">Aa</button>
+      <button class="img-text-font" data-font="Georgia, 'Times New Roman', serif" style="font-family:Georgia, serif">Aa</button>
+      <button class="img-text-font" data-font="'Courier New', monospace" style="font-family:'Courier New', monospace">Aa</button>
+      <button class="img-text-font" data-font="Verdana, sans-serif" style="font-family:Verdana, sans-serif">Aa</button>
+      <button class="img-text-font" data-font="'Brush Script MT', cursive" style="font-family:'Brush Script MT', cursive">Aa</button>
+      <button class="img-text-font" data-font="Impact, sans-serif" style="font-family:Impact, sans-serif">Aa</button>
+    </div>
+    <div class="img-text-swatches" id="imgTextSwatches">
+      <button class="img-text-swatch active" data-color="#ffffff" style="background:#ffffff"></button>
+      <button class="img-text-swatch" data-color="#000000" style="background:#000000"></button>
+      <button class="img-text-swatch" data-color="#ef4444" style="background:#ef4444"></button>
+      <button class="img-text-swatch" data-color="#f59e0b" style="background:#f59e0b"></button>
+      <button class="img-text-swatch" data-color="#22c55e" style="background:#22c55e"></button>
+      <button class="img-text-swatch" data-color="#3b82f6" style="background:#3b82f6"></button>
+    </div>
+    <div class="img-editor-slider-row">
+      <label>Size</label>
+      <input type="range" id="imgTextSize" min="14" max="120" value="36">
+    </div>
+  </div>
+
+  <div class="img-editor-panel" id="imgEditorBrushPanel">
+    <div class="img-brush-swatches" id="imgBrushSwatches">
+      <button class="img-brush-swatch active" data-color="#ff3b30" style="background:#ff3b30"></button>
+      <button class="img-brush-swatch" data-color="#f59e0b" style="background:#f59e0b"></button>
+      <button class="img-brush-swatch" data-color="#22c55e" style="background:#22c55e"></button>
+      <button class="img-brush-swatch" data-color="#3b82f6" style="background:#3b82f6"></button>
+      <button class="img-brush-swatch" data-color="#ffffff" style="background:#ffffff"></button>
+      <button class="img-brush-swatch" data-color="#000000" style="background:#000000"></button>
+    </div>
+    <div class="img-editor-slider-row">
+      <label>Size</label>
+      <input type="range" id="imgBrushSize" min="4" max="60" value="18">
+    </div>
+  </div>
+
+  <div class="img-editor-toolbar">
+    <button class="img-editor-tool" data-tool="crop"><i class="fas fa-crop-simple"></i><span>Crop</span></button>
+    <button class="img-editor-tool" data-tool="rotate"><i class="fas fa-rotate-right"></i><span>Rotate</span></button>
+    <button class="img-editor-tool" data-tool="flip-h"><i class="fas fa-left-right"></i><span>Flip</span></button>
+    <button class="img-editor-tool" data-tool="adjust"><i class="fas fa-sliders"></i><span>Adjust</span></button>
+    <button class="img-editor-tool" data-tool="autoEnhance"><i class="fas fa-wand-magic-sparkles"></i><span>Auto</span></button>
+    <button class="img-editor-tool" data-tool="grayscale"><i class="fas fa-circle-half-stroke"></i><span>Grayscale</span></button>
+    <button class="img-editor-tool" data-tool="bw"><i class="fas fa-file-lines"></i><span>Document</span></button>
+    <button class="img-editor-tool" data-tool="text"><i class="fas fa-font"></i><span>Text</span></button>
+    <button class="img-editor-tool" data-tool="draw"><i class="fas fa-pen"></i><span>Draw</span></button>
+    <button class="img-editor-tool" data-tool="highlight"><i class="fas fa-highlighter"></i><span>Highlight</span></button>
+    <button class="img-editor-tool" data-tool="blurarea"><i class="fas fa-droplet"></i><span>Blur Area</span></button>
+    <button class="img-editor-tool" data-tool="scan"><i class="fas fa-vector-square"></i><span>Scan</span></button>
+  </div>
+
+  <div class="img-editor-crop-confirm hidden" id="imgEditorCropConfirm">
+    <button id="imgCropCancelBtn" class="img-editor-confirm-btn img-editor-confirm-cancel">Cancel</button>
+    <button id="imgCropApplyBtn" class="img-editor-confirm-btn img-editor-confirm-apply">Apply Crop</button>
+  </div>
+
+
+  <div class="img-editor-crop-confirm hidden" id="imgEditorTextConfirm">
+    <button id="imgTextCancelBtn" class="img-editor-confirm-btn img-editor-confirm-cancel">Cancel</button>
+    <button id="imgTextApplyBtn" class="img-editor-confirm-btn img-editor-confirm-apply">Apply Text</button>
+  </div>
+
+  <div class="img-editor-crop-confirm hidden" id="imgEditorScanConfirm">
+    <button id="imgScanCancelBtn" class="img-editor-confirm-btn img-editor-confirm-cancel">Cancel</button>
+    <button id="imgScanApplyBtn" class="img-editor-confirm-btn img-editor-confirm-apply">Straighten</button>
+  </div>
+  <div class="img-scan-status hidden" id="imgScanStatus">Loading scanner…</div>
+
+
+  <div class="img-editor-save-row">
+    <button id="imgEditorSaveNewBtn" class="img-editor-save-btn img-editor-save-new"><i class="fas fa-plus"></i> Save as New</button>
+    <button id="imgEditorSavePdfBtn" class="img-editor-save-btn img-editor-save-pdf"><i class="fas fa-file-pdf"></i> Save as PDF</button>
+    <button id="imgEditorReplaceBtn" class="img-editor-save-btn img-editor-save-replace"><i class="fas fa-check"></i> Replace Original</button>
+  </div>
+
+  <div class="img-exit-modal hidden" id="imgExitModal">
+    <div class="img-exit-modal-card">
+      <p class="img-exit-modal-text">You have unsaved edits. Save changes before closing?</p>
+      <div class="img-exit-modal-buttons">
+        <button id="imgExitKeepEditingBtn" class="img-exit-btn img-exit-btn-ghost">Keep Editing</button>
+        <button id="imgExitDiscardBtn" class="img-exit-btn img-exit-btn-discard">Discard</button>
+        <button id="imgExitSaveBtn" class="img-exit-btn img-exit-btn-save">Save &amp; Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="docViewer" class="doc-viewer hidden">
+  <div class="doc-viewer-header">
+    <button id="closeDocViewer" class="viewer-ring-btn viewer-ring-btn-close" aria-label="Close"><i class="fas fa-xmark"></i></button>
+    <div class="doc-viewer-title" id="docViewerTitle"></div>
+    <div class="doc-viewer-actions">
+      <button id="textZoomOutBtn" class="doc-viewer-action-btn hidden" title="Zoom out" aria-label="Zoom out"><i class="fas fa-magnifying-glass-minus"></i></button>
+      <button id="textZoomInBtn" class="doc-viewer-action-btn hidden" title="Zoom in" aria-label="Zoom in"><i class="fas fa-magnifying-glass-plus"></i></button>
+      <button id="shareDocViewerBtn" class="doc-viewer-action-btn" title="Share / Export" aria-label="Share or export"><i class="fas fa-share-nodes"></i></button>
+    </div>
+  </div>
+  <div class="doc-viewer-body" id="docViewerBody"></div>
+</div>
+
+<div id="sheetViewer" class="doc-viewer hidden">
+  <div class="doc-viewer-header">
+    <button id="closeSheetViewer" class="viewer-ring-btn viewer-ring-btn-close" aria-label="Close"><i class="fas fa-xmark"></i></button>
+    <div class="doc-viewer-title" id="sheetViewerTitle"></div>
+    <div class="doc-viewer-actions">
+      <button id="shareSheetViewerBtn" class="doc-viewer-action-btn" title="Share / Export" aria-label="Share or export"><i class="fas fa-share-nodes"></i></button>
+    </div>
+  </div>
+  <div class="doc-viewer-sheet-tabs" id="sheetViewerTabs"></div>
+  <div class="doc-viewer-body doc-viewer-body-sheet" id="sheetViewerBody"></div>
+</div>
+
+<!-- Settings Page -->
+
+<div id="settingsPage" class="settings-page hidden">
+  <div class="settings-page-inner">
+
+
+<!-- Settings List Screen -->
+<div id="settingsListScreen" class="settings-screen settings-screen-active">
+  <div class="settings-header">
+    <button id="settingsCloseBtn" class="settings-back-btn" aria-label="Close settings"><i class="fas fa-arrow-left"></i></button>
+    <div class="settings-header-title">
+      <h2>Settings</h2>
+      <span>Manage your DOCMAN preferences</span>
+    </div>
+  </div>
+  <div class="settings-list" id="settingsList">
+    <button class="settings-item" data-panel="storage">
+      <div class="settings-item-icon settings-icon-storage"><i class="fas fa-database"></i></div>
+      <div class="settings-item-text"><span class="settings-item-title">Storage</span><span class="settings-item-sub" id="settingsStorageSub">Calculating…</span></div>
+      <i class="fas fa-chevron-right settings-item-arrow"></i>
+    </button>
+    <button class="settings-item" data-panel="appearance">
+      <div class="settings-item-icon settings-icon-appearance"><i class="fas fa-palette"></i></div>
+      <div class="settings-item-text"><span class="settings-item-title">Appearance</span><span class="settings-item-sub">Theme &amp; display</span></div>
+      <i class="fas fa-chevron-right settings-item-arrow"></i>
+    </button>
+    <button class="settings-item" data-panel="pdf">
+      <div class="settings-item-icon settings-icon-pdf"><i class="fas fa-file-pdf"></i></div>
+      <div class="settings-item-text"><span class="settings-item-title">PDF Settings</span><span class="settings-item-sub">Viewer &amp; threshold</span></div>
+      <i class="fas fa-chevron-right settings-item-arrow"></i>
+    </button>
+    <button class="settings-item" data-panel="favorites">
+      <div class="settings-item-icon settings-icon-favorites"><i class="fas fa-star"></i></div>
+      <div class="settings-item-text"><span class="settings-item-title">Favorites &amp; Recents</span><span class="settings-item-sub">Quick-access history</span></div>
+      <i class="fas fa-chevron-right settings-item-arrow"></i>
+    </button>
+    <button class="settings-item" data-panel="search">
+      <div class="settings-item-icon settings-icon-search"><i class="fas fa-search"></i></div>
+      <div class="settings-item-text"><span class="settings-item-title">Search</span><span class="settings-item-sub">Search behaviour</span></div>
+      <i class="fas fa-chevron-right settings-item-arrow"></i>
+    </button>
+    <button class="settings-item" data-panel="statistics">
+      <div class="settings-item-icon settings-icon-statistics"><i class="fas fa-chart-bar"></i></div>
+      <div class="settings-item-text"><span class="settings-item-title">Statistics</span><span class="settings-item-sub">Files, notes &amp; storage info</span></div>
+      <i class="fas fa-chevron-right settings-item-arrow"></i>
+    </button>
+    <button class="settings-item" data-panel="departments">
+      <div class="settings-item-icon settings-icon-departments"><i class="fas fa-industry"></i></div>
+      <div class="settings-item-text"><span class="settings-item-title">Departments</span><span class="settings-item-sub" id="settingsDeptSub">Manage departments</span></div>
+      <i class="fas fa-chevron-right settings-item-arrow"></i>
+    </button>
+    <button class="settings-item" data-panel="security">
+      <div class="settings-item-icon settings-icon-security"><i class="fas fa-shield-halved"></i></div>
+      <div class="settings-item-text"><span class="settings-item-title">Security</span><span class="settings-item-sub">App lock &amp; PIN</span></div>
+      <i class="fas fa-chevron-right settings-item-arrow"></i>
+    </button>
+    <button class="settings-item" data-panel="about">
+      <div class="settings-item-icon settings-icon-about"><i class="fas fa-circle-info"></i></div>
+      <div class="settings-item-text"><span class="settings-item-title">About</span><span class="settings-item-sub">Version &amp; info</span></div>
+      <i class="fas fa-chevron-right settings-item-arrow"></i>
+    </button>
+  </div>
+</div>
+
+<!-- Storage Panel -->
+<div id="settingsPanel-storage" class="settings-screen">
+  <div class="settings-header">
+    <button class="settings-back-btn settings-panel-back" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+    <div class="settings-header-title"><h2>Storage</h2><span>What's taking up space</span></div>
+  </div>
+  <div class="settings-panel-body">
+    <div class="storage-summary-card">
+      <div class="storage-summary-icon"><i class="fas fa-database"></i></div>
+      <div class="storage-summary-info">
+        <div class="storage-summary-used" id="storageSummaryUsed">—</div>
+        <div class="storage-summary-label">Storage Used</div>
+      </div>
+      <div class="storage-summary-stats">
+        <div class="storage-stat-pill"><i class="fas fa-file"></i><span id="storageDocCount">—</span><small>Documents</small></div>
+        <div class="storage-stat-pill"><i class="fas fa-sticky-note"></i><span id="storageNoteCount">—</span><small>Notes</small></div>
+      </div>
+    </div>
+    <div class="settings-group-title">Data Management</div>
+    <div class="settings-card">
+      <button class="settings-action-row" id="viewStorageDetailsBtn">
+        <div class="settings-item-icon settings-icon-storage"><i class="fas fa-chart-pie"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">View Storage Details</span><span class="settings-item-sub">Breakdown by type and department</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-action-row" id="exportDataBtn">
+        <div class="settings-item-icon settings-icon-search"><i class="fas fa-file-export"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Backup & Export</span><span class="settings-item-sub">Save a full backup — share to Google Drive, email, or device storage</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-action-row" id="importDataBtn">
+        <div class="settings-item-icon settings-icon-departments"><i class="fas fa-file-import"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Import Data</span><span class="settings-item-sub">Restore from a backup file</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-action-row" id="safetySnapshotsBtn">
+        <div class="settings-item-icon settings-icon-search"><i class="fas fa-clock-rotate-left"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Safety Snapshots</span><span class="settings-item-sub">Auto-saved right before each restore — undo a wrong import</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+    </div>
+    <div class="settings-group-title">Danger Zone</div>
+    <div class="settings-card">
+      <button class="settings-action-row settings-action-danger" id="clearAllDataBtn">
+        <div class="settings-item-icon settings-icon-danger"><i class="fas fa-trash-can"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Erase All Data</span><span class="settings-item-sub">Permanently delete everything in DOCMAN</span></div>
+      </button>
+    </div>
+    <input type="file" id="importFileInput" accept=".zip,.dbak,application/zip,application/octet-stream,*/*" class="input-hidden">
+  </div>
+</div>
+
+<!-- Storage Detail Panel -->
+<div id="settingsPanel-storageDetail" class="settings-screen">
+  <div class="settings-header">
+    <button class="settings-back-btn settings-panel-back" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+    <div class="settings-header-title"><h2>Storage Details</h2><span>Breakdown by type and department</span></div>
+  </div>
+  <div class="settings-panel-body" id="storageDetailBody">
+    <div class="storage-detail-loading"><i class="fas fa-spinner fa-spin"></i> Calculating…</div>
+  </div>
+</div>
+
+<!-- Appearance Panel -->
+<div id="settingsPanel-appearance" class="settings-screen">
+  <div class="settings-header">
+    <button class="settings-back-btn settings-panel-back" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+    <div class="settings-header-title"><h2>Appearance</h2><span>Theme &amp; display</span></div>
+  </div>
+  <div class="settings-panel-body">
+    <div class="settings-group-title">Theme</div>
+    <div class="theme-pick-row">
+      <button class="theme-pick-card" data-theme-pick="dark" id="themePickDark">
+        <div class="theme-pick-preview theme-pick-preview-dark"><i class="fas fa-moon"></i></div>
+        <span>Dark</span>
+      </button>
+      <button class="theme-pick-card" data-theme-pick="light" id="themePickLight">
+        <div class="theme-pick-preview theme-pick-preview-light"><i class="fas fa-sun"></i></div>
+        <span>Light</span>
+      </button>
+      <button class="theme-pick-card" data-theme-pick="system" id="themePickSystem">
+        <div class="theme-pick-preview theme-pick-preview-system"><i class="fas fa-circle-half-stroke"></i></div>
+        <span>System</span>
+      </button>
+    </div>
+    <div class="settings-group-title">Animations</div>
+    <div class="settings-card">
+      <div class="settings-toggle-row">
+        <div class="settings-item-text"><span class="settings-item-title">Enable Animations</span><span class="settings-item-sub">Page transitions &amp; UI motion</span></div>
+        <label class="settings-switch"><input type="checkbox" id="enableAnimationsToggle" checked><span class="settings-switch-slider"></span></label>
+      </div>
+    </div>
+    <div class="settings-group-title">Particle Effects</div>
+    <div class="settings-card">
+      <div class="settings-toggle-row">
+        <div class="settings-item-text"><span class="settings-item-title">Enable Background Effects</span><span class="settings-item-sub">Floating particles &amp; ambient glow</span></div>
+        <label class="settings-switch"><input type="checkbox" id="enableParticlesToggle" checked><span class="settings-switch-slider"></span></label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PDF Settings Panel -->
+<div id="settingsPanel-pdf" class="settings-screen">
+  <div class="settings-header">
+    <button class="settings-back-btn settings-panel-back" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+    <div class="settings-header-title"><h2>PDF Settings</h2><span>Viewer &amp; threshold</span></div>
+  </div>
+  <div class="settings-panel-body">
+    <div class="settings-group-title">Open PDF Using</div>
+    <div class="settings-card">
+      <div class="settings-radio-row" id="pdfOpenExternal">
+        <div class="settings-item-text"><span class="settings-item-title">External App</span><span class="settings-item-sub">Share to system PDF viewer</span></div>
+        <div class="settings-radio-dot" data-radio="pdfOpen" data-val="external"></div>
+      </div>
+      <div class="settings-radio-row" id="pdfOpenDocman">
+        <div class="settings-item-text"><span class="settings-item-title">DOCMAN Viewer</span><span class="settings-item-sub">Built-in PDF reader</span></div>
+        <div class="settings-radio-dot" data-radio="pdfOpen" data-val="docman"></div>
+      </div>
+    </div>
+    <div class="settings-group-title">Large PDF Threshold</div>
+    <div class="settings-card">
+      <div class="settings-stepper-row">
+        <div class="settings-item-text"><span class="settings-item-title">Threshold Size</span><span class="settings-item-sub">PDFs larger than this use External App</span></div>
+        <div class="settings-stepper">
+          <button class="settings-stepper-btn" id="pdfThresholdDown" aria-label="Decrease"><i class="fas fa-minus"></i></button>
+          <span class="settings-stepper-val"><span id="pdfThresholdVal">20</span> MB</span>
+          <button class="settings-stepper-btn" id="pdfThresholdUp" aria-label="Increase"><i class="fas fa-plus"></i></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Favorites & Recents Panel -->
+<div id="settingsPanel-favorites" class="settings-screen">
+  <div class="settings-header">
+    <button class="settings-back-btn settings-panel-back" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+    <div class="settings-header-title"><h2>Favorites &amp; Recents</h2><span>Quick-access history</span></div>
+  </div>
+  <div class="settings-panel-body">
+    <div class="settings-group-title">Display</div>
+    <div class="settings-card">
+      <div class="settings-toggle-row">
+        <div class="settings-item-text"><span class="settings-item-title">Show Recent Files</span><span class="settings-item-sub">Display recently opened files</span></div>
+        <label class="settings-switch"><input type="checkbox" id="showRecentsToggle" checked><span class="settings-switch-slider"></span></label>
+      </div>
+      <div class="settings-toggle-row">
+        <div class="settings-item-text"><span class="settings-item-title">Show Favorites Section</span><span class="settings-item-sub">Display starred/pinned items</span></div>
+        <label class="settings-switch"><input type="checkbox" id="showFavoritesToggle" checked><span class="settings-switch-slider"></span></label>
+      </div>
+    </div>
+    <div class="settings-group-title">Browse</div>
+    <div class="settings-card">
+      <button id="openFavouritesFromSettings" class="settings-item">
+        <div class="settings-item-icon settings-icon-favorites"><i class="fas fa-star"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">View All Favourites</span><span class="settings-item-sub">Every starred file, note &amp; folder</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+    </div>
+    <div class="settings-group-title">Recent Files Limit</div>
+    <div class="settings-card">
+      <div class="settings-stepper-row">
+        <div class="settings-item-text"><span class="settings-item-title">Max Recent Files</span><span class="settings-item-sub">How many files to remember</span></div>
+        <div class="settings-stepper">
+          <button class="settings-stepper-btn" id="recentsLimitDown" aria-label="Decrease"><i class="fas fa-minus"></i></button>
+          <span class="settings-stepper-val"><span id="recentsLimitVal">20</span></span>
+          <button class="settings-stepper-btn" id="recentsLimitUp" aria-label="Increase"><i class="fas fa-plus"></i></button>
+        </div>
+      </div>
+    </div>
+    <div class="settings-group-title">Recent Files <span class="settings-group-count" id="recentsCount">0</span></div>
+    <div class="settings-card" id="recentsListCard"><div class="settings-empty-row">No recent files yet</div></div>
+    <button class="settings-action-row settings-action-danger" id="clearRecentsBtn">
+      <div class="settings-item-icon settings-icon-danger"><i class="fas fa-eraser"></i></div>
+      <div class="settings-item-text"><span class="settings-item-title">Clear Recents</span><span class="settings-item-sub">Remove your recently opened history</span></div>
+    </button>
+  </div>
+</div>
+
+<!-- Search Panel -->
+<div id="settingsPanel-search" class="settings-screen">
+  <div class="settings-header">
+    <button class="settings-back-btn settings-panel-back" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+    <div class="settings-header-title"><h2>Search Settings</h2><span>Search behaviour</span></div>
+  </div>
+  <div class="settings-panel-body">
+    <div class="settings-group-title">Scope</div>
+    <div class="settings-card">
+      <div class="settings-toggle-row">
+        <div class="settings-item-text"><span class="settings-item-title">Search Notes</span><span class="settings-item-sub">Include notes in search results</span></div>
+        <label class="settings-switch"><input type="checkbox" id="searchNotesToggle" checked><span class="settings-switch-slider"></span></label>
+      </div>
+      <div class="settings-toggle-row">
+        <div class="settings-item-text"><span class="settings-item-title">Search File Names</span><span class="settings-item-sub">Match against file names</span></div>
+        <label class="settings-switch"><input type="checkbox" id="searchFileNamesToggle" checked><span class="settings-switch-slider"></span></label>
+      </div>
+      <div class="settings-toggle-row">
+        <div class="settings-item-text"><span class="settings-item-title">Search Folder Names</span><span class="settings-item-sub">Match against folder names</span></div>
+        <label class="settings-switch"><input type="checkbox" id="searchFolderNamesToggle" checked><span class="settings-switch-slider"></span></label>
+      </div>
+    </div>
+    <div class="settings-group-title">History</div>
+    <button class="settings-action-row settings-action-danger" id="clearSearchHistoryBtn">
+      <div class="settings-item-icon settings-icon-danger"><i class="fas fa-eraser"></i></div>
+      <div class="settings-item-text"><span class="settings-item-title">Clear Search History</span><span class="settings-item-sub">Forget previous search terms</span></div>
+    </button>
+  </div>
+</div>
+
+<!-- Statistics Panel -->
+<div id="settingsPanel-statistics" class="settings-screen">
+  <div class="settings-header">
+    <button class="settings-back-btn settings-panel-back" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+    <div class="settings-header-title"><h2>Statistics</h2><span>Your DOCMAN at a glance</span></div>
+  </div>
+  <div class="settings-panel-body">
+    <div class="settings-group-title">Overview</div>
+    <div class="stats-grid-card">
+      <div class="stats-grid-item">
+        <div class="stats-grid-icon stats-icon-files"><i class="fas fa-file"></i></div>
+        <div class="stats-grid-val" id="statTotalFiles">—</div>
+        <div class="stats-grid-label">Total Files</div>
+      </div>
+      <div class="stats-grid-item">
+        <div class="stats-grid-icon stats-icon-notes"><i class="fas fa-sticky-note"></i></div>
+        <div class="stats-grid-val" id="statTotalNotes">—</div>
+        <div class="stats-grid-label">Total Notes</div>
+      </div>
+      <div class="stats-grid-item">
+        <div class="stats-grid-icon stats-icon-folders"><i class="fas fa-folder"></i></div>
+        <div class="stats-grid-val" id="statTotalFolders">—</div>
+        <div class="stats-grid-label">Total Folders</div>
+      </div>
+      <div class="stats-grid-item">
+        <div class="stats-grid-icon stats-icon-depts"><i class="fas fa-industry"></i></div>
+        <div class="stats-grid-val" id="statTotalDepts">—</div>
+        <div class="stats-grid-label">Departments</div>
+      </div>
+    </div>
+    <div class="settings-group-title">Largest Items</div>
+    <div class="settings-card">
+      <div class="settings-stat-detail-row">
+        <div class="settings-item-icon settings-icon-pdf settings-icon-sm"><i class="fas fa-file-alt"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Largest File</span><span class="settings-item-sub" id="statLargestFile">—</span></div>
+      </div>
+      <div class="settings-stat-detail-row settings-row-no-border">
+        <div class="settings-item-icon settings-icon-departments settings-icon-sm"><i class="fas fa-folder-open"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Largest Folder</span><span class="settings-item-sub" id="statLargestFolder">—</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Departments Panel -->
+<div id="settingsPanel-departments" class="settings-screen">
+  <div class="settings-header">
+    <button class="settings-back-btn settings-panel-back" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+    <div class="settings-header-title"><h2>Departments</h2><span>Manage your departments</span></div>
+  </div>
+  <div class="settings-panel-body">
+    <div class="settings-group-title">All Departments <span class="settings-group-count" id="deptManageCount">0</span></div>
+    <div class="settings-card" id="deptManageList"></div>
+  </div>
+</div>
+
+<!-- Security Panel -->
+<div id="settingsPanel-security" class="settings-screen">
+  <div class="settings-header">
+    <button class="settings-back-btn settings-panel-back" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+    <div class="settings-header-title"><h2>Security</h2><span>App lock &amp; PIN</span></div>
+  </div>
+  <div class="settings-panel-body">
+    <div class="settings-group-title">App Lock</div>
+    <div class="settings-card">
+      <div class="settings-toggle-row">
+        <div class="settings-item-text"><span class="settings-item-title">Require PIN on Startup</span><span class="settings-item-sub" id="pinStatusSub">Not set</span></div>
+        <label class="settings-switch"><input type="checkbox" id="appLockToggle"><span class="settings-switch-slider"></span></label>
+      </div>
+    </div>
+    <div class="settings-card hidden" id="changePinCard">
+      <button class="settings-action-row" id="changePinBtn">
+        <div class="settings-item-icon settings-icon-security"><i class="fas fa-key"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Change PIN</span><span class="settings-item-sub">Update your 4-digit PIN</span></div>
+      </button>
+    </div>
+
+    <div class="settings-card hidden" id="biometricCard">
+      <div class="settings-toggle-row">
+        <div class="settings-item-text"><span class="settings-item-title">Fingerprint / Face Unlock</span><span class="settings-item-sub" id="biometricStatusSub">Use your device's biometrics instead of typing your PIN</span></div>
+        <label class="settings-switch"><input type="checkbox" id="biometricToggle"><span class="settings-switch-slider"></span></label>
+      </div>
+    </div>
+
+    <div class="settings-group-title hidden" id="autoLockGroupTitle">Auto Lock &amp; Session Timeout</div>
+    <div class="settings-card hidden" id="autoLockCard">
+      <div class="settings-item-text" style="padding:14px 16px 0;"><span class="settings-item-title">Lock after</span><span class="settings-item-sub">Applies when the app is backgrounded, and while idle on screen</span></div>
+      <div class="autolock-options" id="autoLockOptions">
+        <button class="autolock-opt" data-secs="0">Immediately</button>
+        <button class="autolock-opt" data-secs="30">30 sec</button>
+        <button class="autolock-opt" data-secs="60">1 min</button>
+        <button class="autolock-opt" data-secs="300">5 min</button>
+        <button class="autolock-opt" data-secs="-1">Never</button>
+      </div>
+    </div>
+
+    <div class="settings-group-title">Locked Items</div>
+    <div class="settings-card">
+      <button class="settings-action-row" id="manageLockedItemsBtn">
+        <div class="settings-item-icon settings-icon-security"><i class="fas fa-lock"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Locked Folders &amp; PDFs</span><span class="settings-item-sub" id="lockedItemsCountSub">None locked</span></div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- About Panel -->
+<div id="settingsPanel-about" class="settings-screen">
+  <div class="settings-header">
+    <button class="settings-back-btn settings-panel-back" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+    <div class="settings-header-title"><h2>About DOCMAN</h2><span>Version &amp; info</span></div>
+  </div>
+  <div class="settings-panel-body">
+    <div class="about-card">
+      <div class="about-icon"><img src="Images/about.png" alt="DOCMAN" class="about-icon-img"></div>
+      <div class="about-name">DOCMAN</div>
+      <div class="about-tagline">Document Manager</div>
+      <div class="about-version-badge">Version <span id="aboutVersionBadge">—</span></div>
+    </div>
+    <div class="settings-group-title">App Info</div>
+    <div class="settings-card">
+      <div class="about-info-row"><span>Version</span><b id="aboutVersionRow">—</b></div>
+      <div class="about-info-row"><span>Database Version</span><b>9</b></div>
+      <div class="about-info-row"><span>Developer</span><b>𝓐𝒷𝒾𝓈𝒽 ℛ𝒶𝒿𝒶𝓃</b></div>
+      <div class="about-info-row about-info-row-last"><span>Storage Engine</span><b>IndexedDB / Device Storage</b></div>
+    </div>
+    <div class="settings-group-title">Actions</div>
+    <div class="settings-card">
+      <button class="settings-action-row" id="checkUpdatesBtn">
+        <div class="settings-item-icon settings-icon-storage"><i class="fas fa-rotate"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Check for Updates</span><span class="settings-item-sub">See if a new version is available</span></div>
+      </button>
+    </div>
+    <div class="settings-group-title">Legal</div>
+    <div class="settings-card">
+      <button class="settings-action-row" id="privacyPolicyBtn">
+        <div class="settings-item-icon settings-icon-security"><i class="fas fa-user-shield"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Privacy Policy</span><span class="settings-item-sub">What DOCMAN does and doesn't do with your data</span></div>
+      </button>
+      <button class="settings-item" data-panel="licenses">
+        <div class="settings-item-icon settings-icon-storage"><i class="fas fa-scale-balanced"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Open Source Licenses</span><span class="settings-item-sub">Third-party software used in DOCMAN</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+    </div>
+    <div class="about-footer">DOCMAN · Offline-first Document Manager</div>
+  </div>
+</div>
+
+<!-- Open Source Licenses Panel -->
+<div id="settingsPanel-licenses" class="settings-screen">
+  <div class="settings-header">
+    <button class="settings-back-btn settings-panel-back" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+    <div class="settings-header-title"><h2>Open Source Licenses</h2><span>Third-party software used in DOCMAN</span></div>
+  </div>
+  <div class="settings-panel-body">
+    <div class="settings-group-title">Native (Android)</div>
+    <div class="settings-card">
+      <div class="about-info-row"><span>AndroidX / Jetpack libraries</span><b>Apache-2.0</b></div>
+      <div class="about-info-row"><span>Capacitor (native runtime)</span><b>MIT</b></div>
+      <div class="about-info-row"><span>android-pdf-viewer (pdfium fork)</span><b>Apache-2.0</b></div>
+      <div class="about-info-row"><span>PDFBox Android</span><b>Apache-2.0</b></div>
+      <div class="about-info-row about-info-row-last"><span>Google ML Kit (text recognition)</span><b>Proprietary — Google APIs Terms of Service, not open source</b></div>
+    </div>
+    <div class="settings-group-title">Web layer</div>
+    <div class="settings-card">
+      <div class="about-info-row"><span>Capacitor plugins (JS)</span><b>MIT</b></div>
+      <div class="about-info-row"><span>JSZip</span><b>MIT / GPLv3 (dual)</b></div>
+      <div class="about-info-row"><span>jsPDF</span><b>MIT</b></div>
+      <div class="about-info-row"><span>Mammoth.js</span><b>BSD-2-Clause</b></div>
+      <div class="about-info-row"><span>SheetJS (xlsx, Community Edition)</span><b>Apache-2.0</b></div>
+      <div class="about-info-row"><span>heic2any</span><b>MIT</b></div>
+      <div class="about-info-row about-info-row-last"><span>Font Awesome Free</span><b>Icons CC BY 4.0, fonts SIL OFL 1.1, code MIT</b></div>
+    </div>
+    <div class="settings-group-title">Fonts</div>
+    <div class="settings-card">
+      <div class="about-info-row"><span>Inter</span><b>SIL OFL 1.1</b></div>
+      <div class="about-info-row about-info-row-last"><span>Sacramento</span><b>SIL OFL 1.1</b></div>
+    </div>
+    <div class="about-footer">Copyright notices for each library belong to their respective authors.</div>
+  </div>
+</div>
+
+  </div>
+</div>
+
+
+<!-- Note Modal -->
+
+<div id="noteModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-body modal-body-note">
+      <input type="text" id="noteTitle" placeholder="Note title..." class="note-title-input" autocomplete="off">
+      <textarea id="noteContent" placeholder="Write your note here..." class="note-content-input"></textarea>
+    </div>
+    <div class="modal-footer"><button onclick="closeNoteModal()">Cancel</button><button id="saveNoteBtn">Save Note</button></div>
+  </div>
+</div>
+
+
+<!-- Dept Info Modal -->
+
+<div id="deptInfoModal" onclick="if(event.target===this)closeDeptInfo()">
+  <div class="dept-info-card">
+    <button class="dept-info-close" onclick="closeDeptInfo()" aria-label="Close"><i class="fas fa-times"></i></button>
+    <div class="dept-info-scroll">
+    <div class="dept-info-header">
+
+
+  <div class="dept-info-hub-icon" onclick="showInfo()">
+<i class="fas fa-info"></i>
+
+</div>
+
+
+  <div>
+    <div class="dept-info-title">DOCMAN</div>
+    <div class="dept-info-subtitle">DOCUMENT MANAGER</div>
+  </div>
+</div>
+<div class="dept-info-stats">
+  <div class="dept-info-stat">
+    <div class="stat-icon">🏢</div>
+    <div class="dept-info-stat-val" id="infoStatDepts">—</div>
+    <div class="dept-info-stat-label">Departments</div>
+  </div>
+  <div class="dept-info-stat">
+    <div class="stat-icon">📁</div>
+    <div class="dept-info-stat-val" id="infoStatFolders">—</div>
+    <div class="dept-info-stat-label">Folders</div>
+  </div>
+  <div class="dept-info-stat">
+    <div class="stat-icon">📄</div>
+    <div class="dept-info-stat-val" id="infoStatFiles">—</div>
+    <div class="dept-info-stat-label">Files</div>
+  </div>
+  <div class="dept-info-stat">
+    <div class="stat-icon">📝</div>
+    <div class="dept-info-stat-val" id="infoStatNotes">—</div>
+    <div class="dept-info-stat-label">Notes</div>
+  </div>
+</div>
+
+<div class="dept-info-help">
+  <div class="dept-info-help-title">How to Use DOCMAN</div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🏢</div>
+    <div class="dept-info-help-text"><b>Departments</b> — Tap a department on the home screen to open its folders. Tap <b>Add Department</b> at the bottom to create a new one.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">📁</div>
+    <div class="dept-info-help-text"><b>Folders</b> — Organize documents into folders and subfolders. Use <b>Add Subfolder</b>, <b>Rename Folder</b>, and <b>Delete Folder</b> from inside any folder.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">⬆️</div>
+    <div class="dept-info-help-text"><b>Upload</b> — Tap <b>Upload</b> inside a folder to add a file from your Photo Library, Camera, or Files.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">📄</div>
+    <div class="dept-info-help-text"><b>Viewing &amp; Editing PDFs</b> — Tap any file to open it in DOCMAN's built-in reader. Pinch to zoom, rotate for landscape drawings, switch to Night Mode or two-page Spread view, and use the mark tool to circle a spot. Search inside the text, jump to a page via Bookmarks/Thumbnails, and pick up where you left off with Continue Reading. From the More menu you can select &amp; copy text, add a Highlight, drop in a Signature, fill out form fields, Redact sensitive areas, Crop a page, or Export a copy — all saved as a new file so your original is never touched. Password-protected PDFs prompt for the password automatically.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">📝</div>
+    <div class="dept-info-help-text"><b>Notes</b> — Switch to the Notes tab to write and save quick text notes inside any folder, alongside your files.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🔒</div>
+    <div class="dept-info-help-text"><b>Lock a File or Folder</b> — Long-press any file or folder and choose <b>Lock</b> to require your PIN before it opens — useful for sensitive documents inside a shared department.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🛡️</div>
+    <div class="dept-info-help-text"><b>App Lock &amp; Security</b> — Turn on App Lock in Settings to require your PIN (and optionally fingerprint or face unlock) every time DOCMAN opens or comes back from the background. Wrong PINs are rate-limited with a cooldown.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🔍</div>
+    <div class="dept-info-help-text"><b>Search</b> — Use the search bar to quickly find a file or note by name without digging through folders.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">✋</div>
+    <div class="dept-info-help-text"><b>Rename, Delete &amp; Favourite a File</b> — Long-press any file or note to bring up a quick menu with <b>Favourite</b>, <b>Rename</b>, and <b>Delete</b> options.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">⭐</div>
+    <div class="dept-info-help-text"><b>Favorites</b> — Favourited files and notes are pinned together under <b>Favorite</b> on the home screen for one-tap access.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">💾</div>
+    <div class="dept-info-help-text"><b>Backup &amp; Restore</b> — In Settings, Backup &amp; Export saves everything to a single encrypted file, protected by a password you choose or a recovery key DOCMAN generates for you — save it somewhere safe, since it can't be recovered if lost. Import Data restores from one — since this replaces all current data, DOCMAN automatically saves a Safety Snapshot of what was there right before, viewable under Settings → Safety Snapshots, so a wrong import is never permanent.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">⚙️</div>
+    <div class="dept-info-help-text"><b>Settings</b> — Tap the gear icon for App Lock, PDF viewer preferences, backup &amp; restore, and other app preferences.</div>
+  </div>
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🕓</div>
+    <div class="dept-info-help-text"><b>Recent</b> — Tap the clock icon on the home screen to jump straight to your most recently added or opened files.</div>
+  </div>
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">✋</div>
+    <div class="dept-info-help-text"><b>Sort</b> — Tap the sort icon to reorder files and folders by name, date, or size.</div>
+  </div>
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">📊</div>
+    <div class="dept-info-help-text"><b>Storage Dashboard</b> — Tap the pie-chart icon for a breakdown of how much space each file type and department is using.</div>
+  </div>
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🗑️</div>
+    <div class="dept-info-help-text"><b>Recycle Bin</b> — Deleted files and folders land here first, so you can restore them or delete them for good.</div>
+  </div>
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🏢</div>
+    <div class="dept-info-help-text"><b>Manage Departments</b> — Rename or delete a department from Settings, or add a new one from the home screen — each gets its own colour automatically.</div>
+  </div>
+</div>
+
+<div class="dept-info-version">v<span id="deptInfoVersion">—</span> · Built with ❤️</div>
+
+  </div>
+  </div>
+</div>
+
+
+<div id="toast" class="toast hidden"><div class="toast-icon"><i class="fas fa-check-circle"></i></div><span></span></div>
+
+
+<script src="vendor/jszip/jszip.min.js"></script>
+<script src="vendor/mammoth/mammoth.browser.min.js"></script>
+<script src="vendor/xlsx/xlsx.full.min.js"></script>
+<script src="vendor/jspdf/jspdf.umd.min.js"></script>
+<script src="app.js?v=239"></script>
+
+
+<script>
+  // Service Worker — PWA/browser only. Skip it entirely inside the native
+  // Capacitor app: the SW's job (offline caching of static assets) is
+  // pointless once everything already ships inside the APK, and with
+  // androidScheme:"https" it would otherwise register and intercept every
+  // single fetch inside the WebView, adding latency to every operation.
+  const isNativeApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  if (!isNativeApp && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.log('SW registration failed:', err));
+  }
+
+  // Splash → App smooth transition
+  let appReady = false;
+  let splashTimerDone = false;
+  let splashDismissed = false;
+  function tryReveal() {
+    if (splashDismissed) return;
+    if (!splashTimerDone) return;  // Wait for the staged icon/title/subtitle reveal to finish
+    splashDismissed = true;
+    const splash = document.getElementById('splashScreen');
+    const app = document.querySelector('.app');
+    if (splash) splash.classList.add('hidden');
+    setTimeout(() => { if (app) app.classList.add('app-visible'); }, 100);
+    window.dispatchEvent(new Event('docman-splash-hidden'));
+    // Fully remove the splash after its own opacity/visibility transition
+    // (0.6s, see #splashScreen CSS) finishes. Just hiding it via the
+    // .hidden class stops it from being SEEN, but its ::before/::after
+    // pseudo-elements keep running infinite CSS gradient animations the
+    // whole time it merely sits there invisible -- removing the element
+    // outright is what actually stops that ongoing work.
+    if (splash) setTimeout(() => { splash.remove(); }, 700);
+  }
+  window.addEventListener('load', () => {
+    const iconEl = document.querySelector('.splash-icon-wrapper');
+    const titleEl = document.querySelector('.splash-title');
+    const subEl = document.querySelector('.splash-sub');
+    // Staged reveal: icon settles first, then DOCMAN fades in once the
+    // icon is done, then DOCUMENT MANAGER fades in once DOCMAN is done --
+    // each step waits for the previous one's 0.7s transition to finish
+    // instead of overlapping, which is what made it feel rushed before.
+    if (iconEl) iconEl.classList.add('show');
+    setTimeout(() => { if (titleEl) titleEl.classList.add('show'); }, 500);
+    setTimeout(() => { if (subEl) subEl.classList.add('show'); }, 1300);
+    setTimeout(() => { splashTimerDone = true; tryReveal(); }, 2400);
+  });
+  // Safety fallback: hide splash no matter what, even if window 'load'
+  // never fires for some reason.
+  setTimeout(() => { splashTimerDone = true; tryReveal(); }, 6000);
+  Object.defineProperty(window, 'docmanReady', {
+    set(v) { if (v) { appReady = true; tryReveal(); } },
+    get() { return appReady; }
+  });
+</script>
+
+
+</body>
+</html>
