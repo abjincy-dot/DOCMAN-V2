@@ -63,6 +63,10 @@ box-sizing: border-box;
 --bg-tertiary: #2a1240; 
 --app-wallpaper: url('Images/bg-main-theme.jpg');
 --glass-bg: rgba(40, 15, 55, 0.52); 
+/* One surface for every overlay panel -- info hub, favourites/recent/dashboard,
+   dialogs, context menus and the icon picker all sit on this, so they read as
+   the same material as the home tray (.stats-bar) rather than four skins. */
+--panel-bg: linear-gradient(180deg, #2a1440 0%, #230c32 52%, #1a0925 100%); 
 --glass-bg-hover: rgba(50, 20, 68, 0.72); 
 --glass-border: rgba(255,255,255,0.22); 
 --glass-border-hover: rgba(255,255,255,0.36); 
@@ -98,6 +102,7 @@ body.light-mode {
 --bg-deep: #F6E4D3;
 --app-wallpaper: linear-gradient(160deg, #FBF3E7 0%, #F6E4D3 100%);
 --glass-bg: rgba(255, 255, 255, 0.82);
+--panel-bg: linear-gradient(160deg, #fffdfa 0%, #fdf3e8 100%);
 --glass-bg-hover: rgba(255, 255, 255, 0.94);
 --glass-border: rgba(120, 95, 65, 0.55);
 --glass-border-hover: rgba(120, 95, 65, 0.65);
@@ -791,7 +796,18 @@ background: linear-gradient(175deg, #f59e0b 0%, #d97706 50%, #b45309 100%) !impo
    that entirely, and matches the look already established for the
    department-hub info popup. */
 .favourites-view {
-    position: absolute;
+    /* Only correct because these panels are direct <body> children (see
+       index.html) -- inside .app its will-change/transform makes it the
+       containing block and this behaves like absolute again.
+       fixed, not absolute -- .app is a plain flow element that grows with
+       its content (department list, folder contents, etc.), so on a page
+       taller than one screen, an absolutely-positioned inset:0 overlay
+       covers .app's whole SCROLLABLE height and centers within that, not
+       within whatever's currently visible. Depending on scroll position
+       the card would end up clipped off the top or the bottom edge of the
+       actual screen. Fixed positioning is always relative to the visible
+       viewport itself, regardless of scroll position or .app's height. */
+    position: fixed;
     inset: 0;
     z-index: 50;
     background: rgba(0,0,0,0);
@@ -815,7 +831,7 @@ background: linear-gradient(175deg, #f59e0b 0%, #d97706 50%, #b45309 100%) !impo
     pointer-events: all;
 }
 .fav-view-card {
-    background: linear-gradient(160deg, #16283c 0%, #0e1a2a 55%, #0a1420 100%);
+    background: var(--panel-bg);
     border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 22px;
     width: 100%;
@@ -830,7 +846,6 @@ background: linear-gradient(175deg, #f59e0b 0%, #d97706 50%, #b45309 100%) !impo
     transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 body.light-mode .fav-view-card {
-    background: linear-gradient(160deg, #fffdfa 0%, #fdf3e8 100%);
     border: 1px solid rgba(180, 120, 50, 0.4);
     box-shadow: 0 20px 60px rgba(120, 90, 50, 0.22), 0 0 0 1px rgba(180, 120, 50, 0.12);
 }
@@ -932,6 +947,67 @@ body.light-mode .fav-view-card {
     transition: background 0.15s;
 }
 .fav-row-unfav:active { background: rgba(244,63,94,0.3); }
+/* ============================================================
+   Empty Favourites card -- the design supplied on 2026-09-16.
+   Deliberately its own classes: plain .fav-empty below is shared
+   by Recent / Recycle Bin / Reminders / Continue Reading.
+   ============================================================ */
+.fav-empty-card {
+    position: relative;
+    margin: 6px 0 10px;
+    padding: 24px 18px 22px;
+    border-radius: 28px;
+    overflow: hidden;
+    text-align: center;
+    background: linear-gradient(180deg, #2d285f 0%, #241c50 45%, #2a2157 100%);
+    border: 1px solid rgba(150,125,255,0.35);
+    box-shadow: 0 18px 44px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07);
+}
+.fav-empty-card::after {
+    content: "";
+    position: absolute; right: -70px; bottom: -90px;
+    width: 230px; height: 230px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(139,92,246,0.30), transparent 70%);
+    pointer-events: none;
+}
+.fav-empty-card > * { position: relative; }
+.fav-empty-art { display: block; margin: 4px auto 2px; width: min(300px, 82%); height: auto; }
+.fav-empty-title { font-size: 1.32rem; font-weight: 800; color: #ffffff; margin-top: 6px; }
+.fav-empty-sub { font-size: 0.9rem; line-height: 1.5; color: #c6bfe6; margin: 10px 14px 0; }
+.fav-empty-chips { display: flex; justify-content: space-around; margin: 22px 2px 0; }
+.fav-empty-chip {
+    display: flex; flex-direction: column; align-items: center; gap: 9px;
+    width: 92px; font-size: 0.8rem; line-height: 1.35; color: #c6bfe6;
+}
+.fav-empty-chip span {
+    width: 58px; height: 58px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.15rem; color: #ab90f2;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(167,139,250,0.22);
+}
+.fav-empty-note {
+    display: flex; align-items: center; gap: 13px;
+    margin: 22px 0 2px; padding: 13px 15px;
+    border-radius: 16px; text-align: left;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07);
+}
+.fav-empty-note-icon {
+    flex: none; width: 32px; height: 32px; border-radius: 50%;
+    border: 1.5px solid #a78bfa; color: #a78bfa;
+    display: flex; align-items: center; justify-content: center; font-size: 0.8rem;
+}
+.fav-empty-note p { font-size: 0.82rem; line-height: 1.45; color: #b4acd4; }
+body.light-mode .fav-empty-card {
+    background: linear-gradient(180deg, #f3efff 0%, #ece5fb 100%);
+    border-color: rgba(124,92,246,0.28);
+    box-shadow: 0 12px 28px rgba(90,60,160,0.14), inset 0 1px 0 rgba(255,255,255,0.6);
+}
+body.light-mode .fav-empty-title { color: #2a2150; }
+body.light-mode .fav-empty-sub, body.light-mode .fav-empty-chip { color: #5b5280; }
+body.light-mode .fav-empty-chip span { background: rgba(124,92,246,0.10); border-color: rgba(124,92,246,0.25); color: #6d28d9; }
+body.light-mode .fav-empty-note { background: rgba(124,92,246,0.07); border-color: rgba(124,92,246,0.18); }
+body.light-mode .fav-empty-note p { color: #5b5280; }
+
 .fav-empty {
     display: flex; flex-direction: column; align-items: center;
     justify-content: center; gap: 14px;
@@ -1177,7 +1253,7 @@ transform: scale(0.9);
 }
 
 .dept-info-card { 
-background: linear-gradient(160deg, #16283c 0%, #0e1a2a 55%, #0a1420 100%); 
+background: var(--panel-bg); 
 border: 1px solid rgba(255, 140, 40, 0.4); 
 border-radius: 22px; 
 width: 100%; 
@@ -1327,7 +1403,6 @@ letter-spacing: 0.1em;
 }
 
 body.light-mode .dept-info-card {
-    background: linear-gradient(160deg, #fffdfa 0%, #fdf3e8 100%);
     border: 1px solid rgba(180, 120, 50, 0.4);
     box-shadow: 0 20px 60px rgba(120, 90, 50, 0.22), 0 0 0 1px rgba(180, 120, 50, 0.12);
 }
@@ -1667,9 +1742,9 @@ gap: 10px;
 transition: all 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.2); 
 position: relative; 
 overflow: hidden; 
-min-height: 36px !important; 
-height: auto !important; 
-line-height: 1; 
+min-height: 36px !important;
+height: auto !important;
+line-height: 1;
 }
 
 body.light-mode .card {
@@ -1900,7 +1975,7 @@ padding-top: 12px;
 }
 
 .modal-content {
-    background: var(--glass-bg);
+    background: var(--panel-bg);
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
 
@@ -2730,6 +2805,8 @@ bottom: calc(20px + env(safe-area-inset-bottom));
 left: 50%;
 transform: translateX(-50%) translateY(100px);
 background: #1a1c33;
+/* Full hairline first, then the accent re-declares just the left edge. */
+border: 1px solid rgba(255, 255, 255, 0.16);
 border-left: 3px solid #34d399;
 color: #e2e8f0;
 padding: 10px 16px;
@@ -2780,9 +2857,10 @@ cursor: pointer;
 transform: translateY(-2px); 
 }
 
-#uploadBtn:active, #newNoteBtn:active { 
-transform: translateY(4px) !important; 
-box-shadow: 0 1px 0 rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.3) !important; 
+#uploadBtn:active, #newNoteBtn:active,
+#uploadBtn.pressed-feedback, #newNoteBtn.pressed-feedback {
+transform: translateY(4px) !important;
+box-shadow: 0 1px 0 rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.3) !important;
 }
 
 #backBtn { 
@@ -4033,7 +4111,8 @@ box-shadow: 0 4px 12px rgba(0,0,0,0.25);
 .settings-icon-search { background: linear-gradient(135deg, #06b6d4, #0891b2); } 
 .settings-icon-departments { background: linear-gradient(135deg, #e91e8c, #7c3aed); } 
 .settings-icon-security { background: linear-gradient(135deg, #10b981, #059669); } 
-.settings-icon-about { background: linear-gradient(135deg, #64748b, #475569); } 
+.settings-icon-about { background: linear-gradient(135deg, #64748b, #475569); }
+.settings-icon-share { background: linear-gradient(135deg, #38bdf8, #6366f1); }
 .settings-icon-danger { background: linear-gradient(135deg, #ef4444, #b91c1c); }
 
 .settings-item-text { 
@@ -4616,6 +4695,94 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     opacity: 0 !important;
 }
 
+/* ============================================================
+   SUBFOLDER ROW -- two lines, so the name owns the full width instead of
+   sharing it with a count chip. Every rule below that carries !important is
+   overriding an existing .card / .card.glow-folder rule that would otherwise
+   win: 60% width, the 999px pill radius, and the 76px right padding the old
+   absolutely-positioned count needed.
+   ============================================================ */
+.card.glow-folder.folder-row {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 16px !important;
+    padding: 5px 8px 5px 9px !important;
+    padding-right: 8px !important;
+    gap: 8px !important;
+    /* 48px is Android's minimum touch target, and CSS px map 1:1 to dp in
+       this WebView -- do not go below it. */
+    min-height: 48px !important;
+    align-items: center !important;
+}
+/* One rendered folder image shared by every row; only the glyph changes.
+   48%/64% is where the front panel's centre falls in that image. */
+.folder-row .frow-ico {
+    flex: 0 0 36px; width: 36px; height: 28px; position: relative;
+    background: url('Images/folder-row.png') center/contain no-repeat;
+}
+.folder-row .frow-ico i {
+    position: absolute; left: 48%; top: 64%; transform: translate(-50%, -50%);
+    font-size: 0.72rem; color: #0d1226;
+}
+.folder-row .frow-mid {
+    flex: 1 1 auto !important; min-width: 0;
+    display: flex; flex-direction: column; gap: 2px;
+}
+.folder-row .frow-name {
+    font-size: 0.80rem; font-weight: 600; color: var(--text-primary);
+    line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.folder-row .frow-sub {
+    font-size: 0.675rem; color: var(--text-secondary); line-height: 1.2;
+    display: flex; align-items: center; gap: 7px;
+}
+.folder-row .frow-exp {
+    padding: 1px 6px; border-radius: 5px; font-weight: 700; font-size: 0.6rem;
+    background: rgba(245,158,11,0.18); color: #f59e0b;
+    border: 1px solid rgba(245,158,11,0.32); white-space: nowrap;
+}
+/* On a normal card these are absolutely positioned; pulled back into the row
+   so they cannot land on top of the folder image. */
+.folder-row .card-lock-indicator,
+.folder-row .card-fav-indicator {
+    position: static !important; flex: none !important;
+    margin: 0 !important; right: auto !important; top: auto !important;
+    transform: none !important; font-size: 0.78rem;
+}
+.folder-row .card-fav-indicator { color: #f59e0b; }
+.folder-row .card-lock-indicator { color: #f87171; }
+.folder-row .card-fav-hidden { display: none !important; }
+
+/* Pill opening the folder's options. The three dots are load bearing: the
+   same pill with a single knob reads as an on/off switch. */
+/* File and note cards keep their own absolutely-positioned indicators, so the
+   pill sits in the flow with a little breathing room before it. */
+.card .row-menu { flex: 0 0 42px !important; margin-left: 4px; }
+.folder-row .frow-menu,
+.card .row-menu {
+    flex: 0 0 42px !important; width: 42px; height: 24px; border-radius: 999px;
+    position: relative; padding: 0; cursor: pointer;
+    background: linear-gradient(180deg, #333b50, #242a3a);
+    border: 1px solid rgba(255,255,255,0.16);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.45);
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.folder-row .frow-dots,
+.card .row-menu .frow-dots {
+    position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; font-size: 0.85rem; color: #e2e8f0;
+    pointer-events: none;
+}
+.folder-row .frow-menu:active,
+.card .row-menu:active { background: linear-gradient(180deg, #3d4660, #2c3346); }
+body.light-mode .folder-row .frow-menu,
+body.light-mode .card .row-menu {
+    background: linear-gradient(180deg, #e6dccd, #d8ccb8);
+    border-color: rgba(120,95,65,0.30);
+}
+body.light-mode .folder-row .frow-dots,
+body.light-mode .card .row-menu .frow-dots { color: #5c4a38; }
+
 .card-folder-count {
     flex-shrink: 0;
     margin-left: auto;
@@ -4652,6 +4819,13 @@ body.light-mode .card-folder-count {
     background: rgba(239,68,68,0.18);
     color: #f87171;
     border: 1px solid rgba(239,68,68,0.4);
+}
+/* Beyond the "soon" threshold -- present but deliberately recessive, so a
+   date months out never reads as urgent. */
+.card-expiry-ok {
+    background: rgba(148,163,184,0.13);
+    color: #94a3b8;
+    border: 1px solid rgba(148,163,184,0.28);
 }
 
 .card-select-mode { cursor: pointer; }
@@ -4705,7 +4879,7 @@ body.light-mode .card-folder-count {
     width: 200px;
     max-height: calc(100vh - 16px - var(--safe-bottom));
     overflow-y: auto;
-    background: rgba(18, 24, 48, 0.96);
+    background: var(--panel-bg);
 border: 1px solid rgba(140,100,255,0.7); 
     border-radius: 16px;
     padding: 6px 0;
@@ -4728,7 +4902,7 @@ border: 1px solid rgba(140,100,255,0.7);
 .ctx-menu-title {
     font-size: 0.72rem;
     font-weight: 600;
-    color: #94a3b8;
+    color: var(--text-muted);
     padding: 6px 14px 4px;
     white-space: nowrap;
     overflow: hidden;
@@ -4744,7 +4918,7 @@ border: 1px solid rgba(140,100,255,0.7);
     transition: background 0.1s ease;
     -webkit-tap-highlight-color: transparent;
 }
-.ctx-menu-item:active { background: rgba(255,255,255,0.07); }
+.ctx-menu-item:active { background: rgba(125,130,150,0.18); }
 .ctx-item-icon {
     width: 20px;
     text-align: center;
@@ -4761,6 +4935,7 @@ border: 1px solid rgba(140,100,255,0.7);
 .ctx-icon-camera       { color: #a78bfa; }
 .ctx-icon-choosefiles  { color: #60a5fa; }
 .ctx-icon-googledrive  { color: #34a853; }
+.ctx-icon-scan         { color: #ff9442; }
 .ctx-icon-edit   { color: #38bdf8; }
 .ctx-icon-note   { color: #fbbf24; }
 .ctx-icon-tags   { color: #f472b6; }
@@ -4768,9 +4943,14 @@ border: 1px solid rgba(140,100,255,0.7);
 .ctx-menu-item-label {
     font-size: 0.88rem;
     font-weight: 500;
-    color: #f8fafc;
+    color: var(--text-primary);
 }
 .ctx-menu-item-label.danger { color: #fb7185; }
+/* The dark-mode reds sit at ~2.6:1 on the light panel -- too weak for a
+   destructive action, so light mode gets deeper ones. */
+body.light-mode .ctx-menu-item-label.danger { color: #c81e3a; }
+body.light-mode .ctx-icon-delete { color: #c81e3a; }
+body.light-mode .ctx-icon-lock   { color: #c2410c; }
 .ctx-menu-divider {
     height: 1px;
     background: rgba(255,255,255,0.07);
@@ -5040,15 +5220,15 @@ body.light-mode .subtab-btn.active {
 
 .dash-stat-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 16px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+  margin-bottom: 14px;
 }
 .dash-stat-card {
   background: linear-gradient(160deg, #17142a 0%, #100e1c 100%);
   border: 1px solid rgba(150,150,220,0.4);
-  border-radius: 16px;
-  padding: 20px 10px;
+  border-radius: 12px;
+  padding: 11px 3px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -5056,8 +5236,8 @@ body.light-mode .subtab-btn.active {
   gap: 4px;
   text-align: center;
 }
-.dash-stat-value { font-size: 2.1rem; font-weight: 800; line-height: 1; letter-spacing: -0.01em; color: #f8fafc; font-family: Inter, sans-serif; }
-.dash-stat-label { font-size: 0.72rem; font-weight: 500; color: #94a3b8; font-family: Inter, sans-serif; }
+.dash-stat-value { font-size: 1.22rem; font-weight: 700; line-height: 1; letter-spacing: -0.01em; color: #f8fafc; font-family: Inter, sans-serif; }
+.dash-stat-label { font-size: 0.62rem; font-weight: 500; color: #94a3b8; font-family: Inter, sans-serif; }
 body.light-mode .dash-stat-card { background: rgba(255,255,255,0.9); border: 1px solid rgba(150,150,220,0.5); }
 body.light-mode .dash-stat-value { color: var(--text-primary) !important; }
 body.light-mode .dash-stat-label { color: var(--text-secondary) !important; }
@@ -5474,18 +5654,37 @@ body.lock-active .shimmer {
     gap: 6px !important;
     width: calc(100% + 26px) !important;
     box-sizing: border-box !important;
-    margin: 3px -13px 3px -13px !important;
-    padding: 8px 10px !important;
+    margin: 3px -13px 0 -13px !important;
+    padding: 6px 10px !important;
     border-radius: 12px !important;
     background: linear-gradient(180deg, #172040 0%, #10182e 40%, #0b1120 100%) !important;
-    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    /* The orange edge comes from ::before below, the same gradient-mask the
+       DOCMAN header uses -- a real border cannot hold a gradient. */
+    border: none !important;
     box-shadow: 0 12px 26px rgba(0,0,0,0.6), 0 2px 0 rgba(255,255,255,0.1) inset, 0 -3px 6px rgba(0,0,0,0.5) inset, 0 1px 0 rgba(255,255,255,0.06) !important;
     overflow: visible !important;
     position: relative;
 }
+/* Same thin orange edge as the DOCMAN header (.top-panel::before). */
+.folder-toolbar::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 0.6px;
+    background: linear-gradient(135deg, #ffb347, #ff8f1f, #ffa337, #ffb347);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 0;
+}
+/* keep the buttons above the edge overlay */
+.folder-toolbar > * { position: relative; z-index: 1; }
+
 body.light-mode .folder-toolbar {
     background: #ffffff !important;
-    border: 1px solid rgba(180, 140, 90, 0.18) !important;
+    border: none !important;
     box-shadow: 0 2px 8px rgba(150, 110, 60, 0.10) !important;
 }
 
@@ -5794,17 +5993,17 @@ body.light-mode .header-gear-icon {
    ============================================================ */
 .current-folder-card {
     background: url('Images/folder-card-bg.png') !important;
-    background-size: 100% 100% !important;
+    background-size: 103% 116% !important;
     background-position: center !important;
     background-repeat: no-repeat !important;
     width: calc(100% + 26px) !important;
-    height: 53px !important;
+    height: 57px !important;
     border: none !important;
     border-radius: 12px !important;
     box-shadow: none !important;
     box-sizing: border-box !important;
     padding: 2px 56px 2px 14px !important;
-    margin: 3px -13px 3px -13px !important;
+    margin: 0 -13px 3px -13px !important;
     min-height: 0 !important;
     overflow: hidden !important;
     position: relative !important;
@@ -5821,7 +6020,21 @@ body.light-mode .current-folder-card {
     border: 1px solid rgba(80, 80, 88, 0.22) !important;
 }
 .current-folder-card::before {
-    display: none !important;
+    display: block !important;
+    content: "" !important;
+    position: absolute !important;
+    inset: 0 !important;
+    border-radius: inherit !important;
+    padding: 0.6px !important;
+    background: linear-gradient(135deg, #ffb347, #ff8f1f, #ffa337, #ffb347) !important;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0) !important;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0) !important;
+    -webkit-mask-composite: xor !important;
+    mask-composite: exclude !important;
+    /* the old rule added a blue glow -- it must not come back with it */
+    box-shadow: none !important;
+    pointer-events: none !important;
+    z-index: 0 !important;
 }
 .current-folder-card::after {
     display: none !important;
@@ -6011,13 +6224,17 @@ body.light-mode .type-btn:not(.active) { color: rgba(200, 200, 210, 0.75) !impor
     overflow: hidden !important;
 }
 
+/* -v2 art: the original track had the divider baked into its centre and the
+   original thumb was rounded on its outer end only (its flat edge used to hide
+   inside that divider). Regenerated so the track is one continuous panel and
+   the thumb is a full pill, which is what lets it sit anywhere seamlessly. */
 .ft-toggle-track {
     position: absolute !important;
     top: 0 !important;
     left: 0 !important;
     width: 100% !important;
     height: 100% !important;
-    background-image: url('Images/toggle-track.png') !important;
+    background-image: url('Images/toggle-track-v2.png') !important;
     background-size: 100% 100% !important;
     background-repeat: no-repeat !important;
     z-index: 1 !important;
@@ -6031,12 +6248,12 @@ body.light-mode .type-btn:not(.active) { color: rgba(200, 200, 210, 0.75) !impor
     left: 0 !important;
     width: 50% !important;
     height: 100% !important;
-    background-image: url('Images/toggle-thumb.png') !important;
+    background-image: url('Images/toggle-thumb-v2.png?v=2') !important;
     background-size: 100% 100% !important;
     background-repeat: no-repeat !important;
     z-index: 3 !important;
     pointer-events: none !important;
-    transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    transition: left 0.72s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 .ft-toggle.active-notes .ft-toggle-thumb {
     left: 50% !important;
@@ -6060,7 +6277,7 @@ body.light-mode .type-btn:not(.active) { color: rgba(200, 200, 210, 0.75) !impor
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
     pointer-events: none !important;
     z-index: 5 !important;
-    transition: color 0.25s ease, text-shadow 0.25s ease, opacity 0.25s ease !important;
+    transition: color 0.72s ease, text-shadow 0.72s ease, opacity 0.72s ease !important;
 }
 .ft-toggle-label-files {
     left: 0 !important;
@@ -6079,10 +6296,16 @@ body.light-mode .type-btn:not(.active) { color: rgba(200, 200, 210, 0.75) !impor
         0 0 16px rgba(56, 189, 248, 0.65),
         0 1px 2px rgba(0, 0, 0, 0.5) !important;
 }
+/* The inactive side sits flat on the orange panel and read as a printed
+   label rather than something you can press. Embossing it -- highlight on
+   the top edge, dark on the bottom -- gives it a raised, physical face. */
 .ft-toggle.active-files .ft-toggle-label-notes,
 .ft-toggle.active-notes .ft-toggle-label-files {
-    color: rgba(255, 255, 255, 0.32) !important;
-    text-shadow: none !important;
+    color: rgba(255, 244, 232, 0.62) !important;
+    text-shadow:
+        0 -1px 0 rgba(255, 255, 255, 0.38),
+        0 1px 0 rgba(0, 0, 0, 0.55),
+        0 2px 3px rgba(0, 0, 0, 0.4) !important;
 }
 
 .ft-toggle-zone {
@@ -6109,7 +6332,1264 @@ body.light-mode .type-btn:not(.active) { color: rgba(200, 200, 210, 0.75) !impor
     transform: scale(0.97) !important;
 }
 
+/* The Files/Notes toggle thumb above slides smoothly (0.28s), but render()
+   replaces #content's cards outright with no transition of its own -- the
+   switch glides while the list underneath just pops, which is the "very
+   fast" mismatch. Re-applied (via a remove+reflow+add in setActiveTab) each
+   time the tab actually changes, on the same duration/easing as the thumb
+   so both move together. */
+@keyframes contentTabFadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.content-tab-transition {
+    /* !important: #content already carries a permanent, higher-specificity
+       "page load reveal" animation (.app.app-visible #content, see above in
+       this file) that would otherwise silently win over a plain class and
+       make this rule a no-op every time. */
+    animation: contentTabFadeIn 0.72s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
 /* Search box + stats-bar force-dark overrides removed here --
    both now follow the light theme via their earlier rules
    (search-container/#searchInput near line 732, .stats-bar near
    line 2722), consistent with the top header. */
+
+/* ============================================================
+   PIN KEYPAD (app-lock screen + PIN-verify modal)
+   ============================================================
+   Both overlays are deliberately dark in either theme, so this has no
+   light-mode variant. --pin-accent is set per-screen by the markup so the
+   press tint matches whichever overlay is showing.
+   Keys are deliberately small and the pressed state deliberately quiet: a
+   large key with a bright glow makes the PIN readable over the user's
+   shoulder from across a room. */
+.pin-pad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    /* The key is a fixed size centred in its column rather than filling it,
+       so widening the pad spreads the keys out instead of inflating them. */
+    justify-items: center;
+    column-gap: 0;
+    row-gap: 14px;
+    max-width: 300px;
+    margin-left: auto;
+    margin-right: auto;
+}
+.pin-key {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    background:
+        linear-gradient(160deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.045) 55%, rgba(255,255,255,0.02) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.16),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+        0 4px 10px rgba(0, 0, 0, 0.32);
+    color: #f1f5f9;
+    font-family: Inter, sans-serif;
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: transform 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+/* .is-down, not :active -- a quick tap on this WebView often never paints
+   the :active frame, and PIN entry is exactly where the press has to be
+   felt. The keypad's own pointerdown/up handlers toggle this. */
+.pin-key.is-down {
+    transform: scale(0.95);
+    background: linear-gradient(160deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
+    box-shadow:
+        inset 0 2px 7px rgba(0, 0, 0, 0.55),
+        inset 0 0 0 1px var(--pin-accent, #ff6b4a);
+}
+.pin-key-blank {
+    background: none;
+    border: none;
+    box-shadow: none;
+    pointer-events: none;
+    cursor: default;
+}
+.pin-key-back {
+    font-size: 0.95rem;
+    color: #cbd5e1;
+}
+.pin-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+/* ============================================================
+   STORAGE DASHBOARD — hero, composition bar, department bars
+   ============================================================
+   Series colours are the validated categorical slots 1-3 (blue/orange/aqua),
+   bound to a file-type bucket rather than to rank, so a bucket keeps its
+   colour when another one drops to zero. Three, not four: an empty bucket is
+   dropped from the bar, so any two can end up adjacent, which means the
+   all-pairs CVD gate applies -- and only the first three slots clear it. */
+.dashboard-body {
+    --dash-c1: #3987e5;  /* PDFs   */
+    --dash-c2: #d95926;  /* Images */
+    --dash-c3: #199e70;  /* Other  */
+    --dash-track: rgba(255, 255, 255, 0.09);
+}
+body.light-mode .dashboard-body {
+    --dash-c1: #2a78d6;
+    --dash-c2: #eb6834;
+    --dash-c3: #1baf7a;
+    --dash-track: rgba(0, 0, 0, 0.09);
+}
+
+.dash-hero {
+    background: linear-gradient(135deg, rgba(233,30,140,0.16), rgba(59,130,246,0.10));
+    border: 1px solid rgba(255,255,255,0.5);
+    border-radius: 16px;
+    padding: 14px 16px 13px;
+    margin-bottom: 14px;
+}
+.dash-hero-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 11px;
+}
+.dash-eyebrow {
+    font-family: Inter, sans-serif;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: #a9b6c9;
+    margin-bottom: 3px;
+}
+.dash-hero-value {
+    font-family: Inter, sans-serif;
+    font-size: 1.6rem;
+    font-weight: 750;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: #fff;
+}
+.dash-hero-sub {
+    font-family: Inter, sans-serif;
+    font-size: 0.68rem;
+    line-height: 1.35;
+    color: #a9b6c9;
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Stacked composition bar: thin mark, 2px surface gaps, rounded data-ends. */
+.dash-comp-bar {
+    display: flex;
+    gap: 2px;
+    height: 10px;
+    margin-bottom: 11px;
+}
+.dash-comp-seg { border-radius: 4px; min-width: 3px; }
+.dash-comp-empty {
+    flex: 1;
+    border-radius: 4px;
+    background: var(--dash-track);
+}
+
+.dash-legend { display: flex; flex-direction: column; gap: 5px; }
+.dash-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: Inter, sans-serif;
+    font-size: 0.72rem;
+}
+.dash-swatch { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+.dash-legend-name { color: #cbd5e1; flex: 1; }
+.dash-legend-val {
+    color: #fff;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+}
+.dash-legend-pct {
+    color: #8d9bb0;
+    font-variant-numeric: tabular-nums;
+    min-width: 34px;
+    text-align: right;
+}
+body.light-mode .dash-legend-name { color: var(--text-secondary); }
+body.light-mode .dash-legend-pct { color: var(--text-muted); }
+
+/* Department bars: one measure, so one hue -- rank must never repaint them. */
+.dash-dept { padding: 9px 16px; }
+.dash-dept + .dash-dept { border-top: 1px solid rgba(255,255,255,0.05); }
+.dash-dept-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+    font-family: Inter, sans-serif;
+}
+.dash-dept-name {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dash-dept-size {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.dash-track {
+    height: 6px;
+    background: var(--dash-track);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.dash-fill {
+    display: block;
+    height: 100%;
+    background: var(--dash-c1);
+    border-radius: 4px;
+    min-width: 3px;
+}
+
+/* A long engineering filename wrapped to five lines and made this card the
+   tallest thing on the dashboard. */
+.dash-largest-name {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+/* A department holding nothing gets no bar -- a 3px stub reads as a real
+   (tiny) value, and stacked up they buried the departments that matter. */
+.dash-dept-empty .dash-dept-head { margin-bottom: 0; }
+.dash-dept-empty .dash-dept-name { color: var(--text-secondary); font-weight: 500; }
+.dash-dept-empty .dash-dept-size { color: var(--text-muted); }
+
+/* ============================================================
+   STORAGE DASHBOARD — reference-style layout
+   ============================================================ */
+.dash-header { align-items: flex-start !important; }
+.dash-head-mid { flex: 1; min-width: 0; }
+.dash-head-sub { color: #5f7ba8; font-size: 0.76rem; font-weight: 500; margin-top: 3px; font-family: Inter, sans-serif; }
+body.light-mode .dash-head-sub { color: var(--text-secondary); }
+
+/* --- stat tiles --- */
+.dash-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.dash-tile {
+    position: relative;
+    border-radius: 17px;
+    padding: 11px 9px 12px;
+    min-height: 112px;
+    border: 1.5px solid var(--h);
+    background: linear-gradient(165deg, var(--bg1), rgba(9, 14, 26, 0.55) 78%);
+}
+.dash-tile-ico {
+    width: 33px; height: 33px; border-radius: 11px; margin-bottom: 13px;
+    background: linear-gradient(150deg, var(--h), var(--h2));
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 0.82rem;
+}
+.dash-tile-val { color: #fff; font-size: 1.2rem; font-weight: 750; line-height: 1; font-family: Inter, sans-serif; }
+.dash-tile-lab { color: #93a6c4; font-size: 0.64rem; margin-top: 4px; font-family: Inter, sans-serif; }
+body.light-mode .dash-tile { background: rgba(255,255,255,0.9); }
+body.light-mode .dash-tile-val { color: var(--text-primary); }
+body.light-mode .dash-tile-lab { color: var(--text-secondary); }
+
+/* --- hero --- */
+.dash-hero2 {
+    border-radius: 20px; padding: 16px 16px 14px; margin-bottom: 20px;
+    background: linear-gradient(135deg, #1c3387 0%, #22307d 45%, #3b2a86 100%);
+    border: 1px solid rgba(120, 150, 255, 0.45);
+    box-shadow: 0 0 26px -6px rgba(70, 110, 255, 0.45);
+    font-family: Inter, sans-serif;
+}
+.dash-hero2-eye { color: #9fb6e8; font-size: 0.655rem; font-weight: 700; letter-spacing: 0.13em; }
+.dash-hero2-val { color: #fff; font-size: 1.9rem; font-weight: 800; line-height: 1.05; letter-spacing: -0.025em; margin-top: 5px; }
+.dash-hero2-of { color: #9fb6e8; font-size: 0.75rem; margin-top: 3px; }
+.dash-bar2 { height: 11px; border-radius: 7px; background: rgba(255,255,255,0.16); display: flex; gap: 2px; margin: 14px 0 11px; overflow: hidden; }
+.dash-bar2 span { border-radius: 7px; min-width: 3px; }
+.dash-leg2 { display: flex; align-items: center; gap: 9px; font-size: 0.77rem; }
+.dash-leg2 + .dash-leg2 { margin-top: 6px; }
+.dash-leg2-dot { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 10px; }
+.dash-leg2-n { color: #dce6fa; flex: 1; }
+.dash-leg2-v { color: #fff; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dash-leg2-p { color: #9fb6e8; min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+.dash-rule { height: 1px; background: rgba(255,255,255,0.16); margin: 12px 0 11px; }
+.dash-mini { display: flex; align-items: center; }
+.dash-mini-half { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.dash-mini-half + .dash-mini-half { border-left: 1px solid rgba(255,255,255,0.16); padding-left: 14px; }
+.dash-mini-ico {
+    width: 34px; height: 34px; border-radius: 11px; flex: 0 0 34px;
+    background: rgba(255,255,255,0.13); display: flex; align-items: center; justify-content: center;
+    color: #bcd0f7; font-size: 0.78rem;
+}
+.dash-mini-v { color: #fff; font-size: 0.86rem; font-weight: 700; line-height: 1.15; }
+.dash-mini-l { color: #9fb6e8; font-size: 0.67rem; }
+
+/* --- section headers --- */
+.dash-sec { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 9px; }
+.dash-sec-t { color: #6d88b8; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.14em; font-family: Inter, sans-serif; }
+.dash-pill {
+    display: flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 999px;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.11);
+    color: #dbe6f5; font-size: 0.73rem; font-weight: 600; font-family: Inter, sans-serif;
+    cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.dash-pill i { font-size: 0.56rem; color: #93a6c4; }
+body.light-mode .dash-sec-t { color: var(--text-secondary); }
+body.light-mode .dash-pill { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.1); color: var(--text-primary); }
+
+/* --- largest document --- */
+.dash-doc {
+    display: flex; align-items: center; gap: 12px; padding: 13px 12px; margin-bottom: 20px;
+    border-radius: 17px; border: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(140deg, rgba(88,26,54,0.6), rgba(16,20,38,0.6));
+    font-family: Inter, sans-serif; cursor: pointer;
+}
+.dash-doc-ico {
+    width: 50px; height: 50px; border-radius: 14px; flex: 0 0 50px;
+    background: linear-gradient(150deg, #f43f5e, #b91c3c);
+    display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.2rem;
+}
+.dash-doc-mid { flex: 1; min-width: 0; }
+.dash-doc-n {
+    color: #fff; font-size: 0.87rem; font-weight: 700; line-height: 1.28;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.dash-doc-p { color: #7d95c2; font-size: 0.74rem; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-doc-s { color: #9dc0f5; font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+.dash-go {
+    width: 28px; height: 28px; border-radius: 50%; flex: 0 0 28px;
+    background: rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center;
+    color: #cfe0f5; font-size: 0.6rem;
+}
+body.light-mode .dash-doc-n { color: var(--text-primary); }
+body.light-mode .dash-doc-p { color: var(--text-secondary); }
+
+/* --- department rows --- */
+.dash-depts { border-radius: 17px; border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.025); overflow: hidden; font-family: Inter, sans-serif; }
+.dash-dep { display: flex; align-items: center; gap: 12px; padding: 11px 12px; cursor: pointer; }
+.dash-dep + .dash-dep { border-top: 1px solid rgba(255,255,255,0.055); }
+.dash-dep-ico {
+    width: 40px; height: 40px; border-radius: 13px; flex: 0 0 40px;
+    background: linear-gradient(150deg, var(--h), var(--h2));
+    display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.86rem;
+}
+.dash-dep-mid { flex: 1; min-width: 0; }
+.dash-dep-n { color: #fff; font-size: 0.86rem; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-dep-track { height: 5px; border-radius: 4px; background: rgba(255,255,255,0.1); margin-top: 7px; }
+.dash-dep-fill { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #2563eb, #38bdf8); min-width: 3px; }
+.dash-dep-v { color: #fff; font-size: 0.79rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dash-dep-v.is-empty { color: #6d88b8; font-weight: 500; }
+body.light-mode .dash-depts { background: rgba(255,255,255,0.9); border-color: rgba(0,0,0,0.08); }
+body.light-mode .dash-dep-n { color: var(--text-primary); }
+body.light-mode .dash-dep-v { color: var(--text-primary); }
+/* The panel card is ~50px narrower than a bare 375px screen, so the hero
+   figure and the header tagline wrapped. Reclaim it from the gutters and
+   trim the ring. */
+.dashboard-body { padding-left: 13px; padding-right: 13px; }
+.dash-header { padding-left: 13px; padding-right: 13px; gap: 10px; }
+.dash-header .fav-view-title { font-size: 0.98rem; }
+.dash-head-sub { font-size: 0.7rem; white-space: nowrap; }
+.dash-hero2-val { font-size: 1.85rem; white-space: nowrap; }
+.dash-hero2 { padding: 14px 14px 12px; }
+.dash-tile { padding: 10px 8px 11px; min-height: 104px; }
+.dash-tile-ico { margin-bottom: 10px; }
+/* No bar above it to align with, so it needs its own top margin. */
+.dash-leg2-solo { margin-top: 13px; }
+
+/* ---- Dashboard compaction pass ----
+   Matching a tighter reference: the panel goes edge-to-edge, the files/folders
+   counts moved up beside the storage figure (the separate icon-tile block and
+   its divider are gone), and every block lost a few px of padding. */
+.favourites-view { padding: 0 !important; align-items: stretch !important; }
+.favourites-view .fav-view-card {
+    border-radius: 0; border: none; box-shadow: none;
+    max-width: none; min-height: 100%; max-height: 100%;
+}
+.fav-view-header { padding: max(12px, calc(env(safe-area-inset-top) + 8px)) 14px 10px; }
+.fav-view-list { padding-bottom: max(20px, calc(env(safe-area-inset-bottom) + 18px)); }
+.dashboard-body { padding: 0 14px max(20px, calc(env(safe-area-inset-bottom) + 18px)); }
+
+.dash-tiles { gap: 8px; margin-bottom: 10px; }
+.dash-tile { min-height: 0; padding: 9px 9px 10px; border-radius: 15px; }
+.dash-tile-ico { width: 30px; height: 30px; border-radius: 10px; margin-bottom: 9px; font-size: 0.76rem; }
+.dash-tile-val { font-size: 1.15rem; }
+.dash-tile-lab { font-size: 0.62rem; margin-top: 2px; }
+
+.dash-hero2 { padding: 11px 14px 12px; margin-bottom: 15px; border-radius: 17px; }
+.dash-hero2-eye { display: flex; align-items: center; gap: 7px; }
+.dash-hero2-eye i { font-size: 0.82rem; color: #9fb6e8; }
+.dash-hero2-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.dash-hero2-val { font-size: 1.7rem; margin-top: 2px; }
+.dash-hero2-of { margin-top: 1px; }
+.dash-hero2-counts {
+    color: #9fb6e8; font-size: 0.73rem; line-height: 1.4; text-align: right;
+    white-space: nowrap; font-variant-numeric: tabular-nums; padding-bottom: 2px;
+}
+.dash-bar2 { height: 9px; margin: 10px 0 8px; }
+.dash-leg2-solo { margin-top: 10px; }
+
+.dash-sec { margin: 0 2px 7px; }
+.dash-doc { padding: 10px 11px; margin-bottom: 15px; border-radius: 15px; }
+.dash-doc-ico { width: 44px; height: 44px; border-radius: 12px; flex-basis: 44px; font-size: 1.05rem; }
+.dash-doc-n { font-size: 0.85rem; }
+
+.dash-dep { padding: 8px 11px; gap: 11px; }
+.dash-dep-ico { width: 34px; height: 34px; border-radius: 11px; flex-basis: 34px; font-size: 0.78rem; }
+.dash-dep-track { height: 4px; margin-top: 5px; }
+.dash-go { width: 26px; height: 26px; flex-basis: 26px; font-size: 0.55rem; }
+/* Expiring Soon reuses the department row shell; it just needs room for the
+   badge between the name and the chevron. */
+.dash-expiry-row .card-expiry-badge { flex-shrink: 0; }
+
+/* ---- Favourites / Recent / Recycle Bin rows, matched to the dashboard ----
+   Same row proportions and solid icon tiles as .dash-dep, so the four panels
+   read as one family instead of two generations of design. */
+.fav-section-title {
+    color: #6d88b8;
+    letter-spacing: 0.14em;
+    padding: 14px 2px 8px;
+}
+body.light-mode .fav-section-title { color: var(--text-secondary); }
+.fav-section-title span {
+    background: rgba(255, 255, 255, 0.07);
+    font-size: 0.66rem;
+}
+.fav-row {
+    gap: 11px;
+    padding: 8px 11px;
+    border-radius: 15px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    margin-bottom: 7px;
+}
+body.light-mode .fav-row { background: rgba(255,255,255,0.9); border-color: rgba(0,0,0,0.08); }
+.fav-row-icon {
+    width: 34px; height: 34px;
+    border-radius: 11px;
+    border: none;
+    background: linear-gradient(150deg, #3b82f6, #1d4ed8);
+    color: #fff;
+    font-size: 0.78rem;
+}
+.fav-row-icon-note { background: linear-gradient(150deg, #f59e0b, #b45309); color: #fff; }
+.fav-row-icon-folder { background: linear-gradient(150deg, #8b5cf6, #6d28d9); color: #fff; }
+.fav-row-name { font-size: 0.86rem; font-weight: 650; }
+.fav-row-path { font-size: 0.7rem; margin-top: 2px; }
+.fav-row-unfav { width: 30px; height: 30px; font-size: 0.75rem; }
+
+/* Backup status on the dashboard. Red/amber isn't decoration here -- an
+   un-backed-up library is the one failure that loses everything, and it was
+   previously invisible. */
+.dash-backup {
+    display: flex; align-items: center; gap: 11px;
+    padding: 11px 12px; margin-bottom: 15px;
+    border-radius: 15px; cursor: pointer;
+    font-family: Inter, sans-serif;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+}
+.dash-backup-ico {
+    width: 34px; height: 34px; border-radius: 11px; flex: 0 0 34px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 0.8rem;
+    background: linear-gradient(150deg, #64748b, #475569);
+}
+.dash-backup-mid { flex: 1; min-width: 0; }
+.dash-backup-n { color: #fff; font-size: 0.85rem; font-weight: 650; }
+.dash-backup-s { color: #7d95c2; font-size: 0.71rem; margin-top: 2px; }
+
+.dash-backup-ok .dash-backup-ico { background: linear-gradient(150deg, #10b981, #047857); }
+.dash-backup-stale {
+    border-color: rgba(245, 158, 11, 0.45);
+    background: linear-gradient(140deg, rgba(180, 83, 9, 0.18), rgba(255,255,255,0.02));
+}
+.dash-backup-stale .dash-backup-ico { background: linear-gradient(150deg, #f59e0b, #b45309); }
+.dash-backup-stale .dash-backup-s { color: #f0b357; }
+.dash-backup-never {
+    border-color: rgba(244, 63, 94, 0.5);
+    background: linear-gradient(140deg, rgba(185, 28, 60, 0.22), rgba(255,255,255,0.02));
+}
+.dash-backup-never .dash-backup-ico { background: linear-gradient(150deg, #f43f5e, #b91c3c); }
+.dash-backup-never .dash-backup-s { color: #f8a5b4; }
+body.light-mode .dash-backup-n { color: var(--text-primary); }
+
+/* ============================================================
+   FIRST-RUN INTRO
+   ============================================================
+   Fixed and a direct <body> child: .app's will-change/transform makes it a
+   containing block, same trap the overlay panels hit. */
+.intro-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 12000;
+    display: flex;
+    flex-direction: column;
+    background:
+        radial-gradient(115% 70% at 12% 0%, #221046 0%, #120f22 48%, #0a0a14 100%);
+    font-family: Inter, sans-serif;
+    padding-top: max(14px, calc(env(safe-area-inset-top) + 10px));
+    padding-bottom: max(18px, calc(env(safe-area-inset-bottom) + 14px));
+}
+.intro-skip {
+    position: absolute;
+    top: max(14px, calc(env(safe-area-inset-top) + 10px));
+    right: 16px;
+    background: none; border: none;
+    color: #8391ad; font-size: 0.82rem; font-weight: 600;
+    font-family: Inter, sans-serif;
+    padding: 6px 8px; cursor: pointer;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.intro-body {
+    flex: 1;
+    display: flex; flex-direction: column; justify-content: flex-start;
+    padding: 3.5vh 22px 8px;
+    overflow-y: auto;
+    /* Top-anchored, not centred: the heading lands in the same spot on every
+       card, instead of jumping as the card's content length changes. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.intro-body::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.intro-icon {
+    width: 56px; height: 56px; border-radius: 17px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.35rem; color: #fff; margin-bottom: 18px; flex-shrink: 0;
+}
+.intro-h {
+    color: #fff; font-size: 1.32rem; font-weight: 750;
+    letter-spacing: -0.02em; margin: 0 0 9px; line-height: 1.25;
+}
+.intro-p { color: #a2b3cc; font-size: 0.86rem; line-height: 1.5; margin: 0; }
+.intro-p + .intro-p { margin-top: 12px; }
+.intro-p b { color: #fff; font-weight: 650; }
+
+/* The example structures carry the explanation, so they're drawn as real
+   trees -- the shape reads faster than a sentence describing it. */
+.intro-persona {
+    display: flex; align-items: center; gap: 9px;
+    color: #fff; font-size: 1.15rem; font-weight: 750;
+    letter-spacing: -0.02em; margin-bottom: 6px;
+}
+.intro-note { color: #7f8ea6; font-size: 0.76rem; line-height: 1.45; margin: 0 0 6px; }
+.intro-chip {
+    width: 26px; height: 26px; border-radius: 8px; flex: 0 0 26px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; color: #fff;
+}
+/* Row heights are tuned so the longest example (Engineer -- 5 departments of
+   5 folders, 30 rows) still clears the button on a normal phone. */
+/* The three examples share one card; tabs switch between them, so each stays
+   full size instead of being squeezed into a third of a phone column. */
+.intro-tabs { display: flex; gap: 7px; margin-bottom: 8px; }
+.intro-tab {
+    flex: 1; min-width: 0;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px 5px; border-radius: 11px;
+    border: 1px solid rgba(255,255,255,0.09);
+    background: rgba(255,255,255,0.04); color: #93a3ba;
+    font-family: Inter, sans-serif; font-size: 0.735rem; font-weight: 650;
+    cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    transition: color 0.18s ease, background 0.18s ease;
+}
+.intro-tab i { font-size: 0.7rem; }
+.intro-tab.on { color: #fff; border-color: transparent; }
+
+.intro-folders { display: flex; flex-direction: column; gap: 5px; }
+.intro-dept {
+    display: flex; align-items: center; gap: 8px;
+    color: #fff; font-size: 0.8rem; font-weight: 700;
+    line-height: 1.4; margin-bottom: 1px;
+}
+.intro-dept i { font-size: 0.76rem; }
+.intro-folder {
+    display: flex; align-items: center; gap: 8px;
+    margin-left: 16px;
+    color: #9db0ca; font-size: 0.76rem; line-height: 1.3;
+}
+.intro-folder i { font-size: 0.68rem; color: #5c6f8a; flex: 0 0 auto; }
+.intro-tree pre b { color: #dbe6f5; font-weight: 600; }
+
+.intro-dots { display: flex; gap: 6px; justify-content: center; padding: 12px 0 10px; }
+.intro-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.22); transition: all 0.25s ease; }
+.intro-dot.on { background: #ff7a3d; width: 18px; border-radius: 3px; }
+.intro-foot { padding: 0 22px; }
+.intro-next {
+    display: block; width: 100%; text-align: center;
+    padding: 13px; border-radius: 40px; border: none;
+    color: #fff; font-size: 0.9rem; font-weight: 700; font-family: Inter, sans-serif;
+    background: linear-gradient(135deg, #ff6b4a, #e91e8c);
+    cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+
+/* Reaches the people who skipped the intro, at the moment it matters. */
+.dept-empty-hint {
+    display: flex; gap: 10px; align-items: flex-start;
+    margin: 16px 4px 0;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 13px; padding: 11px 12px;
+    font-family: Inter, sans-serif;
+}
+.dept-empty-hint i { color: #ffb020; font-size: 0.85rem; margin-top: 1px; flex-shrink: 0; }
+.dept-empty-hint span { color: #a2b3cc; font-size: 0.78rem; line-height: 1.5; }
+/* The "Add Department" FAB is position:fixed in the bottom-right corner and
+   .dept-add-footer deliberately reserves almost no space for it (see its
+   comment -- a static dead zone was rejected). That is fine for department
+   rows, which are short and scrollable, but this hint is a full-width block
+   of text that is always the LAST thing on the page and is shown exactly
+   when the list is short enough to end in the FAB's corner. Measured at
+   360px -- the most common Android width -- the FAB landed on its final
+   line by 22x21px. Reserving the FAB's own column (58px wide + its 4px
+   offset) makes the text wrap clear of it at every width, without
+   reintroducing the scrollable dead zone. */
+.dept-empty-hint { padding-right: 66px !important; }
+.dept-empty-hint b { color: #fff; font-weight: 650; }
+body.light-mode .dept-empty-hint span { color: var(--text-secondary); }
+body.light-mode .dept-empty-hint b { color: var(--text-primary); }
+
+/* ============================================================
+   NARROW-SCREEN HEADER FIT  (viewport <= 380px CSS px)
+   ------------------------------------------------------------
+   .header-gear-btn is position:absolute (top/right 3px), so it takes
+   NO space in the header's flex row -- the only thing holding the
+   wordmark off it is .header-title's fixed padding-right, and the
+   wordmark itself is a fixed 1.7rem that never shrinks.
+
+   Measured clearance between the right edge of "DOCMAN" and the gear
+   button's box:
+       384px (Galaxy S23)  49.5px   comfortable
+       361px (Honor)       26.5px   reads as touching -- the gear PNG's
+                                    own glow arc and drop-shadow spill
+                                    well past its 54px box
+       320px (small)      -14.5px   genuine overlap
+
+   360dp is the single most common Android width, so this has to hold
+   there. Tightening the two fixed gaps and letting the wordmark scale
+   with the viewport restores S23-like clearance on narrow screens.
+   The clamp's maximum is exactly the old 1.7rem and 7.1vw reaches it
+   at 384px, so nothing changes on the S23 or anything wider.
+   ============================================================ */
+@media (max-width: 380px) {
+    .header {
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+    }
+    .header-title {
+        margin-left: 8px !important;
+        padding-right: 62px !important;
+    }
+    /* decorative dot grid is anchored to the right edge too -- pull it
+       in with the gear so it stops printing through the wordmark */
+    .header-dots {
+        right: 44px !important;
+        width: 52px !important;
+    }
+}
+
+/* ------------------------------------------------------------
+   HEADER TEXT vs THE SYSTEM FONT SIZE SETTING
+   ------------------------------------------------------------
+   Android scales a WebView's text with the device's Font size
+   setting (WebSettings.textZoom), and MainActivity does not pin it.
+   With the gear button absolutely positioned, nothing stopped the
+   wordmark from growing straight through it: at 130% the gear
+   covered "MAN" at 320px AND 384px, at 150% it covered it at 412px
+   too -- on screens that are perfectly fine at the default size.
+
+   Two defences, and the second is the one that actually guarantees it:
+
+   1. Size the wordmark against the VIEWPORT rather than the root
+      font, so it stops growing once the screen is the binding
+      constraint. 7.1vw reaches the old 1.7rem at exactly 384px, so
+      a default-settings phone renders identically to before.
+   2. Clip it. Text can no longer paint outside .header-title's box,
+      which is already held clear of the gear -- so however the text
+      ends up scaled, the worst case is "DOCM..." instead of a
+      collision. This is the part that holds no matter what the
+      platform does to font sizes.
+   ------------------------------------------------------------ */
+.header-title { overflow: hidden !important; }
+.header-title h1 {
+    font-size: clamp(1.02rem, 7.1vw, 1.7rem) !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: 100% !important;
+}
+.doc-tag {
+    font-size: clamp(0.66rem, 4.6vw, 1.1rem) !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: 100% !important;
+}
+
+/* ============================================================
+   DOCMAN PRO SCREEN  (#proPaywall, built by showPaywall())
+   ------------------------------------------------------------
+   A deliberately branded dark screen in both themes: it is a
+   purchase moment, not a settings panel, so it does not follow
+   the light/dark toggle. Buttons carry !important on layout
+   properties because app-wide button rules would otherwise leak
+   in and reshape them.
+   ============================================================ */
+.pw-overlay {
+    position: fixed; inset: 0; z-index: 10700; /* above image editor 10500/10600; below toast 10800 and lock screen 99999 */
+    display: flex; flex-direction: column; overflow: hidden;
+    color: #fff; font-family: Inter, system-ui, sans-serif;
+    background:
+        radial-gradient(120% 60% at 50% -8%, #4a1f80 0%, rgba(74,31,128,0) 62%),
+        linear-gradient(180deg, #1e0c33 0%, #170a28 55%, #12081f 100%);
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    animation: pwIn .22s ease-out;
+}
+@keyframes pwIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .pw-overlay { animation: none; } }
+
+.pw-glow {
+    position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 92px);
+    width: 260px; height: 200px; transform: translateX(-50%); pointer-events: none;
+    background: radial-gradient(closest-side, rgba(255,138,61,.30), rgba(255,138,61,0));
+}
+.pw-close {
+    position: absolute !important; right: 16px; top: calc(env(safe-area-inset-top) + 14px);
+    width: 40px !important; height: 40px !important; padding: 0 !important; margin: 0 !important;
+    border-radius: 50% !important; border: 0 !important; z-index: 3;
+    background: rgba(255,255,255,.09) !important; color: #e6dcf5 !important; font-size: 17px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+
+.pw-scroll, .pw-dock { width: 100%; max-width: 520px; margin-left: auto; margin-right: auto; }
+.pw-scroll {
+    position: relative; flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 22px 22px 8px; display: flex; flex-direction: column; align-items: center;
+}
+.pw-chip {
+    display: inline-flex; align-items: center; gap: 8px; margin-top: 4px;
+    max-width: calc(100% - 64px); padding: 7px 13px; border-radius: 999px;
+    font-size: 12.5px; font-weight: 600; text-align: center; line-height: 1.3;
+}
+.pw-chip i { font-size: 11.5px; flex: none; }
+.pw-chip-lock  { background: rgba(255,138,61,.14); color: #ffb27d; border: 1px solid rgba(255,138,61,.30); }
+.pw-chip-ended { background: rgba(255,255,255,.08); color: #d8cdea; border: 1px solid rgba(255,255,255,.14); }
+.pw-icon {
+    position: relative; flex: none; width: 86px; height: 86px; margin-top: 18px;
+    filter: drop-shadow(0 12px 26px rgba(0,0,0,.45));
+}
+.pw-title {
+    position: relative; margin: 14px 0 0 !important; color: #fff !important;
+    font-size: 31px !important; font-weight: 800; letter-spacing: -.025em; line-height: 1.1;
+}
+.pw-title span {
+    background: linear-gradient(135deg, #ffc27a, #ff8a3d 55%, #f06a12);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.pw-sub { margin: 8px 0 0; font-size: 14.5px; line-height: 1.45; color: #bcaed6; text-align: center; }
+
+.pw-feats { list-style: none; width: 100%; margin: 26px 0 0; padding: 0; display: flex; flex-direction: column; gap: 18px; }
+.pw-feats li { display: flex; gap: 13px; align-items: center; }
+.pw-fi {
+    flex: 0 0 38px; height: 38px; border-radius: 11px; color: #ffa35c; font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(145deg, rgba(255,138,61,.20), rgba(255,138,61,.07));
+    border: 1px solid rgba(255,138,61,.22);
+}
+.pw-ft { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pw-ft b { font-size: 14.5px; font-weight: 600; color: #fff; }
+.pw-ft em { font-style: normal; font-size: 12.3px; line-height: 1.35; color: #a898c4; }
+
+.pw-dock { padding: 12px 20px 18px; background: linear-gradient(180deg, rgba(18,8,31,0), #12081f 26%); }
+.pw-price {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 13px 16px; border-radius: 16px;
+    background: rgba(255,255,255,.055); border: 1.5px solid rgba(255,163,92,.55);
+}
+.pw-pl { display: flex; flex-direction: column; gap: 5px; }
+.pw-tag {
+    align-self: flex-start; padding: 3px 8px; border-radius: 6px; color: #1f0f00;
+    font-size: 10px; font-weight: 800; letter-spacing: .12em;
+    background: linear-gradient(135deg, #ffc27a, #ff9a4a);
+}
+.pw-once { font-size: 12.5px; color: #c9bbe0; }
+.pw-pr { min-width: 64px; text-align: right; font-size: 26px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.pw-pr.pw-pr-soft { font-size: 13px; font-weight: 600; letter-spacing: 0; color: #c9bbe0; }
+.pw-pr-loading { display: inline-block; width: 64px; height: 22px; border-radius: 6px; background: rgba(255,255,255,.10); }
+
+.pw-cta {
+    width: 100% !important; height: 56px !important; margin: 13px 0 0 !important; padding: 0 !important;
+    border: 0 !important; border-radius: 999px !important; cursor: pointer;
+    font-family: inherit; font-size: 16.5px !important; font-weight: 700; color: #241000 !important;
+    background: linear-gradient(135deg, #ffc27a 0%, #ff9442 48%, #f26b14 100%) !important;
+    box-shadow: 0 10px 26px rgba(242,107,20,.35), inset 0 1px 0 rgba(255,255,255,.35);
+}
+.pw-cta:disabled { opacity: .7; }
+.pw-cta:focus-visible, .pw-close:focus-visible, .pw-links button:focus-visible { outline: 2px solid #ffc27a; outline-offset: 3px; }
+
+.pw-assure {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    margin: 11px 0 0; font-size: 12px; color: #a898c4; text-align: center;
+}
+.pw-assure i { color: #7fd0a0; font-size: 11.5px; flex: none; }
+.pw-links { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 6px; font-size: 12.5px; color: #8d7daa; }
+.pw-links button {
+    background: none !important; border: 0 !important; box-shadow: none !important;
+    width: auto !important; height: auto !important; margin: 0 !important; padding: 8px 4px !important;
+    color: #cdbfe6 !important; font: inherit; cursor: pointer;
+}
+
+/* ============================================================
+   FREE / PRO labels (free tries) -- tryBadgeHtml() in app.js.
+   Same colours as the native labels in PdfViewerActivity.
+   FREE = this tool's one free try is unused; PRO = it is used.
+   ============================================================ */
+.try-badge {
+    display: inline-flex; align-items: center; gap: 3px; flex: none;
+    margin-left: auto;
+    padding: 3px 6px; border-radius: 6px;
+    font: 800 9px/1 Inter, system-ui, sans-serif; letter-spacing: .08em;
+    color: #241000;
+    background: linear-gradient(135deg, #ffc27a, #ff9442 55%, #f26b14);
+}
+.try-badge-pro {
+    padding: 2px 5px;
+    color: #ffb27d;
+    background: rgba(40, 20, 10, .85);
+    border: 1px solid rgba(255, 138, 61, .55);
+}
+.try-badge-pro i { font-size: 7.5px; }
+
+.img-editor-try-note {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 0 12px 10px;
+    font-size: 0.74rem; color: #e2dcea;
+}
+.img-editor-try-note .try-badge { margin-left: 0; }
+
+/* ============================================================
+   IMAGE EDITOR -- COMPACT ADJUST v2 (approved preview 2026-09-14)
+   While Adjust is open the photo gets the screen: the header,
+   toolbar, save row and the old slider list are hidden, and a top
+   bar (cancel / Adjust·Filters / apply) plus a short dock (value,
+   ruler, dials or filters) take their place. The old range inputs
+   stay in the DOM, hidden, as the source of truth the dock drives
+   (imgAdjust* in app.js).
+   ============================================================ */
+#imgEditorSliderPanel { display: none !important; }
+.img-adjust-topbar, .img-adjust-dock { display: none; }
+.image-editor.adjusting .img-editor-header,
+.image-editor.adjusting .img-editor-toolbar,
+.image-editor.adjusting .img-editor-save-row,
+.image-editor.adjusting .img-editor-try-note { display: none !important; }
+.image-editor.adjusting .img-adjust-topbar { display: flex; }
+.image-editor.adjusting .img-adjust-dock { display: block; }
+.image-editor.adjusting .img-editor-canvas-wrap { background: #0b0b0e; }
+
+.img-adjust-topbar {
+    align-items: center; justify-content: space-between;
+    padding: 6px 8px; padding-top: max(6px, env(safe-area-inset-top));
+    background: #0f1013;
+}
+.img-adjust-top-btn {
+    width: 44px; height: 44px; border: 0; border-radius: 50%; background: none;
+    color: #d7d7e0; font-size: 1.2rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+.img-adjust-top-btn.img-adjust-apply { color: #a78bfa; }
+.img-adjust-seg { display: flex; background: #1d1e25; border-radius: 999px; padding: 3px; }
+.img-adjust-seg-btn {
+    border: 0; background: none; cursor: pointer;
+    padding: 7px 16px; border-radius: 999px;
+    font: 600 0.8rem Inter, system-ui, sans-serif; color: #a8a8b8;
+}
+.img-adjust-seg-btn.active { background: #8b5cf6; color: #fff; }
+.img-adjust-top-btn:focus-visible, .img-adjust-seg-btn:focus-visible,
+.img-adjust-dial:focus-visible, .img-adjust-filter:focus-visible, .img-adjust-ruler:focus-visible {
+    outline: 2px solid #c4b5fd; outline-offset: 2px;
+}
+
+.img-adjust-dock { padding: 4px 0 max(12px, env(safe-area-inset-bottom)); background: #0f1013; }
+.img-adjust-name { display: flex; justify-content: center; align-items: baseline; gap: 8px; min-height: 24px; }
+.img-adjust-name span { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.12em; color: #a8a8b8; text-transform: uppercase; }
+.img-adjust-name b { font-size: 1.06rem; color: #fff; font-variant-numeric: tabular-nums; }
+
+.img-adjust-ruler {
+    position: relative; height: 40px; margin: 2px 16px; touch-action: none; cursor: ew-resize;
+    background:
+        repeating-linear-gradient(90deg, #3f4049 0 1.5px, transparent 1.5px 7px) 0 50% / 100% 12px no-repeat,
+        repeating-linear-gradient(90deg, #6b6c78 0 1.5px, transparent 1.5px 35px) 0 50% / 100% 20px no-repeat;
+}
+.img-adjust-zero { position: absolute; top: 2px; width: 2px; height: 8px; border-radius: 1px; background: #a78bfa; transform: translateX(-50%); }
+.img-adjust-fill { position: absolute; top: 50%; height: 3px; border-radius: 2px; background: #8b5cf6; transform: translateY(-50%); }
+.img-adjust-knob {
+    position: absolute; top: 50%; width: 3px; height: 32px; border-radius: 2px; background: #fff;
+    transform: translate(-50%, -50%); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25);
+}
+
+.img-adjust-dials {
+    display: flex; gap: 10px; padding: 10px 16px 12px;
+    overflow-x: auto; scrollbar-width: none;
+}
+.img-adjust-dials::-webkit-scrollbar, .img-adjust-filters::-webkit-scrollbar { display: none; }
+.img-adjust-dial {
+    position: relative; flex: none; width: 42px; height: 42px; margin: 4px 0 8px;
+    border: 0; border-radius: 50%; padding: 3px; background: #26272f; cursor: pointer;
+}
+.img-adjust-dial .in {
+    width: 100%; height: 100%; border-radius: 50%; background: #17181e;
+    display: flex; align-items: center; justify-content: center;
+    color: #bfbfcf; font-size: 0.85rem; pointer-events: none;
+}
+.img-adjust-dial.selected { box-shadow: 0 0 0 2px #0f1013, 0 0 0 4px #fff; }
+.img-adjust-dial.selected .in { color: #fff; font-size: 1rem; }
+.img-adjust-dial .dot {
+    display: none; position: absolute; left: 50%; bottom: -7px;
+    width: 4px; height: 4px; border-radius: 50%; background: #a78bfa; transform: translateX(-50%);
+}
+.img-adjust-dial.changed .dot { display: block; }
+
+.img-adjust-filters { display: flex; gap: 10px; padding: 10px 16px 6px; overflow-x: auto; scrollbar-width: none; }
+.img-adjust-filter {
+    flex: none; width: 62px; border: 0; background: none; cursor: pointer; padding: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    color: #bfbfcf; font: 500 0.68rem Inter, system-ui, sans-serif;
+}
+.img-adjust-filter .th { position: relative; width: 62px; height: 62px; margin-top: 4px; border-radius: 14px; }
+.img-adjust-filter canvas { width: 62px; height: 62px; border-radius: 14px; display: block; background: #1d1e25; }
+.img-adjust-filter .knob {
+    display: none; position: absolute; right: 4px; bottom: 4px; width: 18px; height: 18px; border-radius: 50%;
+    background: rgba(10, 10, 14, 0.75); color: #c4b5fd; font-size: 9px;
+    align-items: center; justify-content: center;
+}
+.img-adjust-filter.selected .th { box-shadow: 0 0 0 2px #0f1013, 0 0 0 4px #8b5cf6; }
+.img-adjust-filter.selected .knob { display: flex; }
+.img-adjust-filter.selected { color: #fff; font-weight: 600; }
+
+.img-adjust-list {
+    position: absolute; left: 0; right: 0; z-index: 5; pointer-events: none;
+    background: rgba(8, 8, 12, 0.5);
+}
+.img-adjust-list div {
+    display: flex; justify-content: space-between; align-items: center; height: 36px; padding: 0 24px;
+    color: #fff; font: 500 0.95rem Inter, system-ui, sans-serif; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.img-adjust-list div b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.img-adjust-list .sel { background: linear-gradient(90deg, #7c3aed, #8b5cf6); font-weight: 700; text-shadow: none; }
+.img-adjust-pill {
+    position: absolute; left: 50%; top: 12px; z-index: 6; transform: translateX(-50%);
+    max-width: calc(100% - 24px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+    background: rgba(10, 10, 14, 0.72); color: #ece7f5; font: 500 0.72rem Inter, system-ui, sans-serif;
+    padding: 6px 12px; border-radius: 999px;
+}
+.img-adjust-pill i { color: #c4b5fd; margin-right: 6px; }
+.img-adjust-pill.strong { background: #fff; color: #111; font-weight: 800; letter-spacing: 0.08em; }
+.img-adjust-dials.hidden, .img-adjust-filters.hidden, .img-adjust-list.hidden, .img-adjust-pill.hidden { display: none; }
+
+/* ============================================================
+   SCAN DOCUMENT -- folder-bar Scan button and empty-folder actions.
+   ============================================================ */
+/* Scan in the folder bar (Back · Scan · Favourite), only in folders that
+   hold files. The thin black ring keeps the gradient from bleeding into
+   the bar around it -- no outer glow -- and a thin white ring outside it
+   makes the button read the same size as the ringed Back / Favourite. */
+.ft-icon-btn.ft-scan {
+    border: 2px solid #000000 !important;
+    background: linear-gradient(135deg, #ff6b4a, #e91e8c) !important;
+    box-shadow: 0 0 0 1.5px rgba(255,255,255,0.95), inset 0 2px 4px rgba(255,255,255,0.22), inset 0 -3px 6px rgba(0,0,0,0.28) !important;
+    color: #ffffff !important;
+}
+
+/* ============================================================
+   Favourites list card -- design supplied 2026-09-16. Appended
+   on purpose: the older .fav-row rules further up have the same
+   specificity, so these later ones win, and only inside the card.
+   ============================================================ */
+#favViewList { display: flex; flex-direction: column; }
+.fav-list-card {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin: 4px 0 8px;
+    padding: 12px 10px 10px;
+    border-radius: 24px;
+    overflow: hidden;
+    background: linear-gradient(180deg, #2e2171 0%, #1f1445 48%, #2d1e63 100%);
+    border: 1px solid rgba(139,92,246,0.45);
+    box-shadow: 0 18px 44px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07);
+}
+.fav-sec { display: flex; align-items: center; gap: 8px; padding: 2px 4px 9px; }
+.fav-sec > i { color: #8b7ce8; font-size: 0.85rem; }
+.fav-sec b { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em; color: #c9c2e8; }
+.fav-sec-count { background: #392b7c; border-radius: 20px; padding: 1px 9px; font-size: 0.7rem; font-weight: 700; color: #d9d3f5; }
+.fav-sort {
+    margin-left: auto; display: flex; align-items: center; gap: 8px;
+    height: 30px; padding: 0 12px; border-radius: 16px;
+    background: #1a114b; border: 1px solid #33256f;
+    color: #ddd8f5; font: 600 0.76rem Inter, sans-serif; cursor: pointer;
+}
+.fav-sort i { font-size: 0.62rem; color: #a79bdd; }
+.fav-list-card .fav-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; margin-bottom: 8px; border-radius: 16px;
+    background: #251a4e; border: 1px solid rgba(167,139,250,0.38);
+}
+.fav-list-card .fav-row-icon {
+    flex: none; width: 42px; height: 42px; border-radius: 13px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 1rem;
+    background: linear-gradient(150deg, #7c5cf6, #6a3ff0);
+    box-shadow: 0 6px 14px rgba(98,59,244,0.45);
+}
+.fav-list-card .fav-row-icon-file { background: linear-gradient(150deg, #f97362, #ef4444); box-shadow: 0 6px 14px rgba(239,68,68,0.35); }
+.fav-list-card .fav-row-icon-note { background: linear-gradient(150deg, #fbbf5a, #d97706); box-shadow: 0 6px 14px rgba(217,119,6,0.35); }
+.fav-list-card .fav-row-name { font-size: 0.92rem; font-weight: 700; color: #ffffff; }
+.fav-list-card .fav-row-path { margin-top: 2px; font-size: 0.72rem; color: #a79bd0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fav-list-card .fav-row-unfav {
+    flex: none; width: 38px; height: 38px; border-radius: 50%;
+    background: rgba(251,59,108,0.16); border: 1px solid rgba(251,59,108,0.28);
+    color: #fb3b6c; font-size: 0.85rem;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.fav-row-more {
+    flex: none; width: 24px; height: 38px; padding: 0;
+    background: none; border: 0; color: #c4c1f9; font-size: 0.9rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+.fav-tagline { margin-top: auto; padding: 18px 0 6px; text-align: center; }
+.fav-tagline p { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.2em; line-height: 1.7; color: rgba(190,180,235,0.42); }
+.fav-tagline span { display: block; width: 46px; height: 1px; margin: 12px auto 0; background: rgba(190,180,235,0.25); }
+
+.fav-menu-scrim { position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,0.35); }
+.fav-menu {
+    position: fixed; z-index: 10001; min-width: 190px; max-width: 78vw;
+    border-radius: 16px; overflow: hidden;
+    background: #241a49; border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 18px 36px rgba(0,0,0,0.55);
+}
+.fav-menu-item {
+    display: flex; align-items: center; gap: 11px; width: 100%;
+    padding: 13px 15px; background: none; border: 0; text-align: left;
+    font: 500 0.85rem Inter, sans-serif; color: #ece8ff; cursor: pointer;
+}
+.fav-menu-item + .fav-menu-item { border-top: 1px solid rgba(255,255,255,0.07); }
+.fav-menu-item i { width: 16px; text-align: center; color: #a79bdd; }
+.fav-menu-item:active { background: rgba(255,255,255,0.06); }
+.fav-menu-danger, .fav-menu-danger i { color: #fb7185; }
+
+body.light-mode .fav-list-card {
+    background: linear-gradient(180deg, #f3efff 0%, #ece5fb 100%);
+    border-color: rgba(124,92,246,0.28);
+    box-shadow: 0 12px 28px rgba(90,60,160,0.14), inset 0 1px 0 rgba(255,255,255,0.6);
+}
+body.light-mode .fav-sec b, body.light-mode .fav-sec-count { color: #4b4276; }
+body.light-mode .fav-sec-count { background: rgba(124,92,246,0.15); }
+body.light-mode .fav-sort { background: rgba(255,255,255,0.85); border-color: rgba(124,92,246,0.25); color: #4b4276; }
+body.light-mode .fav-list-card .fav-row { background: #ffffff; border-color: rgba(124,92,246,0.30); }
+body.light-mode .fav-list-card .fav-row-name { color: #241f42; }
+body.light-mode .fav-list-card .fav-row-path { color: #6f6796; }
+body.light-mode .fav-tagline p { color: rgba(90,80,140,0.45); }
+body.light-mode .fav-tagline span { background: rgba(90,80,140,0.25); }
+body.light-mode .fav-menu { background: #ffffff; border-color: rgba(0,0,0,0.10); }
+body.light-mode .fav-menu-item { color: #241f42; }
+body.light-mode .fav-menu-item i { color: #6d28d9; }
+
+/* ============================================================
+   Recent + Recycle Bin -- dark glass card, glowing empty screen
+   and compact item containers (design approved 2026-09-16).
+   Appended after the older .fav-row rules on purpose: same
+   specificity, later wins, and only inside .dm-list-card.
+   ============================================================ */
+#recentsViewList, #recycleBinViewList { display: flex; flex-direction: column; }
+.dm-list-card, .dm-empty-card {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin: 4px 0 8px;
+    padding: 10px 9px 9px;
+    border-radius: 22px;
+    overflow: hidden;
+    background: linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(8,6,16,0.30) 45%, rgba(6,4,12,0.48) 100%);
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 14px 34px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.dm-empty-card { align-items: center; padding-top: 16px; }
+.dm-empty-art { position: relative; width: 168px; height: 120px; margin: 16px auto 0; }
+.dm-empty-art svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.dm-empty-art i {
+    position: absolute; left: 50%; top: 43%; transform: translate(-50%, -50%);
+    font-size: 2.75rem;
+    background: linear-gradient(160deg, #ffffff 0%, #e4e2ee 40%, #a9a5bb 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 6px 12px rgba(0,0,0,0.45));
+}
+.dm-empty-title { margin-top: 8px; font-size: 1.16rem; font-weight: 800; color: #f4f3f8; text-align: center; }
+.dm-empty-sub { margin: 7px 16px 0; font-size: 0.78rem; line-height: 1.5; color: #b9b6c8; text-align: center; }
+
+.dm-sec { display: flex; align-items: center; gap: 8px; padding: 2px 4px 8px; }
+.dm-sec > i { color: #b4b0c6; font-size: 0.72rem; }
+.dm-sec b { font-size: 0.63rem; font-weight: 700; letter-spacing: 0.14em; color: #c9c6d6; }
+.dm-sec-count { background: rgba(255,255,255,0.12); border-radius: 20px; padding: 1px 8px; font-size: 0.63rem; font-weight: 700; color: #ddd9e8; }
+
+.dm-list-card .fav-row {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 9px; margin-bottom: 7px; border-radius: 14px;
+    background: rgba(9,7,18,0.72); border: 1px solid rgba(255,255,255,0.14);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.dm-list-card .fav-row-icon {
+    flex: none; width: 38px; height: 38px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 0.88rem;
+    background: linear-gradient(150deg, #f97362, #ef4444);
+    box-shadow: 0 5px 12px rgba(239,68,68,0.3);
+}
+.dm-list-card .fav-row-icon-note { background: linear-gradient(150deg, #fbbf5a, #d97706); box-shadow: 0 5px 12px rgba(217,119,6,0.3); }
+.dm-list-card .fav-row-icon-folder { background: linear-gradient(150deg, #7c5cf6, #6a3ff0); box-shadow: 0 5px 12px rgba(98,59,244,0.35); }
+.dm-list-card-bin .fav-row-icon { background: linear-gradient(150deg, #b8b5c6, #6d6a7d); box-shadow: 0 5px 12px rgba(80,78,95,0.35); }
+.dm-list-card .fav-row-name { font-size: 0.85rem; font-weight: 700; color: #f4f3f8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dm-list-card .fav-row-path { margin-top: 2px; font-size: 0.7rem; color: #a8a4b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dm-list-card .recycle-row-meta { margin-top: 2px; font-size: 0.66rem; color: #8f8ba1; }
+
+body.light-mode .dm-list-card, body.light-mode .dm-empty-card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(244,242,250,0.86) 100%);
+    border-color: rgba(0,0,0,0.08);
+    box-shadow: 0 10px 26px rgba(90,80,120,0.12), inset 0 1px 0 rgba(255,255,255,0.7);
+}
+body.light-mode .dm-empty-art i { background: linear-gradient(160deg, #8b8798 0%, #6f6b7e 60%, #4b4857 100%); -webkit-background-clip: text; background-clip: text; }
+body.light-mode .dm-empty-title { color: #241f42; }
+body.light-mode .dm-empty-sub { color: #5f5878; }
+body.light-mode .dm-sec b, body.light-mode .dm-sec-count { color: #4b4276; }
+body.light-mode .dm-sec-count { background: rgba(0,0,0,0.07); }
+body.light-mode .dm-list-card .fav-row { background: #ffffff; border-color: rgba(0,0,0,0.09); box-shadow: 0 3px 10px rgba(80,70,110,0.08); }
+body.light-mode .dm-list-card .fav-row-name { color: #241f42; }
+body.light-mode .dm-list-card .fav-row-path { color: #6f6796; }
+
+/* ============================================================
+   "Expires today" -- the in-app version of the notification, with
+   the same two ways out (approved 2026-09-16).
+   ============================================================ */
+.expiry-modal-overlay {
+    position: fixed; inset: 0; z-index: 10050;
+    background: rgba(0,0,0,0.6); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.expiry-modal {
+    width: 100%; max-width: 340px; padding: 20px 18px 16px;
+    border-radius: 22px; text-align: center; font-family: Inter, sans-serif;
+    background: #191627; border: 1px solid rgba(255,255,255,0.14);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.55);
+}
+.expiry-modal-icon {
+    width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 20px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(150deg, #fb7185, #e11d48);
+    color: #fff; font-size: 1.6rem; box-shadow: 0 10px 24px rgba(225,29,72,0.4);
+}
+.expiry-modal h3 { font-size: 1.12rem; font-weight: 800; color: #ffffff; }
+.expiry-modal > p { margin-top: 8px; font-size: 0.82rem; line-height: 1.5; color: #b9b2d0; }
+.expiry-modal-file {
+    display: flex; align-items: center; gap: 10px; text-align: left;
+    margin-top: 10px; padding: 9px 10px; border-radius: 14px;
+    background: rgba(9,7,18,0.72); border: 1px solid rgba(255,255,255,0.14);
+}
+.expiry-modal-file > i {
+    flex: none; width: 34px; height: 34px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(150deg, #f97362, #ef4444); color: #fff; font-size: 0.8rem;
+}
+.expiry-modal-file b { display: block; font-size: 0.84rem; color: #ffffff; }
+.expiry-modal-file span { display: block; font-size: 0.72rem; color: #a8a4b8; }
+.expiry-modal-more { margin-top: 8px; font-size: 0.75rem; color: #a8a4b8; }
+.expiry-modal-btns { display: flex; flex-direction: column; gap: 9px; margin-top: 16px; }
+.expiry-modal-btns button {
+    height: 44px; border-radius: 14px; border: 0; cursor: pointer;
+    font: 700 0.84rem Inter, sans-serif;
+}
+.expiry-modal-renew { background: linear-gradient(135deg, #f59e0b, #d97706); color: #ffffff; }
+.expiry-modal-ack { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.14) !important; color: #e7e3f5; }
+body.light-mode .expiry-modal { background: #ffffff; border-color: rgba(0,0,0,0.10); }
+body.light-mode .expiry-modal h3 { color: #241f42; }
+body.light-mode .expiry-modal > p, body.light-mode .expiry-modal-more { color: #5f5878; }
+body.light-mode .expiry-modal-file { background: #f6f4fb; border-color: rgba(0,0,0,0.08); }
+body.light-mode .expiry-modal-file b { color: #241f42; }
+body.light-mode .expiry-modal-ack { background: #f2effa; color: #3c3560; }
+
+/* ============================================================
+   DOCMAN Pro owned: Settings status row (approved 2026-09-16).
+   .settings-item sets display:flex, which would beat [hidden].
+   ============================================================ */
+.settings-item[hidden] { display: none !important; }
+.settings-pro-owned { cursor: default; }
+.settings-pro-owned:active { transform: none; background: var(--card-bg); }
+.settings-pro-owned .settings-item-arrow { display: none; }
+.settings-pro-badge {
+    flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 700;
+    color: #bbf7d0; background: rgba(34,197,94,0.16); border: 1px solid rgba(74,222,128,0.45);
+}
+.settings-pro-badge i { font-size: 0.66rem; }
+body.light-mode .settings-pro-badge { color: #15803d; background: rgba(34,197,94,0.12); border-color: rgba(22,163,74,0.45); }
+
+/* ============================================================
+   Compact Settings list (approved 2026-09-16): four titled sections, each
+   row a slim outlined tile with a 6px gap (option B, chosen for clear
+   separation). Selectors carry an extra class so they beat
+   body.light-mode .settings-item's !important border.
+   ============================================================ */
+#settingsListScreen .settings-header { margin-bottom: 12px; }
+.settings-list.settings-list-grouped { gap: 0; }
+.settings-list-grouped .settings-group-title { margin: 16px 8px 7px; }
+.settings-list-grouped .settings-group-title:first-child { margin-top: 0; }
+.settings-list-grouped .settings-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+}
+.settings-list.settings-list-grouped .settings-item {
+    border: 0.6px solid rgba(255,255,255,0.55) !important;
+    box-shadow: 0 0 2px rgba(255,255,255,0.15) !important;
+    border-radius: 14px;
+    padding: 9px 14px;
+    gap: 12px;
+}
+.settings-list.settings-list-grouped .settings-pro-owned:active { transform: none; background: var(--card-bg); }
+.settings-list-grouped .settings-item-icon {
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    box-shadow: none;
+}
+.settings-list-grouped .settings-item-title { font-size: 0.88rem; }
+.settings-list-grouped .settings-item-sub { font-size: 0.7rem; }
+body.light-mode .settings-list.settings-list-grouped .settings-item {
+    border: 1.3px solid rgba(90, 70, 45, 0.65) !important;
+    box-shadow: 0 1px 4px rgba(150, 110, 60, 0.10) !important;
+}
