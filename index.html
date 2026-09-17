@@ -21,7 +21,7 @@
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/inter/inter.css">
 <link rel="stylesheet" href="vendor/sacramento/sacramento.css">
-<link rel="stylesheet" href="style.css?v=237">
+<link rel="stylesheet" href="style.css?v=319">
 
 </head>
 <body>
@@ -450,64 +450,82 @@ border: 1px solid rgba(255,255,255,0.2);
   </div> <!-- stats-bar close -->
   </div> <!-- top-panel close -->
 
-  <!-- Favourites View -->
-  <div id="favouritesView" class="favourites-view hidden">
-    <div class="fav-view-card">
-      <div class="fav-view-header">
-        <button class="fav-view-back" id="favViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
-        <div class="fav-view-title"><i class="fas fa-heart"></i> Favourites</div>
-      </div>
-      <div id="favViewList" class="fav-view-list"></div>
-    </div>
-  </div>
-
-  <!-- Recent Documents View -->
-  <div id="recentsView" class="favourites-view hidden">
-    <div class="fav-view-card">
-      <div class="fav-view-header">
-        <button class="fav-view-back" id="recentsViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
-        <div class="fav-view-title"><i class="fas fa-clock-rotate-left"></i> Recent</div>
-      </div>
-      <div class="subtab-row" id="recentsSubtabRow">
-        <button class="subtab-btn active" data-recents-tab="continue">Continue Reading</button>
-        <button class="subtab-btn" data-recents-tab="opened">Opened</button>
-        <button class="subtab-btn" data-recents-tab="added">Added</button>
-        <button class="subtab-btn" data-recents-tab="modified">Modified</button>
-      </div>
-      <div id="recentsViewList" class="fav-view-list"></div>
-    </div>
-  </div>
-
-  <!-- Storage Dashboard View -->
-  <div id="dashboardView" class="favourites-view hidden">
-    <div class="fav-view-card">
-      <div class="fav-view-header">
-        <button class="fav-view-back" id="dashboardViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
-        <div class="fav-view-title"><i class="fas fa-chart-pie"></i> Storage Dashboard</div>
-      </div>
-      <div id="dashboardViewBody" class="fav-view-list dashboard-body"></div>
-    </div>
-  </div>
-
-  <!-- Recycle Bin View -->
-  <div id="recycleBinView" class="favourites-view hidden">
-    <div class="fav-view-card">
-      <div class="fav-view-header">
-        <button class="fav-view-back" id="recycleBinViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
-        <div class="fav-view-title"><i class="fas fa-trash-can"></i> Recycle Bin</div>
-        <button id="emptyRecycleBinBtn" class="recycle-empty-btn" title="Empty Recycle Bin" aria-label="Empty Recycle Bin"><i class="fas fa-broom"></i></button>
-      </div>
-      <div class="recycle-bin-note"><i class="fas fa-circle-info"></i> Items are kept for 30 days, then removed automatically.</div>
-      <div id="recycleBinViewList" class="fav-view-list"></div>
-    </div>
-  </div>
-
-
-
   <nav id="breadcrumb" class="breadcrumb"></nav>
   <div id="departmentsSection"></div>
   <div id="searchInfo" class="search-result-info hidden"></div>
   <div id="content" class="content"></div>
+</div>
+
+<!-- Favourites / Recent / Dashboard / Recycle Bin overlays -- deliberately
+     OUTSIDE .app, same containing-block reason as deptAddFab below: .app
+     carries will-change:transform plus a forwards-filled transform animation,
+     either of which makes it the containing block for position:fixed
+     descendants. Inside .app these panels centred themselves within .app's
+     full scrollable height instead of the viewport, so on a long folder they
+     opened off the bottom of the screen. -->
+<!-- Favourites View -->
+<div id="favouritesView" class="favourites-view hidden">
+  <div class="fav-view-card">
+    <div class="fav-view-header">
+      <button class="fav-view-back" id="favViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+      <div class="fav-view-title"><i class="fas fa-heart"></i> Favourites</div>
+    </div>
+    <div id="favViewList" class="fav-view-list"></div>
+  </div>
+</div>
+
+<!-- Recent Documents View -->
+<div id="recentsView" class="favourites-view hidden">
+  <div class="fav-view-card">
+    <div class="fav-view-header">
+      <button class="fav-view-back" id="recentsViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+      <div class="fav-view-title"><i class="fas fa-clock-rotate-left"></i> Recent</div>
+    </div>
+    <div class="subtab-row" id="recentsSubtabRow">
+      <button class="subtab-btn active" data-recents-tab="continue">Continue Reading</button>
+      <button class="subtab-btn" data-recents-tab="opened">Opened</button>
+      <button class="subtab-btn" data-recents-tab="added">Added</button>
+      <button class="subtab-btn" data-recents-tab="modified">Modified</button>
+    </div>
+    <div id="recentsViewList" class="fav-view-list"></div>
+  </div>
+</div>
+
+<!-- Storage Dashboard View -->
+<div id="dashboardView" class="favourites-view hidden">
+  <div class="fav-view-card">
+    <div class="fav-view-header dash-header">
+      <button class="fav-view-back" id="dashboardViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+      <div class="dash-head-mid">
+        <div class="fav-view-title"><i class="fas fa-database"></i> Storage Dashboard</div>
+        <div class="dash-head-sub">Organize &nbsp;·&nbsp; Secure &nbsp;·&nbsp; Access Anywhere</div>
+      </div>
+    </div>
+    <div id="dashboardViewBody" class="fav-view-list dashboard-body"></div>
+  </div>
+</div>
+
+<!-- Recycle Bin View -->
+<div id="recycleBinView" class="favourites-view hidden">
+  <div class="fav-view-card">
+    <div class="fav-view-header">
+      <button class="fav-view-back" id="recycleBinViewBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+      <div class="fav-view-title"><i class="fas fa-trash-can"></i> Recycle Bin</div>
+      <button id="emptyRecycleBinBtn" class="recycle-empty-btn" title="Empty Recycle Bin" aria-label="Empty Recycle Bin"><i class="fas fa-broom"></i></button>
+    </div>
+    <div class="recycle-bin-note"><i class="fas fa-circle-info"></i> Items are kept for 30 days, then removed automatically.</div>
+    <div id="recycleBinViewList" class="fav-view-list"></div>
+  </div>
+</div>
+
+<!-- First-run intro. Direct <body> child for the same containing-block reason
+     as the overlay panels above. Built by renderIntro() so the three cards
+     stay in one place rather than split between markup and script. -->
+<div id="introOverlay" class="intro-overlay hidden">
+  <button class="intro-skip" id="introSkipBtn">Skip</button>
+  <div class="intro-body" id="introBody"></div>
+  <div class="intro-dots" id="introDots"></div>
+  <div class="intro-foot"><button class="intro-next" id="introNextBtn">Next</button></div>
 </div>
 
 <!-- "Add Department" floating button -- deliberately OUTSIDE .app. .app has
@@ -595,7 +613,7 @@ border: 1px solid rgba(255,255,255,0.2);
       <span class="img-slider-value" id="imgSliderContrastVal">0</span>
     </div>
     <div class="img-editor-slider-row">
-      <i class="fas fa-aperture img-slider-icon"></i>
+      <i class="fas fa-camera img-slider-icon"></i>
       <label>Exposure</label>
       <input type="range" id="imgSliderExposure" min="-100" max="100" value="0">
       <span class="img-slider-value" id="imgSliderExposureVal">0</span>
@@ -704,7 +722,7 @@ border: 1px solid rgba(255,255,255,0.2);
     <button class="img-editor-tool" data-tool="draw"><i class="fas fa-pen"></i><span>Draw</span></button>
     <button class="img-editor-tool" data-tool="highlight"><i class="fas fa-highlighter"></i><span>Highlight</span></button>
     <button class="img-editor-tool" data-tool="blurarea"><i class="fas fa-droplet"></i><span>Blur Area</span></button>
-    <button class="img-editor-tool" data-tool="scan"><i class="fas fa-vector-square"></i><span>Scan</span></button>
+    <button class="img-editor-tool" data-tool="scan"><i class="fas fa-vector-square"></i><span>Straighten</span></button>
   </div>
 
   <div class="img-editor-crop-confirm hidden" id="imgEditorCropConfirm">
@@ -725,6 +743,7 @@ border: 1px solid rgba(255,255,255,0.2);
   <div class="img-scan-status hidden" id="imgScanStatus">Loading scanner…</div>
 
 
+  <div class="img-editor-try-note hidden" id="imgEditorTryNote"></div>
   <div class="img-editor-save-row">
     <button id="imgEditorSaveNewBtn" class="img-editor-save-btn img-editor-save-new"><i class="fas fa-plus"></i> Save as New</button>
     <button id="imgEditorSavePdfBtn" class="img-editor-save-btn img-editor-save-pdf"><i class="fas fa-file-pdf"></i> Save as PDF</button>
@@ -783,52 +802,89 @@ border: 1px solid rgba(255,255,255,0.2);
       <span>Manage your DOCMAN preferences</span>
     </div>
   </div>
-  <div class="settings-list" id="settingsList">
-    <button class="settings-item" data-panel="storage">
-      <div class="settings-item-icon settings-icon-storage"><i class="fas fa-database"></i></div>
-      <div class="settings-item-text"><span class="settings-item-title">Storage</span><span class="settings-item-sub" id="settingsStorageSub">Calculating…</span></div>
-      <i class="fas fa-chevron-right settings-item-arrow"></i>
-    </button>
-    <button class="settings-item" data-panel="appearance">
-      <div class="settings-item-icon settings-icon-appearance"><i class="fas fa-palette"></i></div>
-      <div class="settings-item-text"><span class="settings-item-title">Appearance</span><span class="settings-item-sub">Theme &amp; display</span></div>
-      <i class="fas fa-chevron-right settings-item-arrow"></i>
-    </button>
-    <button class="settings-item" data-panel="pdf">
-      <div class="settings-item-icon settings-icon-pdf"><i class="fas fa-file-pdf"></i></div>
-      <div class="settings-item-text"><span class="settings-item-title">PDF Settings</span><span class="settings-item-sub">Viewer &amp; threshold</span></div>
-      <i class="fas fa-chevron-right settings-item-arrow"></i>
-    </button>
-    <button class="settings-item" data-panel="favorites">
-      <div class="settings-item-icon settings-icon-favorites"><i class="fas fa-star"></i></div>
-      <div class="settings-item-text"><span class="settings-item-title">Favorites &amp; Recents</span><span class="settings-item-sub">Quick-access history</span></div>
-      <i class="fas fa-chevron-right settings-item-arrow"></i>
-    </button>
-    <button class="settings-item" data-panel="search">
-      <div class="settings-item-icon settings-icon-search"><i class="fas fa-search"></i></div>
-      <div class="settings-item-text"><span class="settings-item-title">Search</span><span class="settings-item-sub">Search behaviour</span></div>
-      <i class="fas fa-chevron-right settings-item-arrow"></i>
-    </button>
-    <button class="settings-item" data-panel="statistics">
-      <div class="settings-item-icon settings-icon-statistics"><i class="fas fa-chart-bar"></i></div>
-      <div class="settings-item-text"><span class="settings-item-title">Statistics</span><span class="settings-item-sub">Files, notes &amp; storage info</span></div>
-      <i class="fas fa-chevron-right settings-item-arrow"></i>
-    </button>
-    <button class="settings-item" data-panel="departments">
-      <div class="settings-item-icon settings-icon-departments"><i class="fas fa-industry"></i></div>
-      <div class="settings-item-text"><span class="settings-item-title">Departments</span><span class="settings-item-sub" id="settingsDeptSub">Manage departments</span></div>
-      <i class="fas fa-chevron-right settings-item-arrow"></i>
-    </button>
-    <button class="settings-item" data-panel="security">
-      <div class="settings-item-icon settings-icon-security"><i class="fas fa-shield-halved"></i></div>
-      <div class="settings-item-text"><span class="settings-item-title">Security</span><span class="settings-item-sub">App lock &amp; PIN</span></div>
-      <i class="fas fa-chevron-right settings-item-arrow"></i>
-    </button>
-    <button class="settings-item" data-panel="about">
-      <div class="settings-item-icon settings-icon-about"><i class="fas fa-circle-info"></i></div>
-      <div class="settings-item-text"><span class="settings-item-title">About</span><span class="settings-item-sub">Version &amp; info</span></div>
-      <i class="fas fa-chevron-right settings-item-arrow"></i>
-    </button>
+  <div class="settings-list settings-list-grouped" id="settingsList">
+    <div class="settings-group-title">DOCMAN Pro</div>
+    <div class="settings-card">
+      <button class="settings-item" id="settingsProRow">
+        <div class="settings-item-icon settings-icon-favorites"><i class="fas fa-crown"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">DOCMAN Pro</span><span class="settings-item-sub" id="settingsProSub">Try each Pro tool once, free</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-item" id="settingsRestoreRow">
+        <div class="settings-item-icon settings-icon-storage"><i class="fas fa-rotate-left"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Restore purchase</span><span class="settings-item-sub">Already bought Pro? Get it back here</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+    </div>
+    <div class="settings-group-title">Alerts &amp; security</div>
+    <div class="settings-card">
+      <button class="settings-item" id="settingsAlertsRow">
+        <div class="settings-item-icon settings-icon-favorites"><i class="fas fa-bell"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Expiry &amp; reminder alerts</span><span class="settings-item-sub" id="settingsAlertsSub">Checking…</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-item" data-panel="security">
+        <div class="settings-item-icon settings-icon-security"><i class="fas fa-shield-halved"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Security</span><span class="settings-item-sub">App lock &amp; PIN</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+    </div>
+    <div class="settings-group-title">Documents</div>
+    <div class="settings-card">
+      <button class="settings-item" data-panel="departments">
+        <div class="settings-item-icon settings-icon-departments"><i class="fas fa-industry"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Departments</span><span class="settings-item-sub" id="settingsDeptSub">Manage departments</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-item" data-panel="pdf">
+        <div class="settings-item-icon settings-icon-pdf"><i class="fas fa-file-pdf"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">PDF Settings</span><span class="settings-item-sub">Viewer &amp; threshold</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-item" data-panel="favorites">
+        <div class="settings-item-icon settings-icon-favorites"><i class="fas fa-star"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Favorites &amp; Recents</span><span class="settings-item-sub">Quick-access history</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-item" data-panel="search">
+        <div class="settings-item-icon settings-icon-search"><i class="fas fa-search"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Search</span><span class="settings-item-sub">Search behaviour</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-item" data-panel="storage">
+        <div class="settings-item-icon settings-icon-storage"><i class="fas fa-database"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Storage</span><span class="settings-item-sub" id="settingsStorageSub">Calculating…</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-item" data-panel="statistics">
+        <div class="settings-item-icon settings-icon-statistics"><i class="fas fa-chart-bar"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Statistics</span><span class="settings-item-sub">Files, notes &amp; storage info</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+    </div>
+    <div class="settings-group-title">App</div>
+    <div class="settings-card">
+      <button class="settings-item" data-panel="appearance">
+        <div class="settings-item-icon settings-icon-appearance"><i class="fas fa-palette"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Appearance</span><span class="settings-item-sub">Theme &amp; display</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-item" id="settingsShowTipsBtn">
+        <div class="settings-item-icon settings-icon-departments"><i class="fas fa-lightbulb"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Show tips again</span><span class="settings-item-sub">Replay the intro</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-item" id="settingsShareRow">
+        <div class="settings-item-icon settings-icon-share"><i class="fas fa-share-nodes"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Share DOCMAN</span><span class="settings-item-sub">Tell friends and family about the app</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-item" data-panel="about">
+        <div class="settings-item-icon settings-icon-about"><i class="fas fa-circle-info"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">About</span><span class="settings-item-sub">Version &amp; info</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -1033,6 +1089,10 @@ border: 1px solid rgba(255,255,255,0.2);
         <div class="settings-item-text"><span class="settings-item-title">Search Folder Names</span><span class="settings-item-sub">Match against folder names</span></div>
         <label class="settings-switch"><input type="checkbox" id="searchFolderNamesToggle" checked><span class="settings-switch-slider"></span></label>
       </div>
+      <div class="settings-toggle-row">
+        <div class="settings-item-text"><span class="settings-item-title">Search Reminders</span><span class="settings-item-sub">Include reminders in search results</span></div>
+        <label class="settings-switch"><input type="checkbox" id="searchRemindersToggle" checked><span class="settings-switch-slider"></span></label>
+      </div>
     </div>
     <div class="settings-group-title">History</div>
     <button class="settings-action-row settings-action-danger" id="clearSearchHistoryBtn">
@@ -1204,6 +1264,7 @@ border: 1px solid rgba(255,255,255,0.2);
       <div class="about-info-row"><span>Capacitor (native runtime)</span><b>MIT</b></div>
       <div class="about-info-row"><span>android-pdf-viewer (pdfium fork)</span><b>Apache-2.0</b></div>
       <div class="about-info-row"><span>PDFBox Android</span><b>Apache-2.0</b></div>
+      <div class="about-info-row"><span>Google Play Billing Library</span><b>Proprietary — Android SDK License Agreement, not open source</b></div>
       <div class="about-info-row about-info-row-last"><span>Google ML Kit (text recognition)</span><b>Proprietary — Google APIs Terms of Service, not open source</b></div>
     </div>
     <div class="settings-group-title">Web layer</div>
@@ -1295,17 +1356,47 @@ border: 1px solid rgba(255,255,255,0.2);
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">📁</div>
-    <div class="dept-info-help-text"><b>Folders</b> — Organize documents into folders and subfolders. Use <b>Add Subfolder</b>, <b>Rename Folder</b>, and <b>Delete Folder</b> from inside any folder.</div>
+    <div class="dept-info-help-text"><b>Folders</b> — Organize documents into folders and subfolders. Tap <b>Add Subfolder</b> inside a department or folder; to rename or delete a folder, tap the <b>⋯</b> button on its row.</div>
   </div>
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">⬆️</div>
-    <div class="dept-info-help-text"><b>Upload</b> — Tap <b>Upload</b> inside a folder to add a file from your Photo Library, Camera, or Files.</div>
+    <div class="dept-info-help-text"><b>Upload</b> — Tap <b>Upload</b> inside a folder to <b>scan a document</b>, or add a file from your Photo Library, Camera, Files or Google Drive.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">📸</div>
+    <div class="dept-info-help-text"><b>Scan Documents</b> — Open a folder and tap <b>Scan</b> next to Back, or use <b>Upload → Scan Document</b>. DOCMAN finds the page edges, captures it automatically and saves every page as one PDF.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🎨</div>
+    <div class="dept-info-help-text"><b>Edit Images</b> — Tap the <b>⋯</b> button on a photo and choose <b>Edit</b> to crop, rotate, flip, draw on it, highlight, blur out private details, or add text. Adjust brightness, contrast, exposure, saturation and hue, or apply a filter — <b>Document</b> and <b>Straighten</b> tidy up a photographed page. Undo, redo and reset to the original are always there.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🗂️</div>
+    <div class="dept-info-help-text"><b>Turn Images into PDFs</b> — Tap <b>⋯</b> on a photo and pick <b>Convert to PDF</b> for a one-page PDF, or <b>Merge to PDF</b> to start a queue. Keep adding photos; a badge at the bottom counts them, and tapping it saves the whole set as one multi-page PDF.</div>
   </div>
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">📄</div>
-    <div class="dept-info-help-text"><b>Viewing &amp; Editing PDFs</b> — Tap any file to open it in DOCMAN's built-in reader. Pinch to zoom, rotate for landscape drawings, switch to Night Mode or two-page Spread view, and use the mark tool to circle a spot. Search inside the text, jump to a page via Bookmarks/Thumbnails, and pick up where you left off with Continue Reading. From the More menu you can select &amp; copy text, add a Highlight, drop in a Signature, fill out form fields, Redact sensitive areas, Crop a page, or Export a copy — all saved as a new file so your original is never touched. Password-protected PDFs prompt for the password automatically.</div>
+    <div class="dept-info-help-text"><b>Viewing &amp; Editing PDFs</b> — Tap any file to open it in DOCMAN's built-in reader. Pinch to zoom, rotate for landscape drawings, switch to Night Mode or two-page Spread view, and use the mark tool to circle a spot. Jump to a page via Bookmarks/Thumbnails, and pick up where you left off with Continue Reading. Long-press text to select &amp; copy it or add a Highlight. The tools along the bottom let you <b>Sign</b> (in black or blue ink), <b>Fill form</b> and <b>Erase</b>, and <b>More</b> has Crop page, Copy page text, Attachments, Print and Export. Every edit is saved as a new file in the same folder, so your original is never touched. Password-protected PDFs prompt for the password automatically.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🧽</div>
+    <div class="dept-info-help-text"><b>Erase in a PDF</b> — Open a PDF and tap <b>Erase</b>. Paint over a stain, a pen mark or a line of text with one finger; use two fingers to move and zoom. <b>Paper colour</b> blends it into the page and <b>Black</b> hides private details. Undo, Redo and the brush size are in the panel, and whatever you erase stays gone in the saved copy.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🔎</div>
+    <div class="dept-info-help-text"><b>Search Inside a PDF</b> — Open a PDF and tap the search icon to find a word anywhere in the document. DOCMAN jumps to the page and highlights every match, and the arrows step through them one at a time.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">📇</div>
+    <div class="dept-info-help-text"><b>Scanned PDFs</b> — If a page is really just a picture — a scan, a photo, a fax — DOCMAN reads the text on it right on your device, so you can search, select and copy it like any other PDF. Nothing is uploaded. It handles printed and typed text well; handwriting is not recognised reliably.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1314,8 +1405,18 @@ border: 1px solid rgba(255,255,255,0.2);
   </div>
 
   <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">📆</div>
+    <div class="dept-info-help-text"><b>Expiry Dates &amp; Alerts</b> — Tap <b>⋯</b> on a file and set an <b>Expiry date</b> for anything that runs out: passport, licence, insurance. Your phone then alerts you even when DOCMAN is closed — <b>7 days before</b> and <b>3 days before</b> at 9am, and on the day itself <b>every 30 minutes from 7am</b> until you tap <b>Got it</b>. It stops at 9pm, so it never wakes you at night, and if the document still isn't renewed you get one reminder a day for a week. <b>Renew date</b> sets a new date and starts the cycle again.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">⏰</div>
+    <div class="dept-info-help-text"><b>Reminders</b> — Tap the DOCMAN logo at the top to see Expiring Documents and Reminders. Add a reminder with a title, due date, and time, and DOCMAN will notify you when it's due.</div>
+  </div>
+
+  <div class="dept-info-help-row">
     <div class="dept-info-help-icon">🔒</div>
-    <div class="dept-info-help-text"><b>Lock a File or Folder</b> — Long-press any file or folder and choose <b>Lock</b> to require your PIN before it opens — useful for sensitive documents inside a shared department.</div>
+    <div class="dept-info-help-text"><b>Lock a File or Folder</b> — Tap the <b>⋯</b> button on any file or folder and choose <b>Lock</b> to require your PIN before it opens — useful for sensitive documents inside a shared department. Your first lock is free; after that Lock is part of DOCMAN Pro, and unlocking is always free.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1330,12 +1431,12 @@ border: 1px solid rgba(255,255,255,0.2);
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">✋</div>
-    <div class="dept-info-help-text"><b>Rename, Delete &amp; Favourite a File</b> — Long-press any file or note to bring up a quick menu with <b>Favourite</b>, <b>Rename</b>, and <b>Delete</b> options.</div>
+    <div class="dept-info-help-text"><b>Rename, Delete &amp; Favourite a File</b> — Every file, note and folder row has a <b>⋯</b> button on the right. Tap it for <b>Favourite</b>, <b>Rename</b>, <b>Delete</b> and the rest. (Departments on the home screen still use a long-press.)</div>
   </div>
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">⭐</div>
-    <div class="dept-info-help-text"><b>Favorites</b> — Favourited files and notes are pinned together under <b>Favorite</b> on the home screen for one-tap access.</div>
+    <div class="dept-info-help-text"><b>Favorites</b> — Tap <b>Favourite</b> in any folder&rsquo;s bar, or open Settings → Favorites &amp; Recents, to see everything you&rsquo;ve favourited in one place. The <b>Name</b> button sorts them A–Z, Z–A or newest first, the heart removes one, and <b>⋮</b> opens it or removes it.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1344,12 +1445,17 @@ border: 1px solid rgba(255,255,255,0.2);
   </div>
 
   <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">👑</div>
+    <div class="dept-info-help-text"><b>DOCMAN Pro</b> — Scan, Sign, Highlight, Fill form, Erase, Crop, reading scanned pages, Edit image, Convert to PDF and Lock can each be used once for free — a <b>FREE</b> tag shows the ones you haven&rsquo;t tried yet. Unlock DOCMAN Pro once (no subscription) from Settings → DOCMAN Pro to use them as often as you like and add as many departments and folders as you need. Bought it before? Use <b>Restore purchase</b>. Nothing you&rsquo;ve already made is ever locked away.</div>
+  </div>
+
+  <div class="dept-info-help-row">
     <div class="dept-info-help-icon">⚙️</div>
-    <div class="dept-info-help-text"><b>Settings</b> — Tap the gear icon for App Lock, PDF viewer preferences, backup &amp; restore, and other app preferences.</div>
+    <div class="dept-info-help-text"><b>Settings</b> — Tap the gear icon for App Lock, PDF viewer preferences, backup &amp; restore, and other app preferences. <b>Expiry &amp; reminder alerts</b> there tells you whether Android is allowing DOCMAN to alert you, and fixes it in one tap if not.</div>
   </div>
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">🕓</div>
-    <div class="dept-info-help-text"><b>Recent</b> — Tap the clock icon on the home screen to jump straight to your most recently added or opened files.</div>
+    <div class="dept-info-help-text"><b>Recent</b> — Tap the clock icon on the home screen for four tabs: <b>Continue Reading</b> picks up PDFs where you stopped, and <b>Opened</b>, <b>Added</b> and <b>Modified</b> list what you touched most recently.</div>
   </div>
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">✋</div>
@@ -1357,7 +1463,7 @@ border: 1px solid rgba(255,255,255,0.2);
   </div>
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">📊</div>
-    <div class="dept-info-help-text"><b>Storage Dashboard</b> — Tap the pie-chart icon for a breakdown of how much space each file type and department is using.</div>
+    <div class="dept-info-help-text"><b>Dashboard</b> — Tap the pie-chart icon for an overview: total storage and how it splits across PDFs, images and other files, which departments hold the most, documents <b>Expiring Soon</b>, your largest document, and when you last made a backup.</div>
   </div>
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">🗑️</div>
@@ -1366,6 +1472,15 @@ border: 1px solid rgba(255,255,255,0.2);
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">🏢</div>
     <div class="dept-info-help-text"><b>Manage Departments</b> — Rename or delete a department from Settings, or add a new one from the home screen — each gets its own colour automatically.</div>
+  </div>
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🎨</div>
+    <div class="dept-info-help-text"><b>Change a Department's Icon</b> — Long-press any department and choose <b>Change Icon</b> to pick a new icon from a curated set, including industrial and business icons.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">💡</div>
+    <div class="dept-info-help-text"><b>Start-up Tips</b> — The short intro on first launch explains that departments are yours to shape, with example set-ups for a student, a family and an engineer. Open it again any time from <b>Settings → Show tips again</b>.</div>
   </div>
 </div>
 
@@ -1383,7 +1498,58 @@ border: 1px solid rgba(255,255,255,0.2);
 <script src="vendor/mammoth/mammoth.browser.min.js"></script>
 <script src="vendor/xlsx/xlsx.full.min.js"></script>
 <script src="vendor/jspdf/jspdf.umd.min.js"></script>
-<script src="app.js?v=239"></script>
+<script>
+(function () {
+  var ok = true, reason = '';
+
+  // app.js uses optional chaining in 100+ places. On a WebView older than
+  // Chrome 80 the whole file fails to parse, so nothing runs at all. eval()
+  // lets us test the syntax without taking this script down with it.
+  try { eval('var _probe = ({a:1})?.a;'); }
+  catch (e) { ok = false; reason = 'js'; }
+
+  // Flex gap landed in Chrome 84, later than the syntax above, and the layout
+  // uses it in ~140 places. Measure real layout: older engines support "gap"
+  // for grid only, so reading the style property back is not enough.
+  if (ok) {
+    try {
+      var probe = document.createElement('div');
+      probe.style.cssText = 'display:flex;gap:10px;position:absolute;visibility:hidden;top:-9999px;';
+      probe.innerHTML = '<i style="width:10px;display:block"></i><i style="width:10px;display:block"></i>';
+      document.body.appendChild(probe);
+      if (probe.scrollWidth < 30) { ok = false; reason = 'css'; }
+      document.body.removeChild(probe);
+    } catch (e2) { ok = false; reason = 'css'; }
+  }
+
+  if (ok) return;
+
+  var splash = document.getElementById('splashScreen');
+  if (splash) { splash.style.display = 'none'; }
+
+  document.body.innerHTML =
+    '<div style="position:fixed;inset:0;z-index:99999;background:#1a0925;color:#e8ecf5;' +
+    'font-family:sans-serif;display:flex;flex-direction:column;justify-content:center;' +
+    'gap:16px;padding:32px 26px;">' +
+      '<div style="font-size:22px;font-weight:700;line-height:1.25;">' +
+        'DOCMAN needs a newer Android System WebView</div>' +
+      '<p style="margin:0;font-size:15px;line-height:1.55;color:#b9a8d4;">' +
+        'DOCMAN draws its screens using Android System WebView, and the version on ' +
+        'this phone is too old to run it. Your documents are safe &mdash; nothing ' +
+        'has been lost.</p>' +
+      '<p style="margin:0;font-size:15px;line-height:1.55;color:#b9a8d4;">' +
+        'Open the Play Store, search for <b style="color:#fff">Android System WebView</b>, ' +
+        'and tap Update. Then reopen DOCMAN.</p>' +
+      '<a href="https://play.google.com/store/apps/details?id=com.google.android.webview" ' +
+        'style="margin-top:8px;padding:14px;border-radius:40px;text-align:center;' +
+        'text-decoration:none;background:#e0457b;color:#fff;font-size:16px;font-weight:700;">' +
+        'Open Play Store</a>' +
+      '<p style="margin:10px 0 0;font-size:12px;color:#7b6a90;font-family:monospace;">' +
+        'unsupported: ' + reason + '</p>' +
+    '</div>';
+})();
+</script>
+<script src="app.js?v=328"></script>
 
 
 <script>
@@ -1393,11 +1559,7 @@ border: 1px solid rgba(255,255,255,0.2);
   // androidScheme:"https" it would otherwise register and intercept every
   // single fetch inside the WebView, adding latency to every operation.
   const isNativeApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-  if (!isNativeApp && 'serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('SW registered:', reg.scope))
-      .catch(err => console.log('SW registration failed:', err));
-  }
+  // PWA/service-worker support removed: DOCMAN ships as an Android app only.
 
   // Splash → App smooth transition
   let appReady = false;
