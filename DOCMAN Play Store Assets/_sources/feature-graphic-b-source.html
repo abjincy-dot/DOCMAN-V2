@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>DOCMAN feature graphic B</title>
+<style>
+  @font-face{font-family:Inter;src:url("../docman-native/www/vendor/inter/files/inter-latin-400-normal.woff2") format("woff2");font-weight:400;font-display:block;}
+  @font-face{font-family:Inter;src:url("../docman-native/www/vendor/inter/files/inter-latin-600-normal.woff2") format("woff2");font-weight:600;font-display:block;}
+  @font-face{font-family:Inter;src:url("../docman-native/www/vendor/inter/files/inter-latin-700-normal.woff2") format("woff2");font-weight:700;font-display:block;}
+  @font-face{font-family:Inter;src:url("../docman-native/www/vendor/inter/files/inter-latin-800-normal.woff2") format("woff2");font-weight:800;font-display:block;}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1024px;height:500px;overflow:hidden}
+  body{font-family:Inter,"Segoe UI",system-ui,sans-serif;background:#120a2a;position:relative}
+
+  .bg{position:absolute;inset:0;
+    background:
+      radial-gradient(50% 80% at 78% 50%, rgba(249,115,22,.26) 0%, rgba(249,115,22,0) 62%),
+      radial-gradient(60% 95% at 22% 42%, rgba(124,58,237,.50) 0%, rgba(124,58,237,0) 64%),
+      linear-gradient(115deg,#1b0f3d 0%,#241146 38%,#2a0f38 68%,#140a26 100%);}
+  /* faint document-grid texture, so the empty half is not flat */
+  .grid{position:absolute;inset:0;opacity:.055;
+    background-image:linear-gradient(rgba(255,255,255,.9) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(255,255,255,.9) 1px,transparent 1px);
+    background-size:46px 46px;
+    -webkit-mask-image:radial-gradient(70% 70% at 30% 50%,#000 0%,transparent 75%);
+            mask-image:radial-gradient(70% 70% at 30% 50%,#000 0%,transparent 75%);}
+
+  .left{position:absolute;left:56px;top:0;bottom:0;width:540px;display:flex;
+        flex-direction:column;justify-content:center}
+  .badge-top{display:inline-flex;align-self:flex-start;align-items:center;gap:7px;
+    padding:6px 13px;border-radius:999px;border:1px solid rgba(255,138,61,.45);
+    background:rgba(255,138,61,.13);color:#ffb27d;font-size:12.5px;font-weight:700;
+    letter-spacing:.16em;text-transform:uppercase;margin-bottom:15px}
+  .badge-top svg{width:13px;height:13px;fill:#ffb27d}
+
+  .wordmark{font-weight:800;font-size:78px;line-height:.95;letter-spacing:-.03em;color:#fff}
+  .wordmark .man{color:#ff8a3d}
+  .kicker{margin-top:9px;font-weight:600;font-size:16px;letter-spacing:.30em;
+          color:#b3a5e8;text-transform:uppercase}
+  .pitch{margin-top:17px;font-size:20.5px;line-height:1.45;color:#e5e0f7;font-weight:400;
+         max-width:470px}
+  .pitch b{font-weight:700;color:#fff}
+
+  .chips{display:flex;flex-wrap:wrap;gap:9px;margin-top:22px;max-width:500px}
+  .chip{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:10px;
+    background:rgba(255,255,255,.075);border:1px solid rgba(255,255,255,.14);
+    color:#fff;font-size:14.5px;font-weight:600;white-space:nowrap}
+  .chip i{width:7px;height:7px;border-radius:50%;display:block}
+
+  /* Real app screen, in a device frame -- what the buyer actually gets. */
+  .phone{position:absolute;right:96px;top:50%;transform:translateY(-50%) rotate(-5deg);
+    width:224px;height:436px;border-radius:34px;background:#0a0714;
+    border:6px solid #2a2340;
+    box-shadow:0 34px 70px rgba(0,0,0,.62), 0 0 0 1px rgba(255,255,255,.10),
+               0 0 90px rgba(139,92,246,.32);}
+  .phone img{width:100%;height:100%;object-fit:cover;object-position:top center;
+             border-radius:28px;display:block}
+  .glow{position:absolute;right:40px;top:50%;transform:translateY(-50%);
+    width:340px;height:340px;border-radius:50%;
+    background:radial-gradient(circle,rgba(255,138,61,.30) 0%,rgba(255,138,61,0) 68%)}
+
+  .foot{position:absolute;left:56px;bottom:30px;display:flex;align-items:center;gap:22px;
+        color:#a99ada;font-size:13.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+  .foot span{display:flex;align-items:center;gap:7px}
+  .foot svg{width:14px;height:14px;fill:#8b7cc8}
+  .foot .sep{width:1px;height:14px;background:rgba(255,255,255,.18)}
+</style></head>
+<body>
+<div class="bg"></div><div class="grid"></div>
+<div class="glow"></div>
+
+<div class="left">
+  <span class="badge-top">
+    <svg viewBox="0 0 24 24"><path d="M12 1 3 5v6c0 5.2 3.8 10.1 9 12 5.2-1.9 9-6.8 9-12V5l-9-4z"/></svg>
+    100% Offline
+  </span>
+  <div class="wordmark">DOC<span class="man">MAN</span></div>
+  <div class="kicker">Document Manager</div>
+  <div class="pitch">Every document you care about, <b>organised your way</b> — and never leaving your phone.</div>
+  <div class="chips">
+    <span class="chip"><i style="background:#f59e0b"></i>Smart Folders</span>
+    <span class="chip"><i style="background:#ef4444"></i>Native PDF Tools</span>
+    <span class="chip"><i style="background:#8b5cf6"></i>Image Editor</span>
+    <span class="chip"><i style="background:#10b981"></i>Expiry Reminders</span>
+  </div>
+</div>
+
+<div class="phone"><img src="__SHOT__" alt="DOCMAN home screen"></div>
+
+<div class="foot">
+  <span><svg viewBox="0 0 24 24"><path d="M17 9V7a5 5 0 0 0-10 0v2H5v13h14V9h-2zM9 7a3 3 0 0 1 6 0v2H9V7z"/></svg>PIN &amp; Fingerprint</span>
+  <span class="sep"></span>
+  <span><svg viewBox="0 0 24 24"><path d="M12 2 4 6v6c0 5 3.4 9.4 8 10 4.6-.6 8-5 8-10V6l-8-4zm-1 13-3-3 1.4-1.4L11 12.2l4.6-4.6L17 9l-6 6z"/></svg>No Ads, No Tracking</span>
+</div>
+</body></html>

@@ -5,11 +5,12 @@
          the whole process. Raises the ceiling; PDDocument.save() also
          catches OutOfMemoryError itself now as a second line of defense. -->
     <application
+        android:name=".DocmanApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/full_backup_content"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
+        android:label="${appLabel}"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:largeHeap="true"
@@ -28,12 +29,28 @@
             </intent-filter>
         </activity>
 
+        <!-- The only activity allowed to rotate. Wide drawings (site plans,
+             CAD sheets, spreadsheets exported to PDF) are unreadable in a
+             portrait column, so the viewer follows the device while the rest
+             of the app stays portrait, where its layout is designed to live.
+             "fullUser" respects the phone's own auto-rotate lock rather than
+             overriding it. configChanges already lists orientation and
+             screenSize, so rotating reconfigures in place instead of
+             recreating the activity, keeping the current page and zoom. -->
         <activity
             android:name=".PdfViewerActivity"
             android:exported="false"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
-            android:screenOrientation="portrait"
+            android:screenOrientation="fullUser"
             android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- Text extraction runs in its own process: its pdfium build exports
+             the same native symbols as the viewer's, and sharing one linker
+             namespace made the viewer segfault while closing a document. -->
+        <service
+            android:name=".PdfTextService"
+            android:exported="false"
+            android:process=":pdftext" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -52,7 +69,11 @@
          tablets from the listing. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
-    <!-- No INTERNET permission: DOCMAN makes no network calls of its own.
+    <!-- DOCMAN makes no network calls of its own. It does not declare INTERNET
+         here, but the built app still has it: the ML Kit text-recognition
+         library merges in INTERNET and ACCESS_NETWORK_STATE for its own SDK
+         diagnostics, so both appear in the merged manifest and Play lists
+         them. No DOCMAN feature uses either; see the privacy policy.
          Google Drive import now goes through the native Drive app via an
          intent (that app makes its own network calls under its own
          permission, not this one), and "Check for Updates" opens the Play
@@ -61,4 +82,27 @@
          locally and does not need this permission either. -->
     <!-- Fingerprint / Face unlock (App Lock) -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+
+    <!-- Without this, AlarmManager.canScheduleExactAlarms() returns false on
+         Android 12+ and the notification plugin silently falls back to an
+         inexact alarm for every scheduled reminder/expiry alert; the OS is
+         then free to delay it for a long time while the phone is idle or
+         locked, only actually posting once the app happens to be reopened.
+         This is a special "Alarms & reminders" toggle the user can see and
+         control in system Settings, not a runtime popup; see MainActivity's
+         requestExactAlarmPermissionOnce() for the one-time prompt that sends
+         them straight to that toggle when it isn't already on. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- Backup & Export writes the .dbak into the phone's own Documents
+         folder. On Android 9 and below that public directory needs this
+         permission; from Android 10 (API 29) scoped storage makes it
+         unnecessary, hence maxSdkVersion. Without it, backups on older
+         devices silently fell back to share-only, with no local copy.
+         Nothing else in DOCMAN touches shared storage; documents live in
+         the app's own private area. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 </manifest>

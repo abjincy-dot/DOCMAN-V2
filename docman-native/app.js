@@ -8477,7 +8477,7 @@ function initSettingsPage() {
     // default BridgeWebViewClient, unmodified in this app) -- this is how
     // market:// gets routed to the Play Store app itself.
     document.getElementById('checkUpdatesBtn').onclick = () => {
-        window.open('market://details?id=com.oarcel.docman', '_system');
+        window.open('market://details?id=com.docman', '_system');
     };
 
     applyTheme(docmanSettings.theme || 'dark');

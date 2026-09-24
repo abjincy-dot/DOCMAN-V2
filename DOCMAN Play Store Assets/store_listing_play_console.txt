@@ -1,0 +1,53 @@
+APP NAME (30 max)
+DOCMAN - Document Manager
+
+SHORT DESCRIPTION (80 max)
+Scan, organize and protect all your documents — fast, private, on your phone.
+
+FULL DESCRIPTION (4000 max) — paste everything between the lines
+------------------------------------------------------------------
+DOCMAN is a fast, private document manager that keeps everything — PDFs, images, Word and Excel files, and your own notes — organized into departments and folders, entirely on your device.
+
+Organize your way
+Sort documents into departments (Personal, Work, Finance, Education, Health, ID & Legal, Home and more) and nested folders. Each department gets its own color and an icon you can change. Mark favorites, and find anything instantly with search and sort.
+
+A real PDF viewer, built in
+No more bouncing out to another app. DOCMAN's PDF viewer includes:
+• Bookmarks and a table of contents
+• Search inside the document, zoomed straight to each match
+• Highlights, signatures and fillable forms
+• Erase with a brush — text, pen marks and stains stay gone in the saved copy — or black out private details
+• Crop pages, night mode, rotate, two-page view and page thumbnails
+• Password-protected PDF support
+• Select and copy text, print, and export a copy
+• On-device text recognition (OCR) for scanned pages, so even photocopies become searchable
+
+Scan paper documents
+Scan finds the page edges automatically, captures the page, sharpens it with filters and saves a clean multi-page PDF right in the folder you're in — perfect for bills, forms and certificates.
+
+A full image editor, built in
+Crop, rotate, flip, draw, highlight, blur out private details, or add text. Adjust brightness, contrast, exposure, saturation and hue, or apply a filter — Document and Straighten tidy up a photographed page. Undo, redo and reset to the original are always there.
+
+Turn photos into PDFs
+Convert any image to a PDF in one tap, or queue several photos and save them as a single multi-page PDF — useful for receipts, ID pages or a form you photographed.
+
+Never miss a deadline
+Set an expiry date on any document (passport, license, insurance). Your phone alerts you 7 days before, 3 days before, and again on the day until you acknowledge it — even when the app is closed. Add reminders with a title, date and time for anything else you need to track.
+
+Notes, right alongside your files
+Jot down a quick note in any folder — no separate app needed.
+
+Your data stays yours
+DOCMAN has no server, and your documents are never uploaded — everything lives in the app's private storage on your device. Lock the whole app with a PIN or your fingerprint or face; with DOCMAN Pro you can also lock individual departments, folders, files and notes. When you want to move data off your phone, you're in control: encrypted, password-protected backups that you export yourself.
+
+Try every Pro tool free, then unlock it once
+Scanning, signing, highlighting, form filling, erasing, cropping, reading scanned pages, the image editor, PDF conversion and locking individual items can each be used once for free. Unlock DOCMAN Pro with a single one-time purchase for unlimited use, plus unlimited departments and folders. No subscription.
+
+Also included
+• Recycle Bin for anything you delete, so mistakes aren't permanent
+• Storage dashboard to see what's taking up space
+• Light and dark themes
+• Import from Google Drive, your camera or any file picker
+
+DOCMAN is built for anyone who's tired of hunting through a messy Downloads folder or a dozen scattered apps just to find one document. Everything in one place, organized the way you think, and never leaving your phone unless you say so.
+------------------------------------------------------------------

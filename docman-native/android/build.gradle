@@ -8,7 +8,12 @@ buildscript {
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:9.2.1'
-        classpath 'com.google.gms:google-services:4.4.0'
+        // google-services (Firebase) intentionally not on the classpath:
+        // DOCMAN has no Firebase, no analytics and no push. app/build.gradle
+        // still has a guarded 'apply plugin' block that only fires when a
+        // google-services.json exists -- if push is ever added, restore
+        // classpath 'com.google.gms:google-services:4.4.0' here too, or
+        // that block will fail to resolve the plugin.
 
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files

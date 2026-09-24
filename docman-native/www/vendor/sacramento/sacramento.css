@@ -1,0 +1,9 @@
+/* sacramento-latin-400-normal -- used for the "Document Manager" tagline
+   under the DOCMAN wordmark. SIL Open Font License, free to bundle. */
+@font-face {
+  font-family: 'Sacramento';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(./files/sacramento-400.woff2) format('woff2');
+}

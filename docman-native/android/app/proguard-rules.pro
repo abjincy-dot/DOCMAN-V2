@@ -1,51 +1,24 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
-
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
-
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
-
-# ---------------------------------------------------------------------
-# DOCMAN release-build rules
-# ---------------------------------------------------------------------
-
-# Keep readable stack traces in crash reports.
+# Keep line numbers/file names in crash stacks Play shows us.
 -keepattributes SourceFile,LineNumberTable
 
-# Capacitor dispatches to plugin methods by name via reflection
-# (Bridge.call... -> @PluginMethod). R8 doesn't know these are entry
-# points, so without this it will rename/strip them and every native
-# call from app.js (BiometricAuth.*, PdfNative.*) will silently fail
-# at runtime instead of failing to compile.
+# Capacitor finds plugin methods reflectively, so the annotated classes and
+# their @PluginMethod methods must survive shrinking. This covers every
+# DOCMAN plugin (PdfNative, BiometricAuth, ExactAlarm, Entitlement, Billing,
+# DocumentScanner, InAppReview, BackupFile) without naming them one by one.
 -keep @com.getcapacitor.annotation.CapacitorPlugin class * {
     @com.getcapacitor.PluginMethod <methods>;
 }
--keep class com.oarcel.docman.BiometricAuthPlugin { *; }
--keep class com.oarcel.docman.PdfNativePlugin { *; }
 
-# android-pdf-viewer (io.github.oothp) binds to PDFium through JNI.
-# Native methods must keep their exact names/signatures or the
-# native .so lookup fails.
+# JNI entry points.
 -keepclasseswithmembernames class * {
     native <methods>;
 }
+
+# The PDF engine and its JNI bridge: pdfium's native side looks these up by
+# name, so renaming them breaks rendering at runtime rather than at build time.
 -keep class com.shockwave.pdfium.** { *; }
 -keep class com.github.barteksc.pdfviewer.** { *; }
 
-# Capacitor's own framework classes ship their own consumer rules
-# inside the AAR, so no manual rules needed for @capacitor/* here.
+# PDFBox ships JPEG2000 support that references an optional library we do not
+# bundle; nothing in DOCMAN reaches that code path.
+-dontwarn com.gemalto.jp2.**

@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="DOCMAN stores everything on your device. No server, no analytics, no tracking. Full privacy policy for the DOCMAN Android document manager.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0e14">
+<title>DOCMAN Privacy Policy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --bg:#0b0e14;
+    --card:#151a24;
+    --card-2:#1b2130;
+    --line:rgba(255,255,255,.07);
+    --line-strong:rgba(255,255,255,.13);
+    --ink:#e9ecf2;
+    --body:#a8b0be;
+    --dim:#6f7887;
+    --accent:#ff8a3d;
+    --accent-deep:#e8720a;
+    --display:"Poppins","Segoe UI",system-ui,sans-serif;
+    --text:"Inter","Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--body);
+    font-family:var(--text);
+    font-size:16px;
+    line-height:1.75;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:812px;margin:0 auto;padding:0 22px}
+
+  /* ---------- top bar ---------- */
+  .bar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:26px 0 8px;
+  }
+  .mark{
+    font-family:var(--display);font-weight:800;font-size:23px;letter-spacing:-.02em;
+    color:#fff;text-decoration:none;line-height:1;
+  }
+  .mark span{color:var(--accent-deep)}
+
+  .menu-btn{
+    appearance:none;background:none;border:0;padding:9px;margin:-9px;
+    cursor:pointer;color:var(--ink);line-height:0;border-radius:9px;
+  }
+  .menu-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .menu-btn svg{display:block;width:26px;height:26px}
+
+  /* ---------- section index ---------- */
+  .index{
+    margin:14px 0 0;padding:0;
+    border:1px solid var(--line);border-radius:14px;background:var(--card);
+    overflow:hidden;
+  }
+  .index-inner{padding:16px 18px 18px}
+  .index p{
+    margin:0 0 11px;font-size:11px;font-weight:700;letter-spacing:.15em;
+    text-transform:uppercase;color:var(--dim);
+  }
+  .index ol{
+    margin:0;padding:0;list-style:none;
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:2px 20px;
+  }
+  .index a{
+    display:block;padding:5px 0;color:var(--body);text-decoration:none;font-size:14.5px;
+    border-radius:5px;
+  }
+  .index a b{color:var(--dim);font-weight:600;font-variant-numeric:tabular-nums;margin-right:9px}
+  .index a:hover{color:var(--accent)}
+  .index a:hover b{color:var(--accent)}
+  .index a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+  /* ---------- masthead ---------- */
+  .head{text-align:center;padding:44px 0 30px}
+  h1{
+    font-family:var(--display);font-weight:800;
+    font-size:clamp(38px,8.6vw,66px);line-height:1.02;letter-spacing:-.035em;
+    color:#fff;margin:0;text-wrap:balance;
+  }
+  .stamp{
+    margin:16px 0 0;font-size:12px;font-weight:600;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--dim);
+  }
+
+  /* ---------- the document card ---------- */
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:clamp(22px,4.4vw,44px);
+    margin-bottom:54px;
+  }
+  .card > :first-child{margin-top:0}
+  .card p{margin:0 0 18px}
+  .card strong{color:var(--ink);font-weight:600}
+
+  .lede{font-size:17px}
+
+  /* the thesis of the whole document -- lifted out of the prose */
+  .short{
+    margin:0 0 26px;padding:18px 20px;
+    background:var(--card-2);
+    border:1px solid var(--line-strong);
+    border-left:3px solid var(--accent);
+    border-radius:4px 14px 14px 4px;
+  }
+  .short p{margin:0;font-size:16.5px;color:var(--ink)}
+  .short b{color:var(--accent);font-weight:700}
+
+  h2{
+    font-family:var(--display);font-weight:700;
+    font-size:clamp(19px,3.4vw,23px);line-height:1.3;letter-spacing:-.012em;
+    color:var(--accent);
+    margin:38px 0 0;padding:0 0 13px;
+    border-bottom:1px solid var(--line-strong);
+    scroll-margin-top:22px;
+  }
+  h2 .n{color:var(--dim);font-weight:600;font-variant-numeric:tabular-nums;margin-right:10px}
+  h2 + p, h2 + ul{margin-top:19px}
+
+  ul{margin:0 0 18px;padding:0;list-style:none}
+  ul li{position:relative;padding-left:20px;margin-bottom:11px}
+  ul li::before{
+    content:"";position:absolute;left:2px;top:.72em;
+    width:5px;height:5px;border-radius:50%;background:var(--accent-deep);
+  }
+
+  a.link{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(255,138,61,.35)}
+  a.link:hover{border-bottom-color:var(--accent)}
+  a.link:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
+
+  code{
+    font-family:ui-monospace,"Cascadia Mono",Menlo,monospace;
+    font-size:.88em;background:rgba(255,255,255,.06);
+    padding:1.5px 6px;border-radius:5px;color:var(--ink);
+  }
+
+  /* ---------- foot ---------- */
+  .foot{
+    border-top:1px solid var(--line);
+    padding:24px 0 46px;
+    display:flex;flex-wrap:wrap;gap:10px 22px;
+    align-items:baseline;justify-content:space-between;
+    font-size:13px;color:var(--dim);
+  }
+  .foot a{color:var(--body);text-decoration:none}
+  .foot a:hover{color:var(--accent)}
+
+  @media (max-width:560px){
+    body{font-size:15.5px}
+    .index ol{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="bar">
+    <a class="mark" href="#top">DOC<span>MAN</span></a>
+    <button class="menu-btn" id="menuBtn" aria-expanded="false" aria-controls="sectionIndex"
+            aria-label="Jump to a section">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M3 6h18M3 12h18M3 18h18"/>
+      </svg>
+    </button>
+  </div>
+
+  <nav class="index" id="sectionIndex" hidden>
+    <div class="index-inner">
+      <p>Jump to a section</p>
+      <ol>
+        <li><a href="#s1"><b>01</b>Information DOCMAN Stores, and Where</a></li>
+        <li><a href="#s2"><b>02</b>Google Drive Import</a></li>
+        <li><a href="#s3"><b>03</b>Camera and Document Scanning</a></li>
+        <li><a href="#s4"><b>04</b>On-Device Text Recognition</a></li>
+        <li><a href="#s5"><b>05</b>Biometric / PIN App Lock</a></li>
+        <li><a href="#s6"><b>06</b>Notifications and Reminders</a></li>
+        <li><a href="#s7"><b>07</b>Network Access</a></li>
+        <li><a href="#s8"><b>08</b>Analytics, Ads, Third-Party SDKs</a></li>
+        <li><a href="#s9"><b>09</b>Backup and Sharing</a></li>
+        <li><a href="#s10"><b>10</b>Data Deletion</a></li>
+        <li><a href="#s11"><b>11</b>Children's Privacy</a></li>
+        <li><a href="#s12"><b>12</b>Changes to This Policy</a></li>
+        <li><a href="#s13"><b>13</b>Contact</a></li>
+      </ol>
+    </div>
+  </nav>
+
+  <header class="head" id="top">
+    <h1>Privacy Policy</h1>
+    <p class="stamp">Last updated &middot; September 15, 2026</p>
+  </header>
+
+  <main class="card">
+
+    <div class="short">
+      <p><b>In short:</b> DOCMAN stores everything on your device. We do not operate any
+        server, and the app does not transmit your documents, notes, or personal
+        information anywhere. Its text-recognition library sends Google only limited
+        technical diagnostics (see Section 8).</p>
+    </div>
+
+    <p class="lede">This Privacy Policy describes how the DOCMAN Android application
+      (&ldquo;DOCMAN,&rdquo; &ldquo;the app,&rdquo; &ldquo;we,&rdquo; &ldquo;us&rdquo;)
+      handles information. DOCMAN is developed and maintained by Abish Rajan, contactable at
+      <a class="link" href="mailto:abishrajan6@gmail.com">abishrajan6@gmail.com</a>.</p>
+
+    <h2 id="s1"><span class="n">01</span>Information DOCMAN Stores, and Where</h2>
+    <p>All of the following is stored <strong>only on your device</strong>, in the app's
+      private storage area. None of it is uploaded to us, to any server we operate, or to
+      any third party by DOCMAN itself.</p>
+    <ul>
+      <li><strong>Documents you import</strong> (PDFs, images, Word/Excel files, etc.) &mdash;
+        stored in the app's private native storage on your device.</li>
+      <li><strong>Folder and department structure, names, colors, and icons</strong> &mdash;
+        stored locally.</li>
+      <li><strong>Notes you create</strong> &mdash; stored locally.</li>
+      <li><strong>Edited copies</strong> &mdash; when you sign, highlight, fill in, erase or crop a PDF,
+        or edit an image, DOCMAN saves the result as a new file in the same folder on your device and
+        leaves the original unchanged. Erasing redraws the affected pages on your device so the erased
+        content is removed from the copy; nothing is sent anywhere.</li>
+      <li><strong>Reminders you create</strong> (title, due date, and time) &mdash; stored locally.</li>
+      <li><strong>Favorites, recents, and search history</strong> &mdash; stored locally.</li>
+      <li><strong>Items you delete</strong> &mdash; held in the app's local Recycle Bin until you
+        permanently delete them or the retention period elapses, then removed from the device.</li>
+      <li><strong>App Lock PIN</strong> &mdash; stored on-device only as a one-way hash (see
+        Section 5). We never see or store your actual PIN.</li>
+    </ul>
+    <p>Uninstalling the app, or using the in-app &ldquo;Erase All Data&rdquo; option, removes
+      this data from your device. See Section 9 for backup files, which are the one copy of
+      your data that leaves the app (into a location <strong>you</strong> choose).</p>
+
+    <h2 id="s2"><span class="n">02</span>Google Drive Import</h2>
+    <p>DOCMAN lets you import a file from Google Drive. This works by handing off to the
+      <strong>Google Drive app already installed on your device</strong> through Android's
+      standard file-picker system &mdash; the same mechanism used for &ldquo;Choose Files.&rdquo;
+      DOCMAN does not sign in to your Google account, does not request or receive an OAuth
+      access token, and does not communicate with Google's servers directly. The Google Drive
+      app itself handles your authentication and file access under your existing Google
+      account and Google's own privacy terms; DOCMAN only receives the file you explicitly
+      chose, exactly as if you had picked it from local storage.</p>
+    <p>If the Google Drive app is not installed, this feature falls back to Android's general
+      file picker, which does not involve Google Drive at all.</p>
+
+    <h2 id="s3"><span class="n">03</span>Camera and Document Scanning</h2>
+    <p>DOCMAN's &ldquo;Take Photo&rdquo; option launches your device's built-in camera app via
+      Android's standard camera intent. DOCMAN does not access the camera hardware directly
+      &mdash; the camera app itself captures the photo and hands the resulting image back to
+      DOCMAN, the same way picking an existing photo from your gallery works.</p>
+    <p>DOCMAN&rsquo;s &ldquo;Scan&rdquo; button (also under Upload &rarr; Scan Document) opens <strong>Google&rsquo;s ML Kit document
+      scanner</strong>, which is provided by Google Play services on your device. The scanner uses
+      the camera through Google Play services &mdash; DOCMAN itself has no camera permission
+      &mdash; and, as Google describes it, operates on your device to find the page edges, crop
+      and straighten each page, apply filters and assemble the pages. The finished PDF is handed back
+      to DOCMAN, which saves it in the folder you have open. Google may send the limited technical diagnostics described in
+      Section 8 about how the scanner is working; your scanned pages are not part of them.</p>
+
+    <h2 id="s4"><span class="n">04</span>On-Device Text Recognition (OCR)</h2>
+    <p>For scanned or image-only PDF pages &mdash; where the page is really just a picture, with
+      no underlying selectable text &mdash; DOCMAN uses Google ML Kit's on-device text
+      recognition to make that page's text selectable, highlightable, and searchable. This
+      processing happens entirely on your device: no page image and no recognized text is ever
+      sent to Google or to any server. ML Kit currently supports Latin-script text only. See
+      Section 8 for how ML Kit is licensed, and for a note on the internet permission this
+      library requires.</p>
+
+    <h2 id="s5"><span class="n">05</span>Biometric / PIN App Lock</h2>
+    <p>If you enable fingerprint or face unlock, this is handled entirely by Android's built-in
+      biometric system (<code>BiometricPrompt</code>). DOCMAN never receives, sees, or stores
+      your fingerprint or facial data &mdash; that stays inside your device's secure hardware,
+      managed by Android itself. DOCMAN only receives a yes/no result
+      (&ldquo;unlocked&rdquo; or &ldquo;not unlocked&rdquo;).</p>
+    <p>If you set a PIN instead, DOCMAN stores a salted, one-way cryptographic hash of it on
+      your device &mdash; never the PIN itself &mdash; and this hash is never transmitted
+      anywhere. Repeated incorrect PIN attempts are slowed with an increasing delay to resist
+      guessing; there is no way to recover a forgotten PIN other than the app's own reset flow,
+      since DOCMAN itself never has access to it.</p>
+
+    <h2 id="s6"><span class="n">06</span>Notifications and Reminders</h2>
+    <p>DOCMAN can show local notifications for two things you set up yourself:
+      <strong>expiry alerts</strong>, when a document you've tagged with an expiry date is
+      approaching or overdue, and <strong>Reminders</strong>, a title, due date, and time you
+      set yourself under the Reminders tab. These notifications are generated and scheduled
+      entirely on your device by Android itself. DOCMAN does not use any push-notification or
+      cloud-messaging service, and no data leaves your device to generate or deliver them.</p>
+    <p>To show these, DOCMAN requests Android's notification permission the first time it needs
+      it, and &mdash; separately &mdash; may ask you to allow &ldquo;Alarms &amp; reminders,&rdquo;
+      so Android delivers a scheduled reminder at its set time while the app isn't open. Declining
+      either of these just means notifications may not fire reliably or at all; DOCMAN's other
+      features are unaffected either way, and nothing about this exchanges any data with us or
+      anyone else &mdash; it only changes what Android itself allows the app to do on your
+      device.</p>
+
+    <h2 id="s7"><span class="n">07</span>Network Access</h2>
+    <p>DOCMAN does not require or use internet access for its core functionality &mdash;
+      importing, organizing, viewing, searching, and managing your documents all work entirely
+      offline. The internet is involved in only two situations, and neither sends your
+      documents anywhere: when you <strong>buy or restore DOCMAN Pro</strong>, which Google Play
+      handles (see Section 8), and when you open an external link &mdash; for example the Play
+      Store listing from &ldquo;Check for Updates,&rdquo; or the Google Drive app as described in
+      Section 2 &mdash; which hands off to another app rather than DOCMAN making a network
+      request itself.</p>
+    <p>The app declares Android's internet permission, and alongside it the network-state
+      permission (<code>ACCESS_NETWORK_STATE</code>), which lets an app check whether a
+      connection exists. No DOCMAN feature uses them to send your documents, notes, or personal
+      information anywhere. They are present because the Google ML Kit library described in
+      Section 4 uses them to send Google limited technical diagnostics about the library itself
+      (see Section 8). Both will therefore
+      appear in the app's permission list on Google Play. Purchases of DOCMAN Pro are carried
+      out by the Google Play Store app on your device rather than by DOCMAN itself &mdash; see
+      Section 8.</p>
+
+    <h2 id="s8"><span class="n">08</span>Analytics, Advertising, and Third-Party SDKs</h2>
+    <p>DOCMAN does <strong>not</strong> include any analytics SDK, crash-reporting SDK,
+      advertising SDK, or third-party tracking of any kind. We do not know how many people use
+      the app, what they do inside it, or anything else about app usage, because we never
+      collect that information.</p>
+    <p>The app is built with the following open-source components, which run entirely on your
+      device and do not transmit data on their own: Capacitor (app framework), an Android PDF
+      viewer library, a PDF processing library (for text extraction, highlighting, and
+      form/annotation features), and AndroidX libraries (including the biometric library).</p>
+    <p>DOCMAN also includes <strong>Google ML Kit</strong> (on-device text recognition, see
+      Section 4, and the document scanner, see Section 3) &mdash; a Google SDK, not open source, distributed under Google's own APIs
+      Terms of Service. The actual text recognition happens entirely on your device, requires no
+      Google account sign-in, and transmits no document content anywhere. However, like Google's
+      other Android SDKs, ML Kit sends Google limited technical diagnostics about how the library
+      is working: device details (manufacturer, model, and Android version), app details
+      (package name and version), a per-installation identifier, performance measurements,
+      feature settings, and error codes. Google encrypts this in transit and does not transfer it
+      to third parties, as described in
+      <a class="link" href="https://developers.google.com/ml-kit/android-data-disclosure">Google's
+      ML Kit data disclosure</a>. It never includes your documents, page images, or recognized
+      text, and it goes to Google, not to us &mdash; DOCMAN has no account that receives it. This
+      is why DOCMAN's app package declares Android's internet permission (see Section 7).</p>
+    <p>DOCMAN uses the <strong>Google Play Billing Library</strong> to offer the optional
+      one-time DOCMAN Pro upgrade. When you buy or restore DOCMAN Pro, the purchase is processed
+      by the Google Play Store app on your device and by Google, under Google&rsquo;s own terms
+      and privacy policy. DOCMAN never receives your payment details. The only thing it learns
+      is whether your Google account owns DOCMAN Pro, and it keeps that yes/no answer on your
+      device so the upgrade keeps working when you are offline. No document, note, or file
+      content is ever part of a purchase.</p>
+
+    <h2 id="s9"><span class="n">09</span>Backup and Sharing</h2>
+    <p>DOCMAN's &ldquo;Backup &amp; Export&rdquo; feature creates a single backup file
+      containing your documents, notes, and folder structure. Before saving it, you choose
+      either to create your own password or to have DOCMAN generate a random recovery key for
+      you; the backup is then encrypted with AES-256 using that password or key. The file is
+      also saved directly to your device's Documents folder, and you can additionally share it
+      using Android's standard share sheet &mdash; to Google Drive, email, another app, or
+      elsewhere, entirely at your choice. DOCMAN does not automatically upload this backup
+      anywhere.</p>
+    <p>Your password or recovery key is never stored or transmitted by DOCMAN &mdash; it exists
+      only in your own memory or wherever you chose to save it. Anyone who obtains the backup
+      file cannot open the documents inside it without that password or recovery key, and
+      <strong>DOCMAN has no way to recover a lost one</strong>: losing it means that specific
+      backup can no longer be restored.</p>
+    <p>When you use &ldquo;Share&rdquo; on an individual document, DOCMAN provides that one file
+      to the app you choose via Android's standard, restricted file-sharing mechanism
+      (FileProvider), scoped only to the file you're sharing.</p>
+
+    <h2 id="s10"><span class="n">10</span>Data Deletion</h2>
+    <p>You can delete your data at any time:</p>
+    <ul>
+      <li>Delete individual files, folders, or notes through the app's normal interface (moved
+        to Recycle Bin, then permanently removable).</li>
+      <li>Use <strong>Settings &rarr; Erase All Data</strong> to remove all documents, notes, and
+        the Recycle Bin from the app (this keeps your folder/department structure, now empty
+        &mdash; see the in-app confirmation for exactly what's removed).</li>
+      <li>Uninstalling the app removes all app data from your device, per standard Android
+        behavior.</li>
+    </ul>
+    <p>&ldquo;Permanently delete&rdquo; in DOCMAN removes a file from the app's storage and from
+      the device; it is not a forensic secure-erase and does not guarantee the underlying flash
+      storage blocks are unrecoverable. Because nothing is stored on a server we control, there
+      is no separate &ldquo;delete my account&rdquo; process &mdash; deleting the data on your
+      device is complete and final from DOCMAN's side.</p>
+
+    <h2 id="s11"><span class="n">11</span>Children's Privacy</h2>
+    <p>DOCMAN is a general-purpose document management tool and is not directed at children. It
+      does not knowingly collect information from children, and per Section 1, it does not
+      collect information from anyone in the first place beyond what's stored locally on the
+      device it's installed on.</p>
+
+    <h2 id="s12"><span class="n">12</span>Changes to This Policy</h2>
+    <p>If this policy changes &mdash; for example, if a future version of DOCMAN adds a feature
+      that changes how data is handled &mdash; we will update this page and revise the
+      &ldquo;Last updated&rdquo; date above.</p>
+
+    <h2 id="s13"><span class="n">13</span>Contact</h2>
+    <p>Questions about this policy or DOCMAN's data practices can be sent to
+      <a class="link" href="mailto:abishrajan6@gmail.com">abishrajan6@gmail.com</a>.</p>
+
+  </main>
+
+  <div class="foot">
+    <span>DOCMAN &mdash; Document Manager</span>
+    <span><a href="mailto:abishrajan6@gmail.com">abishrajan6@gmail.com</a></span>
+  </div>
+
+</div>
+
+<script>
+  (function () {
+    var btn = document.getElementById('menuBtn');
+    var idx = document.getElementById('sectionIndex');
+    if (!btn || !idx) return;
+    btn.addEventListener('click', function () {
+      var open = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!open));
+      idx.hidden = open;
+    });
+    idx.addEventListener('click', function (e) {
+      if (e.target.closest('a')) {
+        btn.setAttribute('aria-expanded', 'false');
+        idx.hidden = true;
+      }
+    });
+  })();
+</script>
+</body>
+</html>

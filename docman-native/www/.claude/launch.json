@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "docman-web",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["serve-www.js"],
+      "port": 4173
+    }
+  ]
+}

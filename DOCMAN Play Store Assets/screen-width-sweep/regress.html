@@ -1,0 +1,19 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Default-settings regression</title>
+<style>body{margin:0;background:#0b0a18;color:#9ef;font:600 12px system-ui;padding:10px}
+iframe{position:absolute;left:-9999px}pre{font:600 12px/1.6 ui-monospace,monospace;color:#7dd3fc}</style>
+</head><body><pre id="o">…</pre>
+<script>
+const W=[320,360,384,412];
+function probe(wd){return new Promise(r=>{const f=document.createElement('iframe');
+ f.width=wd;f.height=800;f.src='/index.html#r'+wd;
+ f.onload=()=>setTimeout(()=>{let t;try{const d=f.contentDocument,w=f.contentWindow;
+  const s=d.createElement('style');s.textContent='#introOverlay{display:none!important}.app{opacity:1!important;transform:none!important}';d.head.appendChild(s);
+  const h1=d.querySelector('.header-title h1'),tag=d.querySelector('.doc-tag'),g=d.querySelector('.header-gear-btn');
+  const rh=h1.getBoundingClientRect(),rg=g.getBoundingClientRect();
+  t=wd+'px  wordmark '+w.getComputedStyle(h1).fontSize+'   tagline '+w.getComputedStyle(tag).fontSize
+    +'   text "'+h1.textContent+'"   clearance to gear '+(rg.left-rh.right).toFixed(1)+'px';
+ }catch(e){t=wd+'px ERROR '+e.message;}f.remove();r(t);},2400);
+ document.body.appendChild(f);});}
+(async()=>{const o=[];for(const wd of W){o.push(await probe(wd));document.getElementById('o').textContent=o.join('\n');}
+ o.push('DONE');document.getElementById('o').textContent=o.join('\n');})();
+</script></body></html>

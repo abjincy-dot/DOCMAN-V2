@@ -24,7 +24,7 @@
 
         <!-- Sits on top of the PDF. Passes touches straight through unless
              mark mode is on (see PdfMarkOverlayView). -->
-        <com.oarcel.docman.PdfMarkOverlayView
+        <com.docman.PdfMarkOverlayView
             android:id="@+id/pdfMarkOverlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
@@ -33,7 +33,7 @@
              PDFView until it commits to a selection gesture) except while
              Mark mode is active. See PdfTextSelectionOverlayView's class
              comment for the touch-arbitration model. -->
-        <com.oarcel.docman.PdfTextSelectionOverlayView
+        <com.docman.PdfTextSelectionOverlayView
             android:id="@+id/pdfTextSelectionOverlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
@@ -92,7 +92,7 @@
              (see PdfSignaturePlacementView's class comment). Must be the LAST
              child in pdfContainer so it takes priority over the other
              overlays while active. -->
-        <com.oarcel.docman.PdfSignaturePlacementView
+        <com.docman.PdfSignaturePlacementView
             android:id="@+id/pdfSignaturePlacementView"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
@@ -102,8 +102,17 @@
              "claims every touch while active, swipe disabled meanwhile"
              model as the signature overlay above. Must stay the LAST child
              so it takes priority while active. -->
-        <com.oarcel.docman.PdfRedactOverlayView
+        <com.docman.PdfRedactOverlayView
             android:id="@+id/pdfRedactOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- Drag one rectangle to mark the area to keep on this page (Crop
+             Page). Same one-shot drag-then-auto-exit gesture as the redact
+             overlay above; mutually exclusive with it in the UI so sharing
+             the "last child wins touch priority" slot is harmless. -->
+        <com.docman.PdfCropOverlayView
+            android:id="@+id/pdfCropOverlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
@@ -203,68 +212,29 @@
             android:layout_marginEnd="4dp"
             android:background="#332F4A6E" />
 
-        <!-- Groups Mark/Bookmark/Rotate into one visually distinct cluster
-             instead of floating loose next to the filename. See
-             bg_pdf_toolbar_pill's own comment. -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:background="@drawable/bg_pdf_toolbar_pill">
+        <ImageButton
+            android:id="@+id/pdfBookmarkBtn"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Bookmarks"
+            android:padding="10dp"
+            android:src="@drawable/ic_pdf_bookmark"
+            android:visibility="gone"
+            app:tint="#E2E8F0"
+            android:tintMode="src_in" />
 
-            <ImageButton
-                android:id="@+id/pdfMarkBtn"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Mark a spot"
-                android:padding="10dp"
-                android:src="@drawable/ic_pdf_mark"
-                app:tint="#E2E8F0"
-                android:tintMode="src_in" />
-
-            <ImageButton
-                android:id="@+id/pdfBookmarkBtn"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Bookmarks"
-                android:padding="10dp"
-                android:src="@drawable/ic_pdf_bookmark"
-                android:visibility="gone"
-                app:tint="#E2E8F0"
-                android:tintMode="src_in" />
-
-            <ImageButton
-                android:id="@+id/pdfBookmarkPageBtn"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Bookmark this page"
-                android:padding="10dp"
-                android:src="@drawable/ic_pdf_star"
-                app:tint="#E2E8F0"
-                android:tintMode="src_in" />
-
-            <ImageButton
-                android:id="@+id/pdfRotateBtn"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Rotate"
-                android:padding="10dp"
-                android:src="@drawable/ic_pdf_rotate"
-                app:tint="#E2E8F0"
-                android:tintMode="src_in" />
-
-        </LinearLayout>
 
     </LinearLayout>
 
     <!-- Thin secondary bar: page indicator ("12 / 48"). Hidden together with
          the main toolbar in Full Screen mode. -->
+    <!-- Page counter removed from the top (asked for 2026-09-24): it sat over
+         the page and slid under the title bar. Kept in the tree, hidden, so
+         the code that toggles it has something to talk to. -->
     <LinearLayout
         android:id="@+id/pdfSecondaryBar"
+        android:visibility="gone"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
@@ -289,71 +259,110 @@
 
     </LinearLayout>
 
-    <!-- Search navigation pill: Adobe-Reader-style "N of M" + prev/next,
-         no results list, stays on the page instead of covering it. Top-right
-         (not bottom) so it clears the on-screen nav bar on gesture-nav-off
-         devices; topMargin gets the same status-bar-inset treatment as
-         pdfSecondaryBar below, applied in code. Hidden until a search runs. -->
+    <!-- Search bar: the query stays on screen and editable, the way Chrome
+         and Adobe do it, instead of a stock AlertDialog that took the query,
+         vanished, and left a separate "N of M" pill with no way to see or
+         amend what was searched. Full width under the title bar; topMargin
+         gets the same status-bar-inset treatment as pdfSecondaryBar below,
+         applied in code. Hidden until Search is tapped. -->
     <LinearLayout
         android:id="@+id/pdfSearchBar"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="top|end"
+        android:layout_gravity="top"
         android:layout_marginTop="52dp"
-        android:layout_marginEnd="8dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:background="@drawable/bg_pdf_search_pill"
-        android:paddingStart="10dp"
-        android:paddingEnd="10dp"
+        android:background="#1B2438"
+        android:paddingStart="14dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
         android:elevation="8dp"
         android:visibility="gone">
 
-        <ImageButton
-            android:id="@+id/pdfSearchCloseBtn"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Close search"
-            android:padding="7dp"
-            android:src="@android:drawable/ic_menu_close_clear_cancel"
-            app:tint="#E2E8F0"
-            android:tintMode="src_in" />
+        <ImageView
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:contentDescription="Search"
+            android:src="@drawable/ic_search_glass"
+            app:tint="#7D95C2" />
+
+        <EditText
+            android:id="@+id/pdfSearchInput"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:background="@null"
+            android:hint="Search document"
+            android:textColorHint="#6D88B8"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:inputType="text"
+            android:imeOptions="actionSearch"
+            android:importantForAutofill="no" />
 
         <ImageButton
-            android:id="@+id/pdfSearchPrevBtn"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_marginStart="4dp"
+            android:id="@+id/pdfSearchClearBtn"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Previous match"
+            android:contentDescription="Clear"
             android:padding="6dp"
-            android:src="@android:drawable/ic_media_previous"
-            app:tint="#E2E8F0"
-            android:tintMode="src_in" />
+            android:src="@drawable/ic_search_clear"
+            app:tint="#7D95C2"
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/pdfSearchLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:layout_marginEnd="6dp"
-            android:minWidth="104dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
             android:gravity="center"
             android:text=""
-            android:textColor="#E2E8F0"
-            android:textSize="13sp"
+            android:textColor="#9FB6E8"
+            android:textSize="12sp"
             android:textStyle="bold" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="20dp"
+            android:layout_marginEnd="4dp"
+            android:background="#33FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/pdfSearchPrevBtn"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Previous match"
+            android:padding="7dp"
+            android:src="@drawable/ic_search_prev"
+            app:tint="#CDD8EA" />
 
         <ImageButton
             android:id="@+id/pdfSearchNextBtn"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="Next match"
-            android:padding="6dp"
-            android:src="@android:drawable/ic_media_next"
-            app:tint="#E2E8F0"
+            android:padding="7dp"
+            android:src="@drawable/ic_search_next"
+            app:tint="#CDD8EA" />
+
+        <ImageButton
+            android:id="@+id/pdfSearchCloseBtn"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Close search"
+            android:padding="8dp"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            app:tint="#CDD8EA"
             android:tintMode="src_in" />
 
     </LinearLayout>
@@ -389,8 +398,8 @@
             android:paddingTop="4dp"
             android:paddingBottom="4dp">
             <ImageView
-                android:layout_width="21dp"
-                android:layout_height="21dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:contentDescription="Search"
                 android:src="@drawable/ic_pdf_search"
                 app:tint="#E2E8F0" />
@@ -400,7 +409,7 @@
                 android:layout_marginTop="3dp"
                 android:text="Search"
                 android:textColor="#B8BEDB"
-                android:textSize="9.5sp" />
+                android:textSize="9sp" />
         </LinearLayout>
 
         <LinearLayout
@@ -416,8 +425,8 @@
             android:paddingTop="4dp"
             android:paddingBottom="4dp">
             <ImageView
-                android:layout_width="21dp"
-                android:layout_height="21dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:contentDescription="Pages"
                 android:src="@drawable/ic_pdf_pages"
                 app:tint="#E2E8F0" />
@@ -427,7 +436,7 @@
                 android:layout_marginTop="3dp"
                 android:text="Pages"
                 android:textColor="#B8BEDB"
-                android:textSize="9.5sp" />
+                android:textSize="9sp" />
         </LinearLayout>
 
         <LinearLayout
@@ -443,8 +452,8 @@
             android:paddingTop="4dp"
             android:paddingBottom="4dp">
             <ImageView
-                android:layout_width="21dp"
-                android:layout_height="21dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:contentDescription="Sign"
                 android:src="@drawable/ic_pdf_sign"
                 app:tint="#E2E8F0" />
@@ -454,7 +463,7 @@
                 android:layout_marginTop="3dp"
                 android:text="Sign"
                 android:textColor="#B8BEDB"
-                android:textSize="9.5sp" />
+                android:textSize="9sp" />
         </LinearLayout>
 
         <LinearLayout
@@ -470,8 +479,8 @@
             android:paddingTop="4dp"
             android:paddingBottom="4dp">
             <ImageView
-                android:layout_width="21dp"
-                android:layout_height="21dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:contentDescription="Fill form"
                 android:src="@drawable/ic_pdf_form"
                 app:tint="#E2E8F0" />
@@ -481,7 +490,7 @@
                 android:layout_marginTop="3dp"
                 android:text="Fill form"
                 android:textColor="#B8BEDB"
-                android:textSize="9.5sp" />
+                android:textSize="9sp" />
         </LinearLayout>
 
         <LinearLayout
@@ -497,20 +506,104 @@
             android:paddingTop="4dp"
             android:paddingBottom="4dp">
             <ImageView
-                android:layout_width="21dp"
-                android:layout_height="21dp"
-                android:contentDescription="Redact"
-                android:src="@drawable/ic_pdf_redact"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="Erase"
+                android:src="@drawable/ic_pdf_erase"
                 app:tint="#E2E8F0" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="3dp"
-                android:text="Redact"
+                android:text="Erase"
                 android:textColor="#B8BEDB"
-                android:textSize="9.5sp" />
+                android:textSize="9sp" />
         </LinearLayout>
 
+
+        <LinearLayout
+            android:id="@+id/pdfToolMark"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
+            <ImageView
+                android:id="@+id/pdfMarkBtn"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="Mark"
+                android:src="@drawable/ic_pdf_mark"
+                app:tint="#E2E8F0" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:text="Mark"
+                android:textColor="#B8BEDB"
+                android:textSize="9sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/pdfToolStar"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
+            <ImageView
+                android:id="@+id/pdfBookmarkPageBtn"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="Star"
+                android:src="@drawable/ic_pdf_star"
+                app:tint="#E2E8F0" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:text="Star"
+                android:textColor="#B8BEDB"
+                android:textSize="9sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/pdfToolRotate"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
+            <ImageView
+                android:id="@+id/pdfRotateBtn"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="Rotate"
+                android:src="@drawable/ic_pdf_rotate"
+                app:tint="#E2E8F0" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:text="Rotate"
+                android:textColor="#B8BEDB"
+                android:textSize="9sp" />
+        </LinearLayout>
         <LinearLayout
             android:id="@+id/pdfToolMore"
             android:layout_width="0dp"
@@ -524,8 +617,8 @@
             android:paddingTop="4dp"
             android:paddingBottom="4dp">
             <ImageView
-                android:layout_width="21dp"
-                android:layout_height="21dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:contentDescription="More tools"
                 android:src="@drawable/ic_pdf_more"
                 app:tint="#E2E8F0" />
@@ -535,7 +628,7 @@
                 android:layout_marginTop="3dp"
                 android:text="More"
                 android:textColor="#B8BEDB"
-                android:textSize="9.5sp" />
+                android:textSize="9sp" />
         </LinearLayout>
 
     </LinearLayout>

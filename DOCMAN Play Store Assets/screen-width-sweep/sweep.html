@@ -1,0 +1,177 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Width sweep</title>
+<style>body{margin:0;background:#0b0a18;color:#cfe;font:600 12px system-ui;padding:8px}
+iframe{border:0;position:absolute;left:-9999px;top:0}
+pre{white-space:pre-wrap;font:600 11.5px/1.5 ui-monospace,monospace;color:#9ef}</style></head>
+<body><pre id="out">running…</pre>
+<script>
+// Android width buckets that actually ship, in dp (== CSS px in this WebView)
+const WIDTHS = [320, 360, 384, 412, 800];
+const HEIGHT = 820;
+
+function analyse(win, doc, W) {
+  const findings = [];
+  const vw = doc.documentElement.clientWidth;
+  const docScroll = doc.documentElement.scrollWidth;
+  if (docScroll > vw + 1) findings.push({k:'PAGE', m:'document scrolls sideways: scrollWidth '+docScroll+' > viewport '+vw});
+
+  function label(el){
+    let s = el.tagName.toLowerCase();
+    if (el.id) s += '#'+el.id;
+    if (el.className && typeof el.className === 'string') {
+      const c = el.className.trim().split(/\s+/).slice(0,3).join('.');
+      if (c) s += '.'+c;
+    }
+    return s;
+  }
+  function visible(el){
+    const cs = win.getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    if (parseFloat(cs.opacity) === 0) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return false;
+    return true;
+  }
+  // does any ancestor clip horizontally?
+  function clipped(el){
+    let p = el.parentElement;
+    while (p && p !== doc.body) {
+      const cs = win.getComputedStyle(p);
+      if (cs.overflowX === 'hidden' || cs.overflowX === 'auto' || cs.overflowX === 'scroll') return true;
+      p = p.parentElement;
+    }
+    return false;
+  }
+
+  const all = doc.body.querySelectorAll('*');
+  const absolutes = [];
+  for (const el of all) {
+    if (!visible(el)) continue;
+    const cs = win.getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+
+    // 1) sticks out past the right edge of the screen
+    if (r.right > vw + 1 && !clipped(el) && cs.position !== 'fixed') {
+      findings.push({k:'OFF-SCREEN', m:label(el)+'  right '+r.right.toFixed(0)+'px > viewport '+vw});
+    }
+    // 2) its own text doesn't fit and it won't ellipsize
+    const hasText = el.children.length === 0 && el.textContent.trim().length > 1;
+    if (hasText && el.scrollWidth > el.clientWidth + 1 && cs.textOverflow !== 'ellipsis'
+        && cs.overflowX !== 'auto' && cs.overflowX !== 'scroll') {
+      findings.push({k:'TEXT-SPILL', m:label(el)+'  needs '+el.scrollWidth+'px, has '+el.clientWidth+'px  "'
+        + el.textContent.trim().slice(0,28) + '"'});
+    }
+    if (cs.position === 'absolute' || cs.position === 'fixed') absolutes.push({el:el, r:r, cs:cs});
+  }
+
+  // 3) an absolutely-placed control sitting on top of visible text
+  const texts = [];
+  for (const el of all) {
+    if (!visible(el)) continue;
+    if (el.children.length !== 0) continue;
+    if (el.textContent.trim().length < 2) continue;
+    const cs = win.getComputedStyle(el);
+    if (cs.position === 'absolute' || cs.position === 'fixed') continue;
+    texts.push({el:el, r:el.getBoundingClientRect()});
+  }
+  // Only a real problem if the absolute element is actually PAINTED ON TOP
+  // of the text. .dept-pill-bg and friends sit behind their own label, which
+  // is a geometric overlap but not a visual one -- elementFromPoint settles
+  // it: if the topmost thing at the covered point is still the text, it is
+  // readable and there is nothing wrong.
+  for (const a of absolutes) {
+    if (a.cs.pointerEvents === 'none') continue;
+    // A modal or scrim covering the screen is SUPPOSED to cover what is
+    // behind it -- that is not a layout bug. Only sub-screen-sized
+    // absolutes can genuinely clobber something.
+    if (a.r.width >= vw * 0.5 && a.r.height >= win.innerHeight * 0.5) continue;
+    for (const t of texts) {
+      if (a.el.contains(t.el) || t.el.contains(a.el)) continue;
+      const o = Math.min(a.r.right, t.r.right) - Math.max(a.r.left, t.r.left);
+      const v = Math.min(a.r.bottom, t.r.bottom) - Math.max(a.r.top, t.r.top);
+      if (o <= 2 || v <= 2) continue;
+      const px = Math.max(a.r.left, t.r.left) + o / 2;
+      const py = Math.max(a.r.top, t.r.top) + v / 2;
+      if (px < 0 || py < 0 || px > vw || py > win.innerHeight) continue;
+      const top = doc.elementFromPoint(px, py);
+      if (!top) continue;
+      if (top === t.el || t.el.contains(top) || top.contains(t.el)) continue; // text still on top
+      if (!(top === a.el || a.el.contains(top))) continue;                    // something else entirely
+      findings.push({k:'OVERLAP', m:label(a.el)+'  covers  "'+t.el.textContent.trim().slice(0,24)
+        +'"  by '+o.toFixed(0)+'x'+v.toFixed(0)+'px'});
+    }
+  }
+  return findings;
+}
+
+
+// Every screen the app can show, reached the way a person reaches it.
+const STATES = [
+  { n: "home",            open: function(d){} },
+  { n: "department",      open: function(d){ var e=d.querySelector(".dept-pill-body")||d.querySelector(".dept-pill-bg"); if(e) e.click(); } },
+  { n: "settings",        open: function(d){ var e=d.querySelector("#settingsBtn"); if(e) e.click(); } },
+  { n: "dashboard",       open: function(d){ var e=d.querySelector("#dashboardStatItem"); if(e) e.click(); } },
+  { n: "recents",         open: function(d){ var e=d.querySelector("#recentStatItem"); if(e) e.click(); } },
+  { n: "recycle-bin",     open: function(d){ var e=d.querySelector("#recycleBinStatItem"); if(e) e.click(); } },
+  { n: "i-hub-info",      open: function(d){ var e=d.querySelector(".dept-info-hub-icon"); if(e) e.click(); } },
+  { n: "expiring-docs",   open: function(d){ var e=d.querySelector("#appLogoBtn"); if(e) e.click(); } },
+  { n: "add-department",  open: function(d){ var e=d.querySelector("#deptAddFab"); if(e) e.click(); } },
+  { n: "sort-menu",       open: function(d){ var e=d.querySelector("#sortBtn"); if(e) e.click(); } },
+  { n: "new-note",        open: function(d){ var e=d.querySelector("#newNoteBtn"); if(e) e.click(); } },
+  { n: "first-run-intro", open: function(d){ var e=d.querySelector("#introOverlay"); if(e){ e.classList.remove("hidden"); e.style.display=""; } }, keepIntro: true }
+];
+
+function run(W, st) {
+  return new Promise(function(res){
+    var f = document.createElement("iframe");
+    f.width = W; f.height = HEIGHT; f.src = "/index.html#" + st.n + W;
+    f.onload = function(){ setTimeout(function(){
+      var out;
+      try {
+        var d = f.contentDocument, w = f.contentWindow;
+        var s2 = d.createElement("style");
+        s2.textContent = (st.keepIntro ? "" : "#introOverlay,.intro-overlay{display:none !important}")
+                       + ".app{opacity:1 !important;transform:none !important}"
+;
+        d.head.appendChild(s2);
+        try { st.open(d); } catch(e){}
+        setTimeout(function(){
+          try { out = analyse(w, d, W); } catch(e){ out = [{k:"ERROR", m:e.message}]; }
+          f.remove(); res(out);
+        }, 1500);
+        return;
+      } catch (e) { out = [{k:"ERROR", m:e.message}]; }
+      f.remove(); res(out);
+    }, 1700); };
+    document.body.appendChild(f);
+  });
+}
+
+(async function(){
+  var lines = [], total = 0;
+  for (var wi = 0; wi < WIDTHS.length; wi++) {
+    var W = WIDTHS[wi];
+    lines.push("################  " + W + "px  ################");
+    for (var si = 0; si < STATES.length; si++) {
+      var st = STATES[si];
+      var f = await run(W, st);
+      var seen = {}, uniq = [];
+      for (var i = 0; i < f.length; i++) { var k = f[i].k + "|" + f[i].m;
+        if (!seen[k]) { seen[k] = 1; uniq.push(f[i]); } }
+      total += uniq.length;
+      if (!uniq.length) { lines.push("  " + st.n + ": clean"); }
+      else {
+        lines.push("  " + st.n + ": " + uniq.length);
+        var order = ["PAGE","OFF-SCREEN","OVERLAP","TEXT-SPILL","ERROR"];
+        uniq.sort(function(a,b){ return order.indexOf(a.k) - order.indexOf(b.k); });
+        for (var j = 0; j < Math.min(uniq.length, 10); j++)
+          lines.push("      [" + uniq[j].k + "] " + uniq[j].m);
+        if (uniq.length > 10) lines.push("      ... " + (uniq.length - 10) + " more");
+      }
+      document.getElementById("out").textContent = lines.join("\n");
+    }
+    lines.push("");
+  }
+  lines.push("SWEEP COMPLETE -- " + total + " finding(s) total");
+  document.getElementById("out").textContent = lines.join("\n");
+})();
+</script></body></html>

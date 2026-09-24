@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Files are only ever staged in the app cache dir before being
-         shared (see nativeDownload() / exportPdf() in app.js), so that's
-         the only path the FileProvider needs to expose. Previously this
-         also granted access to the entire external storage root via an
-         unused external-path entry — removed. -->
+    <!-- Files shared from the app cache dir (see nativeDownload() /
+         exportPdf() in app.js). Previously this also granted access to the
+         entire external storage root via an unused external-path entry —
+         removed. -->
     <cache-path name="my_cache_images" path="." />
+    <!-- Backups are saved straight into the public Documents folder, and
+         "Share a copy" shares that same file (no second copy of a possibly
+         multi-GB backup). Only Documents/ is exposed, and the provider is
+         not exported: other apps can read just the one file URI we grant.
+         Without this, Share failed and Drive said "request contained no
+         data". -->
+    <external-path name="documents" path="Documents/" />
 </paths>

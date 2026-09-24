@@ -1,14 +1,39 @@
 apply plugin: 'com.android.application'
 
+// Release signing credentials live in android/keystore.properties -- a
+// local-only file (gitignored, never committed) holding storeFile/
+// storePassword/keyAlias/keyPassword. Loaded defensively: its absence
+// shouldn't break debug builds (or any build before the keystore was
+// set up), only release signing.
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+def hasKeystoreProperties = keystorePropertiesFile.exists()
+if (hasKeystoreProperties) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
-    namespace "com.oarcel.docman"
+    namespace "com.docman"
     compileSdk rootProject.ext.compileSdkVersion
+    buildFeatures {
+        buildConfig true
+    }
+    if (hasKeystoreProperties) {
+        signingConfigs {
+            release {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     defaultConfig {
-        applicationId "com.oarcel.docman"
+        applicationId "com.docman"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0.0"
+        versionCode 34
+        versionName "1.4.7"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -17,10 +42,25 @@ android {
         }
     }
     buildTypes {
+        // Test builds install as a SEPARATE app (com.docman.dev, labelled
+        // "DOCMAN dev") so they sit BESIDE the Play-installed copy instead of
+        // replacing it: a local build is signed with a different key, so
+        // Android would otherwise demand an uninstall first, which would take
+        // the user's real documents with it.
+        debug {
+            applicationIdSuffix ".dev"
+            versionNameSuffix "-dev"
+            manifestPlaceholders = [appLabel: "DOCMAN dev"]
+        }
         release {
+            manifestPlaceholders = [appLabel: "@string/app_name"]
+            ndk { debugSymbolLevel "SYMBOL_TABLE" } // ships symbols so Play can read crash stacks
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasKeystoreProperties) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
@@ -40,9 +80,14 @@ dependencies {
     implementation('io.github.oothp:android-pdf-viewer:3.2.0-beta06') {
         exclude group: 'com.android.support'
     }
-    // Text extraction only (rendering still goes through the pdfium viewer
-    // above) -- powers in-document text search since pdfium-android here has
-    // no text-extraction API of its own (checked: only nativeGetDocumentMetaText).
+    // A second pdfium build, kept ONLY for its text API (FPDFText_*), which
+    // the viewer's own pdfium fork does not expose. It reads a page's text
+    // straight from the file, so memory use is per page: search works on a
+    // 300 MB drawing set, where PDFBox (which parses a whole document into the
+    // Java heap) was OutOfMemory-killed. Costs ~5 MB per ABI in the download.
+    implementation 'io.legere:pdfiumandroid:1.0.20'
+    // Still used for everything that WRITES a PDF (highlights, signatures,
+    // form fill, erase/crop) and as the fallback text path.
     implementation 'com.tom-roush:pdfbox-android:2.0.27.0'
     // On-device OCR fallback for scanned/image-only pages, where PDFBox
     // finds no real text objects to extract. Latin-script recognizer only
@@ -50,11 +95,32 @@ dependencies {
     // needed) -- requires Google Play Services on the device, a safe
     // assumption for a consumer Android app.
     implementation 'com.google.mlkit:text-recognition:16.0.1'
+    // "Scan Document": Google's ML Kit document scanner (edge detection,
+    // auto-capture, multi-page, filters). Its screens and models are
+    // delivered by Google Play services, so DOCMAN needs no CAMERA permission
+    // and the APK barely grows. Needs Play services and ~1.7 GB RAM.
+    implementation 'com.google.android.gms:play-services-mlkit-document-scanner:16.0.0'
     // Fingerprint / Face unlock (App Lock security feature) — wraps
     // whatever biometric methods the device has enrolled (fingerprint,
     // face, iris) behind one system prompt, no separate integration
     // needed per biometric type.
     implementation "androidx.biometric:biometric:1.1.0"
+    // Lets DocmanApplication tell "the whole app was backgrounded" apart
+    // from "one Activity briefly stopped for a share sheet/print dialog/
+    // camera" -- the standard AndroidX way to drive App-Lock-style
+    // re-authentication without a hand-rolled counter that gets that
+    // distinction wrong. Almost certainly already present transitively
+    // via AndroidX/Capacitor, declared explicitly since it's load-bearing.
+    implementation "androidx.lifecycle:lifecycle-process:2.8.7"
+    // Google Play Billing -- the one-time "DOCMAN Pro" unlock. This is the
+    // only part of the app that talks to a network: purchase verification
+    // goes to Google, never to us, and no document ever leaves the device.
+    // Privacy policy sections 7 and 8 and the Play Data Safety form both
+    // need updating to say so before this ships.
+    implementation "com.android.billingclient:billing:8.0.0"
+    // "Rate DOCMAN": Google Play's in-app review card. Google draws it and
+    // decides whether it shows; no data of ours is involved.
+    implementation "com.google.android.play:review:2.0.2"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

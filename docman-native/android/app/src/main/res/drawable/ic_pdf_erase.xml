@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Erase tool: an eraser resting on a line. Tinted by the ImageView. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.9"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M14.1,3.4L20.6,9.9Q21.3,10.6 20.6,11.3L12,19.9L7.2,19.9L3.4,16.1Q2.7,15.4 3.4,14.7Z" />
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M9.2,8.3L15.7,14.8M12.6,19.9L20.6,19.9" />
+</vector>

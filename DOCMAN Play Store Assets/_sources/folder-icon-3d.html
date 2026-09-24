@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>DOCMAN folder icon</title>
+<style>html,body{margin:0;background:#070b16;overflow:hidden}body{width:1024px;height:1024px}</style>
+</head><body>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- One gradient across the whole L silhouette: purple at the tab,
+         through violet and electric blue, to cyan at the lower right. -->
+    <linearGradient id="gMain" x1="0.05" y1="0" x2="0.92" y2="1">
+      <stop offset="0"    stop-color="#c265f8"/>
+      <stop offset="0.26" stop-color="#a173f9"/>
+      <stop offset="0.55" stop-color="#6f8cfb"/>
+      <stop offset="0.80" stop-color="#42a6fb"/>
+      <stop offset="1"    stop-color="#34d3f6"/>
+    </linearGradient>
+
+    <!-- The layer behind, seen only as a sliver along the top and right. -->
+    <linearGradient id="gBehind" x1="0" y1="0" x2="1" y2="0.7">
+      <stop offset="0"   stop-color="#7b2fd4"/>
+      <stop offset="0.6" stop-color="#5b3fd8"/>
+      <stop offset="1"   stop-color="#2f63cc"/>
+    </linearGradient>
+
+    <radialGradient id="gSheen" cx="0.20" cy="0.86" r="0.56">
+      <stop offset="0"   stop-color="#e6f7ff" stop-opacity="0.50"/>
+      <stop offset="0.6" stop-color="#e6f7ff" stop-opacity="0.09"/>
+      <stop offset="1"   stop-color="#e6f7ff" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="gGloss" x1="0" y1="0" x2="0.28" y2="1">
+      <stop offset="0"   stop-color="#ffffff" stop-opacity="0.26"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="1"   stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <linearGradient id="gEdge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0"   stop-color="#f2d9ff" stop-opacity="0.95"/>
+      <stop offset="0.5" stop-color="#d6dfff" stop-opacity="0.5"/>
+      <stop offset="1"   stop-color="#a8edff" stop-opacity="0.85"/>
+    </linearGradient>
+
+    <filter id="fDrop" x="-25%" y="-25%" width="150%" height="160%">
+      <feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#000814" flood-opacity="0.60"/>
+    </filter>
+
+    <!-- The L silhouette, reused for the shape, its gloss and its clip. -->
+    <path id="pL" d="
+      M 150 286
+      Q 150 216 220 216
+      L 404 216
+      Q 438 216 458 244
+      L 494 296
+      Q 514 324 548 324
+      L 876 324
+      Q 946 324 946 394
+      L 946 716
+      Q 946 786 876 786
+      L 220 786
+      Q 150 786 150 716
+      Z"/>
+    <clipPath id="clipL"><use href="#pL"/></clipPath>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#070b16"/>
+
+  <g filter="url(#fDrop)">
+    <!-- LAYER BEHIND: same folder, nudged up and right, so a band of it shows
+         along the top edge and down the right side of the front folder. -->
+    <g transform="translate(62 -74)" opacity="1">
+      <use href="#pL" fill="url(#gBehind)"/>
+    </g>
+
+    <!-- dark extrusion under the front folder -->
+    <g transform="translate(0 14)"><use href="#pL" fill="#151934"/></g>
+
+    <!-- FRONT: the L-shaped folder itself -->
+    <use href="#pL" fill="url(#gMain)"/>
+    <g clip-path="url(#clipL)">
+      <rect x="140" y="206" width="820" height="590" fill="url(#gSheen)"/>
+      <rect x="140" y="206" width="820" height="590" fill="url(#gGloss)"/>
+    </g>
+    <use href="#pL" fill="none" stroke="#0a0f22" stroke-opacity="0.55" stroke-width="3.5"/>
+    <!-- reflected light along the tab and the body's top edge -->
+    <path fill="none" stroke="url(#gEdge)" stroke-width="4" stroke-linecap="round" d="
+      M 158 282 Q 158 224 218 224 L 402 224 Q 430 224 448 250"/>
+    <path fill="none" stroke="url(#gEdge)" stroke-width="4" stroke-linecap="round" d="
+      M 556 332 L 874 332 Q 938 332 938 396"/>
+  </g>
+
+  <!-- ID card: outline only, gradient showing through -->
+  <g transform="translate(548 582)">
+    <rect x="-150" y="-100" width="300" height="200" rx="25"
+          fill="none" stroke="#080c18" stroke-width="19"/>
+    <circle cx="-70" cy="-28" r="33" fill="#080c18"/>
+    <path fill="#080c18" d="M -134 62 q 0 -54 64 -54 q 64 0 64 54 z"/>
+    <rect x="10" y="-42" width="108" height="19" rx="9.5" fill="#080c18"/>
+    <rect x="10" y="-7"  width="108" height="19" rx="9.5" fill="#080c18"/>
+    <rect x="10" y="28"  width="75"  height="19" rx="9.5" fill="#080c18"/>
+  </g>
+</svg>
+</body></html>
