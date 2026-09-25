@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- Debug-only overrides. The debug build installs alongside the Play copy
+     (applicationIdSuffix ".dev"), and with both called "DOCMAN" there was no
+     way to tell them apart on the home screen or in the app switcher. Only
+     this source set is affected; the release build keeps the real name. -->
+<resources>
+    <string name="app_name">TEST</string>
+    <string name="title_activity_main">TEST</string>
+</resources>

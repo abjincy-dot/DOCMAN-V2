@@ -3612,6 +3612,40 @@ function isValidFolderName(name) {
 // Writes a blob to native storage. Returns the fsPath on success, or null
 // if unavailable/failed — callers should fall back to the IndexedDB blob
 // store when this returns null.
+// Paths of the files the native picker copied into our cache, by file name.
+// Refreshed per batch in handleFiles().
+let pickedNativePaths = {};
+async function refreshPickedNativePaths() {
+    pickedNativePaths = {};
+    const PdfNative = window.Capacitor?.Plugins?.PdfNative;
+    if (!PdfNative || !PdfNative.getPickedPaths) return;
+    try {
+        const r = await PdfNative.getPickedPaths();
+        if (r && r.json) pickedNativePaths = JSON.parse(r.json) || {};
+    } catch (e) { /* the slow path still works */ }
+}
+
+// Returns the written path, or null to mean "use the normal write".
+async function copyPickedFileToFS(folderPath, fileName, file) {
+    const from = pickedNativePaths[file.name];
+    if (!from) return null;
+    const PdfNative = window.Capacitor?.Plugins?.PdfNative;
+    if (!PdfNative || !PdfNative.copyPickedFile) return null;
+    const path = fsPathFor(folderPath, fileName);
+    try {
+        const res = await PdfNative.copyPickedFile({ from, to: path });
+        // Same rule as writeFileToFS: never trust a write that has not been
+        // read back at the right size.
+        if (!res || Number(res.size) !== file.size) return null;
+        const verifyBlob = await readBlobFromFS(path);
+        if (!(verifyBlob instanceof Blob) || verifyBlob.size !== file.size) return null;
+        return path;
+    } catch (e) {
+        console.warn('Native picked-file copy failed, using the chunked write:', e);
+        return null;
+    }
+}
+
 async function writeFileToFS(folderPath, fileName, blob) {
     const Filesystem = getFilesystemPlugin();
     if (!Filesystem) return null;
@@ -3633,6 +3667,9 @@ async function writeFileToFS(folderPath, fileName, blob) {
             await Filesystem.writeFile({ path, data: base64, directory: 'DATA', recursive: true, append: !first });
             first = false;
             offset += CHUNK_BYTES;
+            // This loop is the slow part of a large import and used to run
+            // behind a card that said nothing at all.
+            reportSaveProgress(Math.min(offset, blob.size), blob.size);
         }
         if (blob.size === 0) {
             await Filesystem.writeFile({ path, data: '', directory: 'DATA', recursive: true });
@@ -4256,7 +4293,34 @@ async function addFileToCurrentFolder(file, targetFolder) {
     // too" rule fileCachedPdfIntoFolder already used for scanned PDFs.
     const name = await freeFileNameInFolder(folderPath, file.name);
 
-    const fsPath = await writeFileToFS(folderPath, name, file);
+    // The picker already streamed this file into our own cache, so its bytes
+    // are sitting on disk natively. Copying them there is a plain stream copy;
+    // writeFileToFS() instead pulls them into JS and base64s them back out 4MB
+    // at a time, which is what left the card on "Uploading 1 of 1" for minutes
+    // after a big download had already finished. Falls through to the old path
+    // whenever the fast one is unavailable or does not verify.
+    let fsPath = await copyPickedFileToFS(folderPath, name, file);
+    if (!fsPath) fsPath = await writeFileToFS(folderPath, name, file);
+
+    // The native write failing means we are about to fall back to keeping the
+    // raw File in IndexedDB -- but a File whose BYTES cannot be read (a Google
+    // Drive or other cloud item that was never downloaded locally) makes that
+    // fallback spin the main thread at 100% CPU forever, stuck on
+    // "Uploading 1 of N", with no error and no way out but force-stop.
+    // Reported and reproduced 2026-09-25.
+    //
+    // One byte is enough to tell a readable file from an unreadable handle,
+    // and slicing avoids pulling a large file into memory just to test it.
+    if (!fsPath) {
+        try {
+            await file.slice(0, 1).arrayBuffer();
+        } catch (e) {
+            throw new Error('Could not read "' + file.name + '". If it is stored in '
+                + 'Google Drive or another cloud, open it in that app once so it '
+                + 'downloads to the phone, then upload it again.');
+        }
+    }
+
     const fileObj = fsPath
         ? {
             name,
@@ -13529,11 +13593,22 @@ function showBusyOverlay(message) {
         <div style="background:var(--card-bg);border:1px solid var(--glass-border);border-radius:20px;padding:32px 28px;max-width:280px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <div style="width:44px;height:44px;margin:0 auto 18px;border-radius:50%;border:3px solid var(--glass-border);border-top-color:#8b5cf6;animation:busySpin 0.8s linear infinite;"></div>
             <div id="busyOverlayText" style="color:var(--text-primary);font-weight:600;font-size:0.92rem;font-family:Inter,sans-serif;">${escapeHtml(message)}</div>
-            <div style="color:var(--text-secondary);font-size:0.75rem;margin-top:6px;font-family:Inter,sans-serif;">Please don't close the app</div>
+            <div id="busySubText" style="color:var(--text-secondary);font-size:0.75rem;margin-top:6px;font-family:Inter,sans-serif;">Please don't close the app</div>
         </div>
         <style>@keyframes busySpin { to { transform: rotate(360deg); } }</style>`;
     document.body.appendChild(overlay);
 }
+// Shows how far a chunked save has got. Real bytes, not an estimate.
+function reportSaveProgress(written, total) {
+    const sub = document.getElementById('busySubText');
+    if (!sub || !total) return;
+    const pct = Math.min(100, Math.round((written / total) * 100));
+    sub.textContent = 'Saving  ·  ' + formatBytes(written) + ' of ' + formatBytes(total)
+        + '  ·  ' + pct + '%';
+    setCopyBar(pct);
+    forceOverlayRepaint();
+}
+
 function updateBusyOverlay(message) {
     const text = document.getElementById('busyOverlay')?.querySelector('#busyOverlayText');
     if (text) text.textContent = message;
@@ -15341,6 +15416,13 @@ async function handleFiles(files) {
     let firstHeicFailureDetail = null;
     uploadInProgress = true;
     showBusyOverlay(`Uploading 1 of ${total}…`);
+    // The copy phase left its own numbers on the card; they are about a
+    // different operation and reading "100%" while this runs is misleading.
+    stopCloudWaitTicker();
+    removeCopyBar();
+    const sub0 = document.getElementById('busySubText');
+    if (sub0) sub0.textContent = 'Saving to your device…';
+    await refreshPickedNativePaths();
     try {
         for (let f of files) {
             const fileType = getFileType(f.name);
@@ -15386,6 +15468,8 @@ async function handleFiles(files) {
 
 function triggerUpload() {
     expectNativeReturn();
+    markFilePickPending();
+    showPendingPickOverlay();
     document.getElementById('fileInput').click();
 }
 
@@ -15610,19 +15694,224 @@ let pendingFilePickTimer = null;
 
 function markFilePickPending() {
     pendingFilePick = true;
+    startCopyPoll();
     clearTimeout(pendingFilePickTimer);
     // Safety net: a picker that is dismissed without firing change OR cancel
     // (some OEM file managers) must never leave the card up for good.
     pendingFilePickTimer = setTimeout(() => finishFilePick(), 3 * 60 * 1000);
 }
 
+let pendingPickTicker = null;
+let pendingPickStartedAt = 0;
+
+// The native side (DocmanWebChromeClient.copyToCacheWithProgress) streams the
+// picked file into our cache and reports bytes as it goes, because a cloud
+// item is not on the device when the picker hands it over. This turns those
+// numbers into a real percentage instead of an indeterminate spinner.
+// Renders one progress report onto the upload card. Fed by BOTH channels
+// below so a failure of either one cannot blank the numbers out.
+function applyCopyProgress(d) {
+    if (!d || d.phase === 'done') { stopCloudWaitTicker(); removeCopyBar(); return; }
+    if (d.phase !== 'copy') return;
+    // Real numbers are here, so stop the generic elapsed ticker.
+    clearInterval(pendingPickTicker);
+    pendingPickTicker = null;
+    const name = d.name || 'file';
+    const of = d.count > 1 ? '  (' + d.index + ' of ' + d.count + ')' : '';
+
+    // PHASE 1 -- the cloud app is still preparing the file. It blocks our read
+    // for the whole of its own download (measured: 51s for a 287MB Drive file)
+    // and publishes no byte count anywhere: its document row was queried once
+    // a second for the entire wait and never changed. A percentage here would
+    // be invented, and a bar pinned at 0% reads as a frozen app -- so show the
+    // size, and a clock that is genuinely moving.
+    if (!d.copied) {
+        showBusyOverlay('Getting ' + name + ' from your cloud…');
+        startCloudWaitTicker(d.total, of);
+        return;
+    }
+
+    // PHASE 2 -- the bytes are ours to count.
+    if (cloudWaitStart) recordCloudRate(d.total, (Date.now() - cloudWaitStart) / 1000);
+    stopCloudWaitTicker();
+    showBusyOverlay('Downloading ' + name + '…');
+    const pct = d.total > 0 ? Math.min(100, Math.round((d.copied / d.total) * 100)) : null;
+    const sub = document.getElementById('busySubText');
+    if (sub) {
+        sub.textContent = formatBytes(d.copied)
+            + (d.total > 0 ? ' of ' + formatBytes(d.total) + '  ·  ' + pct + '%' : ' downloaded')
+            + of;
+    }
+    setCopyBar(pct);
+}
+
+// The cloud gives no byte count while it prepares a file, so the bar during
+// that wait is an ESTIMATE: elapsed time x the transfer rate this phone last
+// achieved. The rate is measured from completed fetches (a 287MB Drive file
+// took 51s here, about 5.6 MB/s) and smoothed, so it adapts to the network
+// instead of being a fixed guess. It is capped below 100% and always labelled,
+// because it is not a real measurement of the cloud's progress.
+const CLOUD_RATE_KEY = 'docmanCloudRateBps';
+const CLOUD_RATE_DEFAULT = 5.6 * 1024 * 1024;
+function getCloudRate() {
+    const v = parseFloat(localStorage.getItem(CLOUD_RATE_KEY));
+    return (isFinite(v) && v > 64 * 1024) ? v : CLOUD_RATE_DEFAULT;
+}
+function recordCloudRate(bytes, seconds) {
+    // Ignore files that were already on the phone, and tiny samples: both
+    // would report an absurd rate and poison every later estimate.
+    if (!(bytes > 20 * 1024 * 1024) || !(seconds > 3)) return;
+    const measured = bytes / seconds;
+    const prev = parseFloat(localStorage.getItem(CLOUD_RATE_KEY));
+    const next = (isFinite(prev) && prev > 64 * 1024) ? (prev * 0.6 + measured * 0.4) : measured;
+    try { localStorage.setItem(CLOUD_RATE_KEY, String(Math.round(next))); } catch (e) { }
+}
+
+let cloudWaitTimer = null;
+let cloudWaitStart = 0;
+function startCloudWaitTicker(total, of) {
+    if (cloudWaitTimer) return;          // already counting this file
+    cloudWaitStart = Date.now();
+    const paint = () => {
+        const sub = document.getElementById('busySubText');
+        if (!sub) return;
+        const secs = Math.round((Date.now() - cloudWaitStart) / 1000);
+        const mm = Math.floor(secs / 60);
+        const ss = ('0' + (secs % 60)).slice(-2);
+        if (total > 0) {
+            // Linear until 85%, then decelerating towards (never reaching) 99%.
+            // A hard cap instead of a curve makes the bar stop dead whenever the
+            // estimate outruns the real download, which reads as a hang -- the
+            // bar sat at 95% and waited. This keeps creeping however long the
+            // cloud takes, and still cannot claim to have finished.
+            const linear = (getCloudRate() * secs) / total;
+            const frac = linear < 0.85
+                ? linear
+                : 0.85 + 0.14 * (1 - Math.exp(-(linear - 0.85) * 2));
+            const est = total * frac;
+            const pct = Math.min(99, Math.round(frac * 100));
+            sub.textContent = '~' + formatBytes(est) + ' of ' + formatBytes(total)
+                + '  ·  ' + pct + '%   (estimated · ' + mm + ':' + ss + ')' + of;
+            setCopyBar(pct);
+        } else {
+            sub.textContent = 'waiting for your cloud  ·  ' + mm + ':' + ss + of;
+        }
+        forceOverlayRepaint();
+    };
+    paint();
+    cloudWaitTimer = setInterval(paint, 1000);
+}
+function stopCloudWaitTicker() {
+    clearInterval(cloudWaitTimer);
+    cloudWaitTimer = null;
+    cloudWaitStart = 0;
+}
+
+// Channel 1 (push): native evaluateJavascript. Kept because it is instant
+// when it works.
+window.addEventListener('docmanCopyProgress', (e) => applyCopyProgress((e && e.detail) || {}));
+
+// Channel 2 (pull): poll the plugin bridge. On this device the push channel
+// silently delivered nothing -- the native side logged the copy running and
+// finishing, but the UI-thread eval callback never returned -- so the card
+// sat on its elapsed-seconds text for the whole download. The plugin bridge
+// is the path every other native call in this app already uses.
+let copyPollTimer = null;
+let lastCopyJson = '';
+function startCopyPoll() {
+    stopCopyPoll();
+    const PdfNative = window.Capacitor?.Plugins?.PdfNative;
+    if (!PdfNative || !PdfNative.getCopyProgress) return;
+    copyPollTimer = setInterval(async () => {
+        try {
+            const r = await PdfNative.getCopyProgress();
+            const json = (r && r.json) || '';
+            if (!json || json === lastCopyJson) return;
+            lastCopyJson = json;
+            applyCopyProgress(JSON.parse(json));
+            forceOverlayRepaint();
+            forceOverlayRepaint();
+        } catch (err) { /* a poll that fails must never break the upload */ }
+    }, 250);
+}
+// Kicks the compositor so text written during the copy actually reaches the
+// screen. Alternating a sub-pixel translate is enough and is invisible.
+let repaintTick = 0;
+function forceOverlayRepaint() {
+    const card = document.querySelector('#busyOverlay > div');
+    if (!card) return;
+    repaintTick = (repaintTick + 1) % 2;
+    card.style.transform = 'translateZ(0) translateY(' + (repaintTick * 0.01) + 'px)';
+}
+
+function stopCopyPoll() {
+    stopCloudWaitTicker();
+    clearInterval(copyPollTimer);
+    copyPollTimer = null;
+    lastCopyJson = '';
+}
+
+// A determinate bar; falls back to the indeterminate one when the provider
+// does not report a size (some cloud items report -1).
+function setCopyBar(pct) {
+    const card = document.querySelector('#busyOverlay > div');
+    if (!card) return;
+    let wrap = document.getElementById('copyBar');
+    if (!wrap) {
+        const old = document.getElementById('busyBar');
+        if (old) old.remove();
+        wrap = document.createElement('div');
+        wrap.id = 'copyBar';
+        wrap.style.cssText = 'margin-top:14px;height:6px;border-radius:4px;overflow:hidden;background:rgba(255,255,255,0.12);';
+        wrap.innerHTML = '<div id="copyBarFill" style="height:100%;border-radius:4px;background:linear-gradient(90deg,#8b5cf6,#c026d3);width:0%;transition:width 0.15s linear;"></div>';
+        card.appendChild(wrap);
+    }
+    const fill = document.getElementById('copyBarFill');
+    if (!fill) return;
+    if (pct === null) return;   // no size reported: leave the bar empty rather than faking motion
+    fill.style.width = pct + '%';
+}
+
+function removeCopyBar() {
+    const w = document.getElementById('copyBar');
+    if (w) w.remove();
+}
+
 function showPendingPickOverlay() {
     if (!pendingFilePick || uploadInProgress) return;
-    showBusyOverlay('Preparing files…');
+    showBusyOverlay(document.visibilityState === 'visible' && pendingPickStartedAt
+        ? 'Getting the file from your cloud…'
+        : 'Opening picker…');
+    clearInterval(pendingPickTicker);
+    pendingPickTicker = setInterval(() => {
+        const el = document.getElementById('busySubText');
+        if (!el) return;
+        const secs = Math.round((Date.now() - pendingPickStartedAt) / 1000);
+        el.textContent = secs < 4
+            ? "Please don't close the app"
+            : 'Downloading… ' + secs + 's — large cloud files can take a while';
+    }, 1000);
+}
+
+// A moving bar under the spinner. Indeterminate on purpose (see above).
+function addIndeterminateBar() {
+    const card = document.querySelector('#busyOverlay > div');
+    if (!card || document.getElementById('busyBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'busyBar';
+    bar.style.cssText = 'margin-top:14px;height:4px;border-radius:4px;overflow:hidden;background:rgba(255,255,255,0.12);';
+    bar.innerHTML = '<div style="height:100%;width:38%;border-radius:4px;background:linear-gradient(90deg,#8b5cf6,#c026d3);animation:busyBarSlide 1.2s ease-in-out infinite;"></div>'
+        + '<style>@keyframes busyBarSlide{0%{transform:translateX(-100%)}100%{transform:translateX(320%)}}</style>';
+    card.appendChild(bar);
 }
 
 function finishFilePick() {
     if (!pendingFilePick) return;
+    stopCopyPoll();
+    clearInterval(pendingPickTicker);
+    pendingPickTicker = null;
+    pendingPickStartedAt = 0;
+    removeCopyBar();
     pendingFilePick = false;
     clearTimeout(pendingFilePickTimer);
     pendingFilePickTimer = null;
@@ -15634,6 +15923,7 @@ function finishFilePick() {
 function openFilePicker({ accept, capture, multiple }) {
     expectNativeReturn();
     markFilePickPending();
+    showPendingPickOverlay();
     const input = document.getElementById('fileInput');
     input.setAttribute('accept', accept);
     if (capture) input.setAttribute('capture', capture);
@@ -16416,6 +16706,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // File input
     const fileInputEl = document.getElementById('fileInput');
     fileInputEl.addEventListener('change', async (e) => {
+
         // The files are here now: handleFiles() replaces the "Preparing files…"
         // card with its own "Uploading 1 of N" straight away.
         pendingFilePick = false;
@@ -16428,7 +16719,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Back in the app after the picker: show the card while Android is still
     // copying the chosen files over.
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') showPendingPickOverlay();
+        if (document.visibilityState === 'visible') {
+            if (pendingFilePick) pendingPickStartedAt = Date.now();
+            showPendingPickOverlay();
+        }
     });
     window.addEventListener('focus', showPendingPickOverlay);
 

@@ -59,6 +59,60 @@ public class PdfNativePlugin extends Plugin {
         plugin.notifyListeners("editedCopySaved", new JSObject(), true);
     }
 
+    // Polled by the web layer while a file pick is in flight, so the upload
+    // card can show real bytes for a cloud file that is still downloading.
+    @PluginMethod
+    public void getPickedPaths(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("json", new org.json.JSONObject(DocmanWebChromeClient.sPickedPaths).toString());
+        call.resolve(ret);
+    }
+
+    // Copies one picked file straight into app storage. `to` is the same
+    // relative path the web layer would have passed to Filesystem.writeFile
+    // with directory DATA, which is getFilesDir() on Android.
+    @PluginMethod
+    public void copyPickedFile(final PluginCall call) {
+        final String from = call.getString("from");
+        final String to = call.getString("to");
+        if (from == null || to == null) { call.reject("from and to are required"); return; }
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                java.io.File src = new java.io.File(from);
+                java.io.File dst = new java.io.File(getContext().getFilesDir(), to);
+                java.io.InputStream in = null;
+                java.io.OutputStream out = null;
+                try {
+                    java.io.File parent = dst.getParentFile();
+                    if (parent != null) parent.mkdirs();
+                    in = new java.io.FileInputStream(src);
+                    out = new java.io.FileOutputStream(dst);
+                    byte[] buf = new byte[1024 * 1024];
+                    int read;
+                    while ((read = in.read(buf)) != -1) out.write(buf, 0, read);
+                    out.flush();
+                } catch (Exception e) {
+                    call.reject("copy failed: " + e);
+                    return;
+                } finally {
+                    try { if (in != null) in.close(); } catch (Exception e) { }
+                    try { if (out != null) out.close(); } catch (Exception e) { }
+                }
+                JSObject ret = new JSObject();
+                ret.put("size", dst.length());
+                call.resolve(ret);
+            }
+        }).start();
+    }
+
+    @PluginMethod
+    public void getCopyProgress(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("json", DocmanWebChromeClient.sCopyProgress);
+        call.resolve(ret);
+    }
+
     @PluginMethod
     public void openPdf(PluginCall call) {
         String path = call.getString("path");
