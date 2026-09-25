@@ -3361,7 +3361,7 @@ function checkExpiringDocumentsOnLoad(onDone) {
     showConfirmModal(msg, (viewDashboard) => {
         if (viewDashboard) openDashboardView(true);
         if (onDone) onDone();
-    }, { okLabel: 'View', okColor: 'linear-gradient(135deg,#f59e0b,#d97706)' });
+    }, { okLabel: 'View', okColor: 'linear-gradient(135deg,#fbab2c 0%,#f78a14 46%,#ef7009 100%)' });
 }
 
 // Same idea as checkExpiringDocumentsOnLoad, for reminders whose due

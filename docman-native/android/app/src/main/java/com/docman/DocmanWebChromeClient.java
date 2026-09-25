@@ -69,6 +69,7 @@ public class DocmanWebChromeClient extends BridgeWebChromeClient {
     private static final String KEY_DRIVE_AUTH = "driveAuthority";
     private static final String KEY_DRIVE_ROOT = "driveRootId";
     private static final String KEY_LOCAL_URI = "localInitialUri";
+    private static final String KEY_DRIVE_URI = "driveInitialUri";
     private static final String LOCAL_AUTHORITY = "com.android.externalstorage.documents";
 
     private static final int PHOTO_PICKER_MAX_ITEMS = 50;
@@ -160,12 +161,26 @@ public class DocmanWebChromeClient extends BridgeWebChromeClient {
                     bridge.getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             String savedAuth = prefs.getString(KEY_DRIVE_AUTH, null);
             String savedRoot = prefs.getString(KEY_DRIVE_ROOT, null);
-            if (savedAuth != null && savedRoot != null) {
+            String savedDoc = prefs.getString(KEY_DRIVE_URI, null);
+            // A DOCUMENT uri, not a root uri. Android honours the document form
+            // and ignores the root form: with a root uri the picker silently fell
+            // back to wherever it was last left, which is why this button kept
+            // opening in the device folder "Choose Files" had just used. The
+            // device side always passed a document uri, and always landed right.
+            Uri initial = null;
+            if (savedDoc != null) {
+                try { initial = Uri.parse(savedDoc); } catch (Exception ignored) { }
+            }
+            if (initial == null && savedAuth != null && savedRoot != null) {
                 try {
-                    Uri rootUri = android.provider.DocumentsContract.buildRootUri(savedAuth, savedRoot);
+                    initial = android.provider.DocumentsContract.buildRootUri(savedAuth, savedRoot);
+                } catch (Exception ignored) { }
+            }
+            if (initial != null) {
+                try {
                     Intent driveIntent = new Intent(intent);
-                    driveIntent.putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, rootUri);
-                    android.util.Log.i("DOCMANCOPY", "drive reopen at " + rootUri);
+                    driveIntent.putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, initial);
+                    android.util.Log.i("DOCMANCOPY", "drive reopen at " + initial);
                     fileChooserLauncher.launch(driveIntent);
                     return true;
                 } catch (Exception e) {
@@ -355,6 +370,7 @@ public class DocmanWebChromeClient extends BridgeWebChromeClient {
                 bridge.getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                         .putString(KEY_DRIVE_AUTH, u.getAuthority())
                         .putString(KEY_DRIVE_ROOT, rootId)
+                        .putString(KEY_DRIVE_URI, u.toString())
                         .apply();
                 android.util.Log.i("DOCMANCOPY", "remembered drive root " + rootId);
             } catch (Exception ignored) { }
