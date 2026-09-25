@@ -1142,10 +1142,13 @@ function showToast(msg, isErr = false) {
     toast.classList.add('show');
 
     clearTimeout(toastTimeout);
+    // 3s was long enough to still be sitting there after the next tap --
+    // "Moved to Recycle Bin" in particular outstayed the action it described.
+    // Errors keep the longer time, since those are the ones worth reading.
     toastTimeout = setTimeout(() => {
         toast.classList.remove('show');
         setTimeout(() => toast.classList.add('hidden'), 300);
-    }, 3000);
+    }, isErr ? 3000 : 1600);
 }
 
 // ============================================================
