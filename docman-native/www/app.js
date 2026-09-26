@@ -1350,7 +1350,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
     // so its bottom edge) more headroom to sit higher on screen.
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:4vh;padding-bottom:calc(20px + env(safe-area-inset-bottom));overflow-y:auto;';
     overlay.innerHTML = `
-        <style>.time-wheel-col{scrollbar-width:none;}.time-wheel-col::-webkit-scrollbar{display:none;}</style>
+        <style>.time-wheel-col,.ampm-col{scrollbar-width:none;}.time-wheel-col::-webkit-scrollbar,.ampm-col::-webkit-scrollbar{display:none;}</style>
         <div style="position:relative;background:${c.cardBg};border:1px solid ${c.cardBorder};border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="dateModalCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:${c.closeBg};color:${c.closeColor};font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:${c.title};font-size:0.95rem;font-weight:600;margin-bottom:16px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;">${message}</p>
@@ -1372,7 +1372,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
                     <div style="position:absolute;left:8px;right:8px;top:50%;transform:translateY(-50%);height:42px;border-radius:12px;background:rgba(139,92,246,0.16);border-top:1px solid rgba(139,92,246,0.5);border-bottom:1px solid rgba(139,92,246,0.5);pointer-events:none;"></div>
                     <div id="wheelHour" class="time-wheel-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:63px 0;"></div></div>
                     <div id="wheelMinute" class="time-wheel-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:63px 0;"></div></div>
-                    <div id="wheelAmPm" class="ampm-col" style="position:relative;flex:1;height:168px;overflow:hidden;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="ampm-inner" style="position:absolute;left:0;right:0;top:63px;transition:top 0.18s ease;"></div></div>
+                    <div id="wheelAmPm" class="ampm-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="ampm-inner" style="padding:63px 0;"></div></div>
                 </div>
                 ${opts.withEndTime ? `
                 <button id="toggleEndTime" type="button" style="display:flex;align-items:center;gap:6px;background:none;border:none;color:#a78bfa;font-size:0.78rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;padding:10px 0 0;"><i class="fas fa-plus" style="font-size:0.65rem;"></i> Add end time</button>
@@ -1385,7 +1385,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
                         <div style="position:absolute;left:8px;right:8px;top:50%;transform:translateY(-50%);height:42px;border-radius:12px;background:rgba(139,92,246,0.16);border-top:1px solid rgba(139,92,246,0.5);border-bottom:1px solid rgba(139,92,246,0.5);pointer-events:none;"></div>
                         <div id="wheelEndHour" class="time-wheel-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:63px 0;"></div></div>
                         <div id="wheelEndMinute" class="time-wheel-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:63px 0;"></div></div>
-                        <div id="wheelEndAmPm" class="ampm-col" style="position:relative;flex:1;height:168px;overflow:hidden;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="ampm-inner" style="position:absolute;left:0;right:0;top:63px;transition:top 0.18s ease;"></div></div>
+                        <div id="wheelEndAmPm" class="ampm-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="ampm-inner" style="padding:63px 0;"></div></div>
                     </div>
                 </div>` : ''}
             </div>` : ''}
@@ -1594,36 +1594,50 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
             };
         };
 
-        // AM/PM has only two values, so a wheel is the wrong control: five
-        // repeated copies scroll past and a small flick lands on the wrong
-        // one. Same column look, but the chosen value sits in the centre band
-        // and a tap on the other swaps them. Returns an index into
-        // ampmValues, exactly like setupWheel's reader, and needs no layout
-        // (absolutely positioned), so the end-time copy can be built while
-        // its section is still display:none.
+        // Scrolls like the hour and minute columns. It was tap-only before,
+        // because the looping wheel the others use repeats its values five
+        // times and a small flick on a two-value list lands on the wrong copy.
+        // That reasoning held for a LOOPING wheel; a plain two-item column with
+        // spacers above and below does not loop, so it scrolls cleanly and
+        // still lands on one of the two. Tapping the other one still works.
         const setupAmPm = (colId, initialValue) => {
             const col = overlay.querySelector(colId);
             const inner = col.querySelector('.ampm-inner');
-            let value = initialValue === 'PM' ? 'PM' : 'AM';
-            inner.innerHTML = ampmValues.map(v => `<div class="ampm-item" data-ampm="${v}" style="height:${WHEEL_ITEM_H}px;display:flex;align-items:center;justify-content:center;font-size:1.05rem;font-weight:600;color:${c.wheelDim};cursor:pointer;transition:color 0.15s ease;">${v}</div>`).join('');
+            inner.innerHTML = ampmValues.map(v =>
+                `<div class="ampm-item" data-ampm="${v}" style="height:${WHEEL_ITEM_H}px;display:flex;align-items:center;justify-content:center;scroll-snap-align:center;font-size:1.05rem;font-weight:600;color:${c.wheelDim};cursor:pointer;transition:color 0.15s ease;">${v}</div>`
+            ).join('');
             const items = Array.from(inner.children);
-            const apply = () => {
-                inner.style.top = (value === 'AM' ? 63 : 63 - WHEEL_ITEM_H) + 'px';
-                items.forEach(el => {
-                    const on = el.dataset.ampm === value;
+            const applyCenterStyle = (i) => {
+                items.forEach((el, n) => {
+                    const on = n === i;
                     el.style.color = on ? c.wheelCenter : c.wheelDim;
                     el.style.fontWeight = on ? '700' : '600';
                     el.style.fontSize = on ? '1.15rem' : '1.05rem';
                 });
             };
-            items.forEach(el => el.addEventListener('click', () => {
-                if (el.dataset.ampm === value) return;
-                value = el.dataset.ampm;
-                haptic.toggle();
-                apply();
-            }));
-            apply();
-            return () => Math.max(0, ampmValues.indexOf(value));
+            let idx = initialValue === 'PM' ? 1 : 0;
+            col.scrollTop = idx * WHEEL_ITEM_H;
+            applyCenterStyle(idx);
+
+            let rafPending = false;
+            col.addEventListener('scroll', () => {
+                if (rafPending) return;
+                rafPending = true;
+                requestAnimationFrame(() => {
+                    rafPending = false;
+                    const i = Math.min(items.length - 1, Math.max(0, Math.round(col.scrollTop / WHEEL_ITEM_H)));
+                    if (i !== idx) haptic.toggle(); // same tick the tap used to give
+                    idx = i;
+                    applyCenterStyle(idx);
+                });
+            });
+            items.forEach((el, i) => {
+                el.addEventListener('click', () => col.scrollTo({ top: i * WHEEL_ITEM_H, behavior: 'smooth' }));
+            });
+
+            // Read fresh from scrollTop, like setupWheel, so a Save tapped the
+            // instant a scroll settles cannot read a one-frame-stale value.
+            return () => Math.min(items.length - 1, Math.max(0, Math.round(col.scrollTop / WHEEL_ITEM_H)));
         };
 
         var readHourIdx = setupWheel('#wheelHour', hourValues, v => v, defHour12);
