@@ -2745,12 +2745,54 @@ function checkExpiringDocumentsOnLoad() {
     const onView = !due.length ? () => openDashboardView()
         : !expiring.length ? () => showExpiringDocumentsPanel('reminders')
         : () => showExpiringDocumentsPanel('expiring');
-    const okColor = due.length && !expiring.length
+    const okColor = due.length
         ? 'linear-gradient(135deg,#f97316,#ec4899)'
         : 'linear-gradient(135deg,#f59e0b,#d97706)';
-    showConfirmModal(lines.join('<br>'), (view) => {
-        if (view) onView();
-    }, { okLabel: 'View', okColor });
+    showLaunchAlertModal(lines, onView, okColor);
+}
+
+// The launch alert's own look: dark card, red swoosh down the left edge,
+// red warning badge, one line per alert. Reuses the generic confirm
+// modal's ids (#customConfirm/#modalCancel/#modalOk/#modalCloseX) so the
+// Android back button and the review-prompt busy check treat it exactly
+// like any other confirm modal.
+function showLaunchAlertModal(lines, onView, okColor) {
+    const existing = document.getElementById('customConfirm');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'customConfirm';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:20px;';
+    overlay.innerHTML = `
+        <div role="alertdialog" aria-modal="true" aria-label="Attention" style="position:relative;overflow:hidden;width:100%;max-width:400px;background:linear-gradient(180deg,#1b2030,#11141f);border:1px solid rgba(255,255,255,0.28);border-radius:28px;padding:22px 20px 18px;box-shadow:0 20px 60px rgba(0,0,0,0.6);font-family:Inter,sans-serif;">
+            <svg viewBox="0 0 120 200" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:120px;height:100%;pointer-events:none;">
+                <path d="M0,0 L70,0 C110,40 110,90 70,130 C45,155 20,170 0,200 Z" fill="rgba(239,68,68,0.28)"/>
+                <path d="M0,0 L45,0 C85,50 80,110 40,150 C25,165 10,180 0,200 Z" fill="rgba(220,38,38,0.32)"/>
+            </svg>
+            <button id="modalCloseX" aria-label="Close" style="position:absolute;top:16px;right:16px;width:36px;height:36px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e5e7eb;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:1;">✕</button>
+            <div style="position:relative;display:flex;align-items:center;gap:16px;margin-right:40px;margin-bottom:22px;">
+                <div style="width:72px;height:72px;flex-shrink:0;border-radius:50%;background:rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:center;">
+                    <div style="width:58px;height:58px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f87171,#dc2626 60%,#b91c1c);box-shadow:0 6px 18px rgba(220,38,38,0.55);display:flex;align-items:center;justify-content:center;">
+                        <i class="fas fa-triangle-exclamation" style="color:#fff;font-size:1.5rem;"></i>
+                    </div>
+                </div>
+                <div style="min-width:0;">
+                    <div style="color:#fff;font-size:1.15rem;font-weight:800;line-height:1.3;margin-bottom:4px;">Attention</div>
+                    ${lines.map(l => `<div style="color:#aab4c8;font-size:0.95rem;line-height:1.45;">${l}</div>`).join('')}
+                </div>
+            </div>
+            <div style="position:relative;display:flex;gap:12px;">
+                <button id="modalCancel" style="flex:1;padding:14px 0;border-radius:18px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.06);color:#fff;font-weight:700;font-size:0.95rem;font-family:Inter,sans-serif;cursor:pointer;">Cancel</button>
+                <button id="modalOk" style="flex:1.4;padding:14px 0;border-radius:18px;border:none;background:${okColor};color:#fff;font-weight:700;font-size:0.95rem;font-family:Inter,sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;"><i class="fas fa-triangle-exclamation"></i> View</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const close = (view) => { overlay.remove(); if (view) onView(); };
+    overlay.querySelector('#modalOk').onclick = () => { haptic.press(); close(true); };
+    overlay.querySelector('#modalCancel').onclick = () => close(false);
+    overlay.querySelector('#modalCloseX').onclick = () => close(false);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
 }
 
 
