@@ -198,7 +198,7 @@
 
   <header class="head" id="top">
     <h1>Privacy Policy</h1>
-    <p class="stamp">Last updated &middot; September 15, 2026</p>
+    <p class="stamp">Last updated &middot; September 26, 2026</p>
   </header>
 
   <main class="card">
@@ -226,15 +226,40 @@
         stored locally.</li>
       <li><strong>Notes you create</strong> &mdash; stored locally.</li>
       <li><strong>Edited copies</strong> &mdash; when you sign, highlight, fill in, erase or crop a PDF,
-        or edit an image, DOCMAN saves the result as a new file in the same folder on your device and
+        join several PDFs into one, or edit an image, DOCMAN saves the result as a new file in the same folder on your device and
         leaves the original unchanged. Erasing redraws the affected pages on your device so the erased
         content is removed from the copy; nothing is sent anywhere.</li>
+      <li><strong>Your saved signature</strong> &mdash; when you sign a PDF, DOCMAN can keep that
+        signature so you can place it again later. It is stored as an image in the app&rsquo;s private
+        storage on your device, is never shared or uploaded, and is removed when you delete it in the
+        app (Sign &rarr; Delete saved signature), when you turn off &ldquo;Save this signature for next
+        time&rdquo;, or when DOCMAN is uninstalled.</li>
+      <li><strong>Safety Snapshots</strong> &mdash; immediately before a backup is restored, DOCMAN
+        copies your current data into its own private storage so a mistaken restore can be undone. The
+        most recent few are kept, they are never shared or uploaded, and they are removed when DOCMAN
+        is uninstalled or its data is cleared.</li>
+      <li><strong>Photo thumbnails</strong> &mdash; small preview images of your photos, kept in the
+        app&rsquo;s private cache so folders open quickly. They are rebuilt from your own files when
+        needed and never leave your device.</li>
       <li><strong>Reminders you create</strong> (title, due date, and time) &mdash; stored locally.</li>
       <li><strong>Favorites, recents, and search history</strong> &mdash; stored locally.</li>
       <li><strong>Items you delete</strong> &mdash; held in the app's local Recycle Bin until you
         permanently delete them or the retention period elapses, then removed from the device.</li>
       <li><strong>App Lock PIN</strong> &mdash; stored on-device only as a one-way hash (see
         Section 5). We never see or store your actual PIN.</li>
+      <li><strong>A working copy of a file you are importing</strong> &mdash; when you pick a
+        file, DOCMAN copies it into its own private storage first, then files it into the folder
+        you chose. That copy is what lets the app show you progress for a file coming from the
+        cloud, and it is how the file gets into the app at all. It stays in the app's private
+        area on your device.</li>
+      <li><strong>Where you last picked a file from</strong> &mdash; so that &ldquo;Choose
+        Files&rdquo; reopens on your phone and &ldquo;Google Drive&rdquo; reopens in Drive,
+        rather than both landing wherever the picker happened to be left. What is kept is the
+        location reference Android handed back &mdash; which account and folder &mdash; not the
+        contents of that folder and not a listing of what is in it.</li>
+      <li><strong>How fast your last cloud transfer ran</strong> &mdash; one number, used to
+        estimate the progress bar next time. It describes your connection at that moment and
+        nothing about the file.</li>
     </ul>
     <p>Uninstalling the app, or using the in-app &ldquo;Erase All Data&rdquo; option, removes
       this data from your device. See Section 9 for backup files, which are the one copy of
@@ -249,6 +274,11 @@
       app itself handles your authentication and file access under your existing Google
       account and Google's own privacy terms; DOCMAN only receives the file you explicitly
       chose, exactly as if you had picked it from local storage.</p>
+    <p>A file kept in the cloud is not on your phone until you ask for it. When you pick one,
+      the Google Drive app downloads it and DOCMAN copies it into its own private storage, which
+      is why a large file shows a progress bar before it appears in your folder. DOCMAN cannot
+      see anything in your Drive that you did not select, cannot browse it, and cannot go back to
+      it later &mdash; each import is one file you chose, handed over once.</p>
     <p>If the Google Drive app is not installed, this feature falls back to Android's general
       file picker, which does not involve Google Drive at all.</p>
 
@@ -300,6 +330,18 @@
       features are unaffected either way, and nothing about this exchanges any data with us or
       anyone else &mdash; it only changes what Android itself allows the app to do on your
       device.</p>
+    <p><strong>What appears on your lock screen.</strong> These alerts show their text on the
+      lock screen, which means a document name or a reminder title &mdash; &ldquo;Passport
+      expires today,&rdquo; for instance &mdash; can be read by anyone holding your phone without
+      unlocking it. That is deliberate, because an alert you cannot read is an alert that gets
+      ignored, but it is your choice: Android can hide notification content on the lock screen,
+      either for every app under your phone's lock-screen settings or for DOCMAN alone under its
+      notification settings. Nothing is sent anywhere either way &mdash; this only affects what
+      is drawn on your own screen.</p>
+    <p>A reminder that has fallen due repeats every 30 minutes for up to three hours until you
+      acknowledge it, and an expiry alert repeats through the day it falls due. Those repeats are
+      scheduled on your device in advance, like the first alert, and stop as soon as you dismiss
+      them.</p>
 
     <h2 id="s7"><span class="n">07</span>Network Access</h2>
     <p>DOCMAN does not require or use internet access for its core functionality &mdash;
@@ -364,9 +406,10 @@
       file cannot open the documents inside it without that password or recovery key, and
       <strong>DOCMAN has no way to recover a lost one</strong>: losing it means that specific
       backup can no longer be restored.</p>
-    <p>When you use &ldquo;Share&rdquo; on an individual document, DOCMAN provides that one file
-      to the app you choose via Android's standard, restricted file-sharing mechanism
-      (FileProvider), scoped only to the file you're sharing.</p>
+    <p>When you use &ldquo;Share&rdquo;, DOCMAN provides only the file or files you selected to the
+      app you choose, via Android's standard, restricted file-sharing mechanism (FileProvider).
+      Sharing several documents at once first places temporary copies of just those files in the
+      app&rsquo;s own private cache, which Android clears on its own; nothing is uploaded by DOCMAN.</p>
 
     <h2 id="s10"><span class="n">10</span>Data Deletion</h2>
     <p>You can delete your data at any time:</p>
