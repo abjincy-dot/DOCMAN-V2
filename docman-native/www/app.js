@@ -1987,19 +1987,33 @@ function loadReminders() {
 function reminderOccurrenceKey(r) {
     return r.dueAt ? r.dueAt + 'T' + (r.dueTime || '09:00') : '';
 }
+// Live = standing today, or still standing from an earlier day. Counting only
+// reminders whose exact minute had passed meant one set for 14:00 was invisible
+// at 13:08 -- the app said nothing about a reminder the user had set for that
+// same day, which is the opposite of useful.
+function isReminderLive(r, now) {
+    if (!r.dueAt) return false;
+    const today = new Date(now || new Date()); today.setHours(0, 0, 0, 0);
+    const due = new Date(r.dueAt + 'T00:00:00');
+    return !isNaN(due.getTime()) && due <= today;
+}
+function isReminderLiveUnseen(r, now) {
+    return isReminderLive(r, now) && r.dueAckFor !== reminderOccurrenceKey(r);
+}
+
 function isReminderDue(r, now) {
     if (!r.dueAt) return false;
     return new Date(reminderOccurrenceKey(r) + ':00') <= (now || new Date());
-}
-function isReminderDueUnseen(r, now) {
-    return isReminderDue(r, now) && r.dueAckFor !== reminderOccurrenceKey(r);
 }
 // Called when the panel is opened: everything already due has now been seen.
 function acknowledgeDueReminders() {
     const now = new Date();
     let changed = false;
     for (const r of reminders) {
-        if (isReminderDueUnseen(r, now)) { r.dueAckFor = reminderOccurrenceKey(r); changed = true; }
+        if (isReminderLiveUnseen(r, now)) {
+            r.dueAckFor = reminderOccurrenceKey(r);
+            changed = true;
+        }
     }
     if (changed) saveReminders();
 }
@@ -3095,8 +3109,28 @@ function showExpiryTodayModal(items, onDone) {
     overlay.innerHTML = `
         <div class="expiry-modal" role="dialog" aria-modal="true" aria-label="Expires today">
             <div class="expiry-modal-icon"><i class="fas fa-circle-exclamation"></i></div>
-            <h3>${items.length > 1 ? `${items.length} documents expire today` : 'Expires today'}</h3>
-            <p>${items.length > 1 ? 'These reach their expiry date today.' : 'This document reaches its expiry date today.'}</p>
+            ${(() => {
+                // The set can now be a mix of today's and older ones, so the
+                // wording has to follow what is actually in it rather than
+                // always saying "today".
+                const todayIso = todayIsoDate();
+                const past = items.filter(i => i.file.expiryDate < todayIso).length;
+                const onDay = items.length - past;
+                let h, sub;
+                if (items.length > 1) {
+                    h = past && onDay ? `${items.length} documents need attention`
+                      : past ? `${items.length} documents have expired`
+                      : `${items.length} documents expire today`;
+                    sub = past && onDay ? 'Some have expired, some reach their date today.'
+                        : past ? 'These passed their expiry date.'
+                        : 'These reach their expiry date today.';
+                } else {
+                    h = past ? 'Document expired' : 'Expires today';
+                    sub = past ? 'This document passed its expiry date.'
+                        : 'This document reaches its expiry date today.';
+                }
+                return `<h3>${h}</h3><p>${sub}</p>`;
+            })()}
             ${shown.map(({ folderPath, file }) => `
                 <div class="expiry-modal-file">
                     <i class="fas ${getFileIcon(file.name)}"></i>
@@ -3133,7 +3167,13 @@ function checkExpiryTodayOnLoad(onDone) {
     const items = [];
     for (const folderPath in allFiles) {
         for (const file of allFiles[folderPath] || []) {
-            if (file.expiryDate === today && !isExpiryAcknowledged(file)) items.push({ folderPath, file });
+            // Today OR already past. An overdue document had no way to be
+            // dismissed before: this modal only ran on the exact expiry day,
+            // and the summary popup that reported it afterwards has no
+            // acknowledge button, so it reappeared at every launch forever.
+            if (file.expiryDate && file.expiryDate <= today && !isExpiryAcknowledged(file)) {
+                items.push({ folderPath, file });
+            }
         }
     }
     if (!items.length) { if (onDone) onDone(); return; }
@@ -3417,7 +3457,7 @@ function addReminderFlow(presetDateIso) {
             reminders.unshift(reminder);
             saveReminders();
             await scheduleReminderNotification(reminder);
-            showExpiringDocumentsPanel('reminders');
+            showExpiringDocumentsPanel('reminders', { rerender: true });
         }, { disallowPast: true, withTime: true, withEndTime: true, requireDate: true });
     }, { icon: 'fa-bell', subtitle: 'What would you like to be reminded about?', placeholder: 'Reminder title' });
 }
@@ -3441,7 +3481,7 @@ function editReminderFlow(reminderId) {
             }
             saveReminders();
             await scheduleReminderNotification(reminder);
-            showExpiringDocumentsPanel('reminders');
+            showExpiringDocumentsPanel('reminders', { rerender: true });
         }, { disallowPast: true, withTime: true, withEndTime: true, defaultTime: reminder.dueTime || '09:00', defaultEndTime: reminder.endTime || null });
     }, { icon: 'fa-bell', subtitle: 'Update the reminder title', placeholder: 'Reminder title' });
 }
@@ -3452,7 +3492,7 @@ function deleteReminder(reminderId) {
         reminders = reminders.filter(x => x.id !== reminderId);
         saveReminders();
         await cancelReminderNotification(reminderId);
-        showExpiringDocumentsPanel('reminders');
+        showExpiringDocumentsPanel('reminders', { rerender: true });
     });
 }
 
@@ -3466,12 +3506,16 @@ function deleteReminder(reminderId) {
 // the same question twice on a single launch. Same red/black confirm modal as
 // before -- only the two have been folded into one line.
 function checkLaunchAlertsOnLoad(onDone) {
-    const expiring = getAllExpiringFiles(EXPIRY_SOON_DAYS);
-    const overdueCount = expiring.filter(e => e.status === 'overdue').length;
-    const soonCount = expiring.length - overdueCount;
+    // Only documents still ahead of their date. Today's and overdue ones are
+    // handled by the modal above, which can actually acknowledge them --
+    // counting them here too would put both on screen, one after the other,
+    // which is the double popup this dialog exists to avoid.
+    const expiring = getAllExpiringFiles(EXPIRY_SOON_DAYS).filter(e => e.days > 0);
+    const overdueCount = 0;
+    const soonCount = expiring.length;
 
     const now = new Date();
-    const due = reminders.filter(r => isReminderDueUnseen(r, now));
+    const due = reminders.filter(r => isReminderLiveUnseen(r, now));
 
     if (!expiring.length && !due.length) { if (onDone) onDone(); return; }
 
@@ -3481,7 +3525,14 @@ function checkLaunchAlertsOnLoad(onDone) {
     if (overdueCount && soonCount) parts.push(`⚠️ ${overdueCount} expired, ${soonCount} expiring soon`);
     else if (overdueCount) parts.push(`⚠️ ${overdueCount} document${overdueCount > 1 ? 's' : ''} expired`);
     else if (soonCount) parts.push(`${soonCount} document${soonCount > 1 ? 's' : ''} expiring soon`);
-    if (due.length) parts.push(`⏰ ${due.length} reminder${due.length > 1 ? 's' : ''} due`);
+    if (due.length) {
+        // "due" once the time has passed, "today" while it is still ahead of
+        // you -- both worth saying, and saying the wrong one is worse than
+        // saying nothing.
+        const anyPast = due.some(r => isReminderDue(r, now));
+        const word = anyPast ? 'due' : 'today';
+        parts.push(`⏰ ${due.length} reminder${due.length > 1 ? 's' : ''} ${word}`);
+    }
 
     const lines = parts.map(t =>
         `<span style="display:block;color:#eef2f9;font-size:0.92rem;font-weight:700;line-height:1.5;">${t}</span>`
@@ -4651,7 +4702,7 @@ async function moveFileToFolder(oldFolderPath, fileOrName, newFolderPath) {
 // (the same data source as the on-load "expiring soon" popup), just with
 // no threshold so every dated file shows, not only the next 7 days.
 // ============================================================
-function showExpiringDocumentsPanel(activeTab = 'expiring') {
+function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     haptic.press();
     const existing = document.getElementById('expiringDocsOverlay');
     if (existing) existing.remove();
@@ -4694,7 +4745,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
     // so the tab itself says so -- otherwise it is only discoverable by
     // opening the tab you are not already on.
     const dueNow = new Date();
-    const hasDueReminder = reminders.some(r => isReminderDueUnseen(r, dueNow));
+    const hasDueReminder = reminders.some(r => isReminderLiveUnseen(r, dueNow));
 
     const tabRowHtml = `
         <div style="display:flex;gap:8px;margin:0 0 14px;">
@@ -4731,7 +4782,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
         const renderReminderRow = (r) => {
             // Past its time: the row pulses so it is findable at a glance
             // instead of reading like every other row in the list.
-            const isDue = isReminderDueUnseen(r, nowForDue);
+            const isDue = isReminderLiveUnseen(r, nowForDue);
             const subtitle = r.dueAt ? `Due ${formatReminderDue(r.dueAt, r.dueTime, r.endTime)}` : 'No due date';
             const placeRow = r.place ? `<div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;margin-top:2px;"><i class="fas fa-location-dot" style="font-size:0.65rem;margin-right:4px;opacity:0.8;"></i>${escapeHtml(r.place)}</div>` : '';
             return `
@@ -4866,9 +4917,14 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
         </div>`;
     document.body.appendChild(overlay);
 
-    // After rendering, so this visit still shows the pulse that brought the
-    // user here; from the next visit on it stays quiet.
-    acknowledgeDueReminders();
+    // Only when the user actually opened the Reminders tab. This function is
+    // also how the panel redraws itself after an add, edit, delete or a month
+    // change, and acknowledging on those meant a reminder created here was
+    // marked "seen" the instant it was saved -- so a brand new reminder never
+    // appeared at launch. Redraws pass rerender:true and change nothing.
+    // Opening on the Expiring tab does not mark reminders either: you cannot
+    // have seen what was behind another tab.
+    if (!opts.rerender && activeTab === 'reminders') acknowledgeDueReminders();
 
     const close = () => overlay.remove();
     overlay.querySelector('#expiringDocsCloseX').onclick = close;
@@ -4900,14 +4956,14 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
         remindersCalMonth--;
         if (remindersCalMonth < 0) { remindersCalMonth = 11;
             remindersCalYear--; }
-        showExpiringDocumentsPanel('reminders');
+        showExpiringDocumentsPanel('reminders', { rerender: true });
     });
     const remCalNext = overlay.querySelector('#remCalNext');
     if (remCalNext) remCalNext.addEventListener('click', () => {
         remindersCalMonth++;
         if (remindersCalMonth > 11) { remindersCalMonth = 0;
             remindersCalYear++; }
-        showExpiringDocumentsPanel('reminders');
+        showExpiringDocumentsPanel('reminders', { rerender: true });
     });
     overlay.querySelectorAll('.rem-cal-day:not(:disabled)').forEach(btn => {
         // Same scroll-vs-tap drag guard as showDateModal's own calendar --
@@ -4930,7 +4986,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
             const [y, m] = btn.dataset.iso.split('-').map(Number);
             remindersCalYear = y;
             remindersCalMonth = m - 1;
-            showExpiringDocumentsPanel('reminders');
+            showExpiringDocumentsPanel('reminders', { rerender: true });
         });
     });
     overlay.querySelectorAll('.reminder-delete').forEach(btn => {
