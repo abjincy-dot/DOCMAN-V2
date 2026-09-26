@@ -2716,40 +2716,41 @@ function deleteReminder(reminderId) {
     });
 }
 
-// Shown once per app session (see DOMContentLoaded) if any documents
-// are expiring soon or overdue. onDone (optional) fires right after this
-// modal is dismissed, or immediately if there was nothing to show -- lets
-// checkDueRemindersOnLoad chain after it instead of both trying to use the
-// one shared confirm-modal DOM id at once.
-function checkExpiringDocumentsOnLoad(onDone) {
+// Shown once per app session (see DOMContentLoaded) if any documents are
+// expiring soon/overdue and/or any reminders are already due. Both used to
+// be separate popups chained one after the other, so with one of each the
+// user had to dismiss the first before the second even appeared -- now
+// it's a single popup listing both lines. The reminder check exists because
+// the system notification only fires while the OS actually runs the
+// scheduled alarm (which battery-optimized/killed apps can delay), so this
+// is a second, in-app way to notice a reminder is due just by opening DOCMAN.
+function checkExpiringDocumentsOnLoad() {
     const expiring = getAllExpiringFiles(EXPIRY_SOON_DAYS);
-    if (!expiring.length) { if (onDone) onDone(); return; }
-    const overdueCount = expiring.filter(e => e.status === 'overdue').length;
-    const soonCount = expiring.length - overdueCount;
-    let msg;
-    if (overdueCount && soonCount) msg = `⚠️ ${overdueCount} expired, ${soonCount} expiring soon`;
-    else if (overdueCount) msg = `⚠️ ${overdueCount} document${overdueCount > 1 ? 's' : ''} expired`;
-    else msg = `${soonCount} document${soonCount > 1 ? 's' : ''} expiring soon`;
-    showConfirmModal(msg, (viewDashboard) => {
-        if (viewDashboard) openDashboardView();
-        if (onDone) onDone();
-    }, { okLabel: 'View', okColor: 'linear-gradient(135deg,#f59e0b,#d97706)' });
-}
-
-// Same idea as checkExpiringDocumentsOnLoad, for reminders whose due
-// date/time has already arrived -- the system notification only fires while
-// the OS actually runs the scheduled alarm (which battery-optimized/killed
-// apps can delay), so this is a second, in-app way to notice a reminder is
-// due just by opening DOCMAN, same as walking in and seeing an expired
-// document flagged.
-function checkDueRemindersOnLoad() {
     const now = new Date();
     const due = reminders.filter(r => r.dueAt && new Date(r.dueAt + 'T' + (r.dueTime || '09:00') + ':00') <= now);
-    if (!due.length) return;
-    const msg = `⏰ ${due.length} reminder${due.length > 1 ? 's' : ''} due`;
-    showConfirmModal(msg, (view) => {
-        if (view) showExpiringDocumentsPanel('reminders');
-    }, { okLabel: 'View', okColor: 'linear-gradient(135deg,#f97316,#ec4899)' });
+    if (!expiring.length && !due.length) return;
+
+    const lines = [];
+    if (expiring.length) {
+        const overdueCount = expiring.filter(e => e.status === 'overdue').length;
+        const soonCount = expiring.length - overdueCount;
+        if (overdueCount && soonCount) lines.push(`⚠️ ${overdueCount} expired, ${soonCount} expiring soon`);
+        else if (overdueCount) lines.push(`⚠️ ${overdueCount} document${overdueCount > 1 ? 's' : ''} expired`);
+        else lines.push(`${soonCount} document${soonCount > 1 ? 's' : ''} expiring soon`);
+    }
+    if (due.length) lines.push(`⏰ ${due.length} reminder${due.length > 1 ? 's' : ''} due`);
+
+    // Only documents -> dashboard, as before. Only reminders -> Reminders
+    // tab. Both -> the Expiring panel, whose Reminders tab is one tap away.
+    const onView = !due.length ? () => openDashboardView()
+        : !expiring.length ? () => showExpiringDocumentsPanel('reminders')
+        : () => showExpiringDocumentsPanel('expiring');
+    const okColor = due.length && !expiring.length
+        ? 'linear-gradient(135deg,#f97316,#ec4899)'
+        : 'linear-gradient(135deg,#f59e0b,#d97706)';
+    showConfirmModal(lines.join('<br>'), (view) => {
+        if (view) onView();
+    }, { okLabel: 'View', okColor });
 }
 
 
@@ -14619,7 +14620,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 registerExpiryNotificationActions();
                 rescheduleAllExpiryNotifications();
                 recordReviewUsageDay();
-                setTimeout(() => checkExpiryTodayOnLoad(() => checkExpiringDocumentsOnLoad(() => checkDueRemindersOnLoad())), 1200);
+                setTimeout(() => checkExpiryTodayOnLoad(() => checkExpiringDocumentsOnLoad()), 1200);
 
                 const migrationRun = localStorage.getItem('docman_migration_done');
                 if (!migrationRun) {
