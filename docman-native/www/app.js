@@ -1964,6 +1964,32 @@ let docmanSettings = loadSettings();
 function loadReminders() {
     try { return JSON.parse(localStorage.getItem(REMINDERS_KEY)) || []; } catch (e) { return []; }
 }
+// A reminder keeps nagging until it has been SEEN, not until enough time has
+// passed -- three days of being ignored is usually evidence it was missed,
+// not that it was dealt with. Opening the panel marks what is due as seen;
+// the reminder itself is never deleted, it just stops raising the launch
+// dialog and stops pulsing. Same shape as expiry's expiryAckFor, keyed to the
+// occurrence so editing the date makes it alert again.
+function reminderOccurrenceKey(r) {
+    return r.dueAt ? r.dueAt + 'T' + (r.dueTime || '09:00') : '';
+}
+function isReminderDue(r, now) {
+    if (!r.dueAt) return false;
+    return new Date(reminderOccurrenceKey(r) + ':00') <= (now || new Date());
+}
+function isReminderDueUnseen(r, now) {
+    return isReminderDue(r, now) && r.dueAckFor !== reminderOccurrenceKey(r);
+}
+// Called when the panel is opened: everything already due has now been seen.
+function acknowledgeDueReminders() {
+    const now = new Date();
+    let changed = false;
+    for (const r of reminders) {
+        if (isReminderDueUnseen(r, now)) { r.dueAckFor = reminderOccurrenceKey(r); changed = true; }
+    }
+    if (changed) saveReminders();
+}
+
 function saveReminders() {
     localStorage.setItem(REMINDERS_KEY, JSON.stringify(reminders));
 }
@@ -2863,6 +2889,21 @@ const EXPIRY_DAY_END_HOUR = 21;
 const EXPIRY_REPEAT_MINUTES = 30;
 const EXPIRY_OVERDUE_DAYS = 7;
 const EXPIRY_ACTION_TYPE = 'EXPIRY_DUE';
+const REMINDER_ACTION_TYPE = 'REMINDER_DUE';
+// A reminder used to fire ONCE and that was it -- miss the notification and
+// nothing else ever came. Expiry already repeats every 30 minutes on the day
+// until acknowledged; this gives reminders the same treatment, but over a
+// short window rather than 07:00-21:00. Android caps how many notifications
+// an app can have pending, and expiry alone books 29 slots per document.
+const REMINDER_REPEAT_MINUTES = 30;
+const REMINDER_REPEAT_HOURS = 3;
+// DOCMAN never defined a channel, so every alert inherited whatever the
+// default one happened to be -- sound and vibration were the OS's choice, not
+// the app's. This one asks for both explicitly, at high importance so it
+// arrives as a heads-up. The user can still override it in system settings,
+// which is as it should be.
+const ALERT_CHANNEL_ID = 'docman-alerts-v2';
+const ALERT_CHANNEL_ID_OLD = 'docman-alerts';
 
 function expiryRepeatCount() {
     return ((EXPIRY_DAY_END_HOUR - EXPIRY_DAY_START_HOUR) * 60) / EXPIRY_REPEAT_MINUTES + 1;
@@ -2908,7 +2949,8 @@ async function imgScheduleExpiryNotification(folderPath, fileName, dateStr, opts
     const notifications = [];
     const add = (id, title, body, at, withActions) => {
         if (at <= now) return; // a slot already in the past is simply skipped
-        const n = { id, title, body, schedule: { at, allowWhileIdle: true }, autoCancel: true, extra };
+        const n = { id, title, body, schedule: { at, allowWhileIdle: true }, autoCancel: true, extra,
+            channelId: ALERT_CHANNEL_ID, visibility: 1 };
         if (withActions) n.actionTypeId = EXPIRY_ACTION_TYPE;
         notifications.push(n);
     };
@@ -2978,6 +3020,19 @@ async function registerExpiryNotificationActions() {
     const plugin = window.Capacitor?.Plugins?.LocalNotifications;
     if (!plugin || !isNativePlatform()) return;
     try {
+        await plugin.createChannel({
+            id: ALERT_CHANNEL_ID,
+            name: 'Expiry and reminder alerts',
+            description: 'Document expiry dates and reminders you have set',
+            importance: 5,
+            visibility: 1,
+            sound: 'default',
+            vibration: true,
+            lights: true,
+        });
+        try { await plugin.deleteChannel({ id: ALERT_CHANNEL_ID_OLD }); } catch (e) { /* never existed on this device */ }
+    } catch (e) { /* channels are Android-only; iOS and older builds ignore this */ }
+    try {
         await plugin.registerActionTypes({
             types: [{
                 id: EXPIRY_ACTION_TYPE,
@@ -2985,12 +3040,26 @@ async function registerExpiryNotificationActions() {
                     { id: 'expiry-ack', title: 'Got it' },
                     { id: 'expiry-renew', title: 'Renew date' }
                 ]
+            }, {
+                id: REMINDER_ACTION_TYPE,
+                actions: [
+                    { id: 'reminder-ack', title: 'Got it' }
+                ]
             }]
         });
     } catch (e) { /* older plugin build -- the notification itself still works */ }
     plugin.addListener('localNotificationActionPerformed', async (event) => {
         const extra = event && event.notification && event.notification.extra;
-        if (!extra || extra.kind !== 'expiry') return;
+        if (!extra) return;
+        if (extra.kind === 'reminder') {
+            // Acknowledging from the notification is the same as having seen
+            // it in the panel, and it clears the repeats still queued behind.
+            const r = reminders.find(x => x.id === extra.reminderId);
+            if (r) { r.dueAckFor = reminderOccurrenceKey(r); saveReminders(); }
+            await cancelReminderNotification(extra.reminderId);
+            return;
+        }
+        if (extra.kind !== 'expiry') return;
         if (event.actionId === 'expiry-ack') { await acknowledgeExpiry(extra.folderPath, extra.fileName); return; }
         if (event.actionId === 'expiry-renew') { renewExpiryDate(extra.folderPath, extra.fileName); return; }
         const file = (allFiles[extra.folderPath] || []).find(f => f.name === extra.fileName);
@@ -3158,11 +3227,23 @@ async function maybeAskForReview() {
 // Reminders/To-Do -- same LocalNotifications plugin and permission flow
 // as the expiry reminders above, just one notification per reminder
 // instead of a 3-day-before/on-day pair, fired at 9am on the due date.
-function reminderNotificationIdFor(reminderId) {
+function reminderNotificationIdFor(reminderId, salt = 0) {
     let hash = 0;
-    const s = `reminder/${reminderId}`;
+    const s = `reminder/${reminderId}/${salt}`;
     for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
     return hash % 2000000000;
+}
+
+function reminderRepeatCount() {
+    return (REMINDER_REPEAT_HOURS * 60) / REMINDER_REPEAT_MINUTES + 1;
+}
+
+// Every id one reminder can own, so a reschedule or a delete clears the whole
+// set rather than leaving orphaned repeats to fire later.
+function reminderNotificationIds(reminderId) {
+    const ids = [];
+    for (let i = 0; i < reminderRepeatCount(); i++) ids.push(reminderNotificationIdFor(reminderId, i));
+    return ids;
 }
 
 // Android 12+ needs a separate "Alarms & reminders" toggle before an exact
@@ -3209,9 +3290,8 @@ async function scheduleReminderNotification(reminder) {
     const plugin = window.Capacitor?.Plugins?.LocalNotifications;
     if (!plugin) return; // plugin not installed -- in-app reminder list still works
 
-    const id = reminderNotificationIdFor(reminder.id);
     try {
-        await plugin.cancel({ notifications: [{ id }] });
+        await plugin.cancel({ notifications: reminderNotificationIds(reminder.id).map(id => ({ id })) });
     } catch (e) { /* nothing scheduled yet -- fine */ }
 
     if (!reminder.dueAt) return;
@@ -3238,13 +3318,28 @@ async function scheduleReminderNotification(reminder) {
         if (!exactOk) {
             showToast('Reminder saved, but it may arrive late until "Alarms & reminders" is turned on', true);
         }
-        await plugin.schedule({ notifications: [{
-            id,
-            title: 'Reminder',
-            body: reminder.title,
-            schedule: { at, allowWhileIdle: true },
-            autoCancel: true, // dismiss it once tapped -- it's done its job
-        }] });
+        // Repeats every REMINDER_REPEAT_MINUTES for REMINDER_REPEAT_HOURS after
+        // it falls due, each carrying a "Got it" button that stops the rest.
+        // One notification was easy to miss with nothing to follow it.
+        const now = new Date();
+        const notifications = [];
+        for (let i = 0; i < reminderRepeatCount(); i++) {
+            const at_i = new Date(at.getTime() + i * REMINDER_REPEAT_MINUTES * 60000);
+            if (at_i <= now) continue; // a slot already past is simply skipped
+            notifications.push({
+                id: reminderNotificationIdFor(reminder.id, i),
+                title: i === 0 ? 'Reminder' : 'Reminder still due',
+                body: reminder.title,
+                schedule: { at: at_i, allowWhileIdle: true },
+                channelId: ALERT_CHANNEL_ID,
+                visibility: 1, // PUBLIC -- readable on the lock screen
+                actionTypeId: REMINDER_ACTION_TYPE,
+                extra: { kind: 'reminder', reminderId: reminder.id },
+                autoCancel: true,
+            });
+        }
+        if (!notifications.length) return;
+        await plugin.schedule({ notifications });
     } catch (e) {
         console.warn('Could not schedule reminder notification:', e);
         showToast('Could not schedule the reminder notification', true);
@@ -3255,7 +3350,7 @@ async function cancelReminderNotification(reminderId) {
     const plugin = window.Capacitor?.Plugins?.LocalNotifications;
     if (!plugin) return;
     try {
-        await plugin.cancel({ notifications: [{ id: reminderNotificationIdFor(reminderId) }] });
+        await plugin.cancel({ notifications: reminderNotificationIds(reminderId).map(id => ({ id })) });
     } catch (e) { /* nothing scheduled -- fine */ }
 }
 
@@ -3347,40 +3442,48 @@ function deleteReminder(reminderId) {
     });
 }
 
-// Shown once per app session (see DOMContentLoaded) if any documents
-// are expiring soon or overdue. onDone (optional) fires right after this
-// modal is dismissed, or immediately if there was nothing to show -- lets
-// checkDueRemindersOnLoad chain after it instead of both trying to use the
-// one shared confirm-modal DOM id at once.
-function checkExpiringDocumentsOnLoad(onDone) {
+// Shown once per app session (see DOMContentLoaded) if any documents are
+// expiring soon or overdue, or any reminder is due. onDone (optional) fires
+// right after this modal is dismissed, or immediately if there was nothing to
+// show, so the expiry-today modal can still run before it -- only one of them
+// can use the shared confirm-modal DOM id at a time.
+// Expiry and due reminders are raised in ONE dialog. They used to be two,
+// chained so the second opened as the first closed, which meant being asked
+// the same question twice on a single launch. Same red/black confirm modal as
+// before -- only the two have been folded into one line.
+function checkLaunchAlertsOnLoad(onDone) {
     const expiring = getAllExpiringFiles(EXPIRY_SOON_DAYS);
-    if (!expiring.length) { if (onDone) onDone(); return; }
     const overdueCount = expiring.filter(e => e.status === 'overdue').length;
     const soonCount = expiring.length - overdueCount;
-    let msg;
-    if (overdueCount && soonCount) msg = `⚠️ ${overdueCount} expired, ${soonCount} expiring soon`;
-    else if (overdueCount) msg = `⚠️ ${overdueCount} document${overdueCount > 1 ? 's' : ''} expired`;
-    else msg = `${soonCount} document${soonCount > 1 ? 's' : ''} expiring soon`;
-    showConfirmModal(msg, (viewDashboard) => {
-        if (viewDashboard) openDashboardView(true);
+
+    const now = new Date();
+    const due = reminders.filter(r => isReminderDueUnseen(r, now));
+
+    if (!expiring.length && !due.length) { if (onDone) onDone(); return; }
+
+    // Only what is actually there gets a mention, so a launch with just
+    // reminders reads exactly as it did before.
+    const parts = [];
+    if (overdueCount && soonCount) parts.push(`⚠️ ${overdueCount} expired, ${soonCount} expiring soon`);
+    else if (overdueCount) parts.push(`⚠️ ${overdueCount} document${overdueCount > 1 ? 's' : ''} expired`);
+    else if (soonCount) parts.push(`${soonCount} document${soonCount > 1 ? 's' : ''} expiring soon`);
+    if (due.length) parts.push(`⏰ ${due.length} reminder${due.length > 1 ? 's' : ''} due`);
+
+    const lines = parts.map(t =>
+        `<span style="display:block;color:#eef2f9;font-size:0.92rem;font-weight:700;line-height:1.5;">${t}</span>`
+    ).join('');
+    showConfirmModal(lines, (view) => {
+        // Each alert used to lead somewhere different. With one button, the
+        // destination follows whatever is actually being reported; when both
+        // are, the panel carrying tabs for each is the only place that shows
+        // the whole picture.
+        if (view) {
+            if (expiring.length && due.length) showExpiringDocumentsPanel('expiring');
+            else if (expiring.length) openDashboardView(true);
+            else showExpiringDocumentsPanel('reminders');
+        }
         if (onDone) onDone();
     }, { okLabel: 'View', okColor: 'linear-gradient(135deg,#fbab2c 0%,#f78a14 46%,#ef7009 100%)' });
-}
-
-// Same idea as checkExpiringDocumentsOnLoad, for reminders whose due
-// date/time has already arrived -- the system notification only fires while
-// the OS actually runs the scheduled alarm (which battery-optimized/killed
-// apps can delay), so this is a second, in-app way to notice a reminder is
-// due just by opening DOCMAN, same as walking in and seeing an expired
-// document flagged.
-function checkDueRemindersOnLoad() {
-    const now = new Date();
-    const due = reminders.filter(r => r.dueAt && new Date(r.dueAt + 'T' + (r.dueTime || '09:00') + ':00') <= now);
-    if (!due.length) return;
-    const msg = `⏰ ${due.length} reminder${due.length > 1 ? 's' : ''} due`;
-    showConfirmModal(msg, (view) => {
-        if (view) showExpiringDocumentsPanel('reminders');
-    }, { okLabel: 'View', okColor: 'linear-gradient(135deg,#f97316,#ec4899)' });
 }
 
 
@@ -4573,10 +4676,16 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
     overlay.id = 'expiringDocsOverlay';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:10vh;overflow-y:auto;';
 
+    // A reminder past its time is the one thing in this panel worth chasing,
+    // so the tab itself says so -- otherwise it is only discoverable by
+    // opening the tab you are not already on.
+    const dueNow = new Date();
+    const hasDueReminder = reminders.some(r => isReminderDueUnseen(r, dueNow));
+
     const tabRowHtml = `
         <div style="display:flex;gap:8px;margin:0 0 14px;">
             <button class="expdoc-tab" data-tab="expiring" style="flex:1;text-align:center;padding:7px 0;border-radius:999px;font-size:0.74rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'expiring' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'expiring' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'expiring' ? '#fff' : c.tabInactiveText};">Expiring</button>
-            <button class="expdoc-tab" data-tab="reminders" style="flex:1;text-align:center;padding:7px 0;border-radius:999px;font-size:0.74rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'reminders' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'reminders' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'reminders' ? '#fff' : c.tabInactiveText};">Reminders</button>
+            <button class="expdoc-tab${hasDueReminder ? ' expdoc-tab-due' : ''}" data-tab="reminders" style="flex:1;text-align:center;padding:7px 0;border-radius:999px;font-size:0.74rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'reminders' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'reminders' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'reminders' ? '#fff' : c.tabInactiveText};">Reminders</button>
         </div>`;
 
     let titleHtml, summaryHtml, bodyHtml;
@@ -4604,11 +4713,15 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
             else undated.push(r);
         });
 
+        const nowForDue = new Date();
         const renderReminderRow = (r) => {
+            // Past its time: the row pulses so it is findable at a glance
+            // instead of reading like every other row in the list.
+            const isDue = isReminderDueUnseen(r, nowForDue);
             const subtitle = r.dueAt ? `Due ${formatReminderDue(r.dueAt, r.dueTime, r.endTime)}` : 'No due date';
             const placeRow = r.place ? `<div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;margin-top:2px;"><i class="fas fa-location-dot" style="font-size:0.65rem;margin-right:4px;opacity:0.8;"></i>${escapeHtml(r.place)}</div>` : '';
             return `
-                <div class="reminder-row" data-id="${escapeHtml(r.id)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:${c.rowBg};border:${c.rowBorder};margin-bottom:8px;">
+                <div class="reminder-row${isDue ? ' reminder-due' : ''}" data-id="${escapeHtml(r.id)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:${c.rowBg};border:${c.rowBorder};margin-bottom:8px;">
                     <div style="flex:1;min-width:0;">
                         <div style="color:${c.rowText};font-size:0.87rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Inter,sans-serif;">${escapeHtml(r.title)}</div>
                         <div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;">${subtitle}</div>
@@ -4675,7 +4788,13 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
             ${undated.map(renderReminderRow).join('')}` : '';
 
         bodyHtml = `
-            <div style="background:${c.rowBg};border:${c.rowBorder};border-radius:16px;padding:12px;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <div style="color:${c.title};font-weight:700;font-size:0.85rem;font-family:Inter,sans-serif;">${escapeHtml(selectedDayLabel)}</div>
+                <div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;">${dayReminders.length} reminder${dayReminders.length === 1 ? '' : 's'}</div>
+            </div>
+            <div id="remDayList">${dayListHtml}</div>
+            ${undatedHtml}
+            <div style="background:${c.rowBg};border:${c.rowBorder};border-radius:16px;padding:12px;margin-top:16px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
                     <button id="remCalPrev" aria-label="Previous month" style="width:26px;height:26px;border-radius:50%;border:${c.rowBorder};background:transparent;color:${c.rowText};cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;"><i class="fas fa-chevron-left" style="font-size:0.65rem;"></i></button>
                     <div style="color:${c.rowText};font-weight:700;font-size:0.85rem;font-family:Inter,sans-serif;">${monthNames[remindersCalMonth]} ${remindersCalYear}</div>
@@ -4684,17 +4803,14 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
                 <div style="display:flex;margin-bottom:4px;">${weekdayRow}</div>
                 <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">${calDayCells}</div>
             </div>
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                <div style="color:${c.title};font-weight:700;font-size:0.85rem;font-family:Inter,sans-serif;">${escapeHtml(selectedDayLabel)}</div>
-                <div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;">${dayReminders.length} reminder${dayReminders.length === 1 ? '' : 's'}</div>
-            </div>
-            <div id="remDayList">${dayListHtml}</div>
-            ${undatedHtml}
             <button id="expdocAddReminder" style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:11px 0;margin-top:12px;border-radius:12px;border:none;background:linear-gradient(135deg,#f9a825,#ef7a0c);color:#fff;font-size:0.82rem;font-weight:700;font-family:Inter,sans-serif;cursor:pointer;box-shadow:0 6px 16px rgba(239,122,12,0.35);"><i class="fas fa-plus"></i> Add reminder</button>`;
         titleHtml = `<i class="fas fa-list-check" style="color:#f59e0b;margin-right:6px;"></i>Reminders`;
         summaryHtml = reminders.length ? `<p style="color:${c.muted};font-size:0.8rem;margin:0 0 14px;font-family:Inter,sans-serif;">${reminders.length} total reminder${reminders.length === 1 ? '' : 's'}</p>` : '<div style="margin-bottom:10px;"></div>';
     } else {
-        const entries = getAllExpiringFiles(Infinity);
+        const nowExp = new Date(); nowExp.setHours(0, 0, 0, 0);
+        const monthEnd = new Date(nowExp.getFullYear(), nowExp.getMonth() + 1, 0);
+        const daysLeftInMonth = Math.round((monthEnd - nowExp) / 86400000);
+        const entries = getAllExpiringFiles(daysLeftInMonth);
         bodyHtml = entries.length ? entries.map(({ file, folderPath, status, days }) => {
             const pill = status === 'overdue'
                 ? `<span style="background:rgba(239,68,68,0.15);color:#f87171;border-radius:20px;padding:3px 10px;font-size:0.72rem;font-weight:700;white-space:nowrap;">${Math.abs(days)}d overdue</span>`
@@ -4735,6 +4851,10 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
             <div id="expiringDocsList">${bodyHtml}</div>
         </div>`;
     document.body.appendChild(overlay);
+
+    // After rendering, so this visit still shows the pulse that brought the
+    // user here; from the next visit on it stays quiet.
+    acknowledgeDueReminders();
 
     const close = () => overlay.remove();
     overlay.querySelector('#expiringDocsCloseX').onclick = close;
@@ -16896,7 +17016,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 registerExpiryNotificationActions();
                 rescheduleAllExpiryNotifications();
                 recordReviewUsageDay();
-                setTimeout(() => checkExpiryTodayOnLoad(() => checkExpiringDocumentsOnLoad(() => checkDueRemindersOnLoad())), 1200);
+                setTimeout(() => checkExpiryTodayOnLoad(() => checkLaunchAlertsOnLoad()), 1200);
 
                 const migrationRun = localStorage.getItem('docman_migration_done');
                 if (!migrationRun) {

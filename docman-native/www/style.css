@@ -8784,3 +8784,54 @@ body:not(.light-mode) .card.press-depth-3d {
 .img-editor-header {
     padding-top: max(22px, calc(env(safe-area-inset-top) + 14px)) !important;
 }
+
+/* A reminder whose time has passed. The row carries its border colour inline,
+   but a CSS animation outranks an inline declaration, so the keyframes drive
+   it without the markup having to know. Border and glow only -- the title and
+   time stay at their normal contrast and remain readable throughout. */
+.reminder-row.reminder-due {
+    animation: reminderDuePulse 1.7s ease-in-out infinite;
+}
+@keyframes reminderDuePulse {
+    0%, 100% {
+        border-color: rgba(249, 115, 22, 0.35);
+        box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+    }
+    50% {
+        border-color: rgba(249, 115, 22, 0.95);
+        box-shadow: 0 0 14px 2px rgba(249, 115, 22, 0.42);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    /* Still marked out, just not moving. */
+    .reminder-row.reminder-due {
+        animation: none;
+        border-color: rgba(249, 115, 22, 0.9);
+    }
+}
+
+/* The Reminders tab when something is due. Same pulse language as the due
+   row itself, so the tab and the row it leads to read as one signal. The tab
+   sets its border and background inline; a CSS animation outranks an inline
+   declaration, so the keyframes drive the border without touching the markup.
+   The inactive tab is the case that matters -- the active one is already lit
+   by its own gradient. */
+.expdoc-tab.expdoc-tab-due {
+    animation: expdocTabDuePulse 1.7s ease-in-out infinite;
+}
+@keyframes expdocTabDuePulse {
+    0%, 100% {
+        border-color: rgba(249, 115, 22, 0.40);
+        box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+    }
+    50% {
+        border-color: rgba(249, 115, 22, 1);
+        box-shadow: 0 0 12px 2px rgba(249, 115, 22, 0.50);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .expdoc-tab.expdoc-tab-due {
+        animation: none;
+        border-color: rgba(249, 115, 22, 0.9);
+    }
+}
