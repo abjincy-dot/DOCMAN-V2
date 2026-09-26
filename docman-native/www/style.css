@@ -70,7 +70,7 @@ box-sizing: border-box;
 --bg-deep: #1d222c;
 --bg-secondary: #220f38; 
 --bg-tertiary: #2a1240; 
---app-wallpaper: url('Images/bg-main-theme.jpg');
+--app-wallpaper: linear-gradient(180deg, #5b1a3a 0%, #4a1330 18%, #350d23 38%, #230816 58%, #150410 76%, #0a0207 100%);
 --glass-bg: rgba(40, 15, 55, 0.52); 
 /* One surface for every overlay panel -- info hub, favourites/recent/dashboard,
    dialogs, context menus and the icon picker all sit on this, so they read as
@@ -8817,21 +8817,17 @@ body:not(.light-mode) .card.press-depth-3d {
    The inactive tab is the case that matters -- the active one is already lit
    by its own gradient. */
 .expdoc-tab.expdoc-tab-due {
-    animation: expdocTabDuePulse 1.7s ease-in-out infinite;
+    animation: expdocTabDuePulse 1.9s ease-in-out infinite;
+    will-change: opacity;
 }
 @keyframes expdocTabDuePulse {
-    0%, 100% {
-        border-color: rgba(249, 115, 22, 0.40);
-        box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
-    }
-    50% {
-        border-color: rgba(249, 115, 22, 1);
-        box-shadow: 0 0 12px 2px rgba(249, 115, 22, 0.50);
-    }
+    0%, 100% { opacity: 0.1; }
+    50%      { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
     .expdoc-tab.expdoc-tab-due {
         animation: none;
+        opacity: 1;
         border-color: rgba(249, 115, 22, 0.9);
     }
 }

@@ -3543,9 +3543,11 @@ function checkLaunchAlertsOnLoad(onDone) {
         // are, the panel carrying tabs for each is the only place that shows
         // the whole picture.
         if (view) {
-            if (expiring.length && due.length) showExpiringDocumentsPanel('expiring');
-            else if (expiring.length) openDashboardView(true);
-            else showExpiringDocumentsPanel('reminders');
+            // A reminder wins the destination. Landing on Expiring when one is
+            // due hid the thing that had just asked for attention behind a tab
+            // the user then had to find.
+            if (due.length) showExpiringDocumentsPanel('reminders');
+            else openDashboardView(true);
         }
         if (onDone) onDone();
     }, { okLabel: 'View', okColor: 'linear-gradient(135deg,#fbab2c 0%,#f78a14 46%,#ef7009 100%)' });
@@ -4748,9 +4750,10 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     const hasDueReminder = reminders.some(r => isReminderLiveUnseen(r, dueNow));
 
     const tabRowHtml = `
-        <div style="display:flex;gap:8px;margin:0 0 14px;">
-            <button class="expdoc-tab" data-tab="expiring" style="flex:1;text-align:center;padding:7px 0;border-radius:999px;font-size:0.74rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'expiring' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'expiring' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'expiring' ? '#fff' : c.tabInactiveText};">Expiring</button>
-            <button class="expdoc-tab${hasDueReminder ? ' expdoc-tab-due' : ''}" data-tab="reminders" style="flex:1;text-align:center;padding:7px 0;border-radius:999px;font-size:0.74rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'reminders' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'reminders' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'reminders' ? '#fff' : c.tabInactiveText};">Reminders</button>
+        <div style="display:flex;gap:6px;margin:0 0 12px;">
+            <button class="expdoc-tab" data-tab="expiring" style="flex:1 1 0;min-width:0;text-align:center;padding:7px 0;border-radius:999px;font-size:0.7rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'expiring' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'expiring' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'expiring' ? '#fff' : c.tabInactiveText};">Expiring</button>
+            <button class="expdoc-tab${hasDueReminder ? ' expdoc-tab-due' : ''}" data-tab="reminders" style="flex:1 1 0;min-width:0;text-align:center;padding:7px 0;border-radius:999px;font-size:0.7rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'reminders' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'reminders' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'reminders' ? '#fff' : c.tabInactiveText};">Reminders</button>
+            <button id="expdocAddReminder" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:4px;padding:7px 11px;border-radius:999px;border:none;background:linear-gradient(135deg,#f9a825,#ef7a0c);color:#fff;font-size:0.7rem;font-weight:700;font-family:Inter,sans-serif;cursor:pointer;white-space:nowrap;box-shadow:0 5px 14px rgba(239,122,12,0.32);"><i class="fas fa-plus" style="font-size:0.65rem;"></i>Add reminder</button>
         </div>`;
 
     let titleHtml, summaryHtml, bodyHtml;
@@ -4786,7 +4789,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
             const subtitle = r.dueAt ? `Due ${formatReminderDue(r.dueAt, r.dueTime, r.endTime)}` : 'No due date';
             const placeRow = r.place ? `<div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;margin-top:2px;"><i class="fas fa-location-dot" style="font-size:0.65rem;margin-right:4px;opacity:0.8;"></i>${escapeHtml(r.place)}</div>` : '';
             return `
-                <div class="reminder-row${isDue ? ' reminder-due' : ''}" data-id="${escapeHtml(r.id)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:${c.rowBg};border:${c.rowBorder};margin-bottom:8px;">
+                <div class="reminder-row${isDue ? ' reminder-due' : ''}" data-id="${escapeHtml(r.id)}" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;background:${c.rowBg};border:${c.rowBorder};margin-bottom:8px;">
                     <div style="flex:1;min-width:0;">
                         <div style="color:${c.rowText};font-size:0.87rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Inter,sans-serif;">${escapeHtml(r.title)}</div>
                         <div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;">${subtitle}</div>
@@ -4836,14 +4839,23 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
             if (isSelected) { bg = 'linear-gradient(135deg,#8b5cf6,#7c3aed)';
                 color = '#fff'; } else if (isToday) border = '1.5px solid rgba(139,92,246,0.6)';
             else if (isDeadPast) color = c.muted;
-            return `<button class="rem-cal-day" data-iso="${cell.iso}" ${isDeadPast ? 'disabled' : ''} style="aspect-ratio:1;border:${border};background:${bg};color:${color};font-size:0.8rem;font-weight:${isToday ? '800' : '600'};font-family:Inter,sans-serif;border-radius:50%;cursor:${isDeadPast ? 'default' : 'pointer'};position:relative;display:flex;align-items:center;justify-content:center;padding:0;opacity:${isDeadPast ? '0.35' : cell.inMonth ? '1' : '0.45'};">${cell.day}${hasReminders ? `<span style="position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:${isSelected ? '#fff' : '#f97316'};"></span>` : ''}</button>`;
+            return `<button class="rem-cal-day" data-iso="${cell.iso}" ${isDeadPast ? 'disabled' : ''} style="aspect-ratio:1/0.9;border:${border};background:${bg};color:${color};font-size:0.8rem;font-weight:${isToday ? '800' : '600'};font-family:Inter,sans-serif;border-radius:50%;cursor:${isDeadPast ? 'default' : 'pointer'};position:relative;display:flex;align-items:center;justify-content:center;padding:0;opacity:${isDeadPast ? '0.35' : cell.inMonth ? '1' : '0.45'};">${cell.day}${hasReminders ? `<span style="position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:${isSelected ? '#fff' : '#f97316'};"></span>` : ''}</button>`;
         }).join('');
 
         const weekdayRow = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'].map(d => `<span style="flex:1;text-align:center;font-size:0.62rem;font-weight:700;color:${c.muted};font-family:Inter,sans-serif;">${d}</span>`).join('');
 
         const selectedDateObj = new Date(remindersCalSelectedIso + 'T00:00:00');
         const selectedDayLabel = remindersCalSelectedIso === todayIso ? 'Today' : selectedDateObj.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
-        const dayReminders = (remindersByDate[remindersCalSelectedIso] || []).slice().sort((a, b) => (a.dueTime || '').localeCompare(b.dueTime || ''));
+        // Due-and-unseen first, so the row that is flashing is the one right
+        // under the calendar rather than last in the list, where the reason
+        // for opening the panel would be the furthest thing from the eye.
+        const nowForSort = new Date();
+        const dayReminders = (remindersByDate[remindersCalSelectedIso] || []).slice().sort((a, b) => {
+            const la = isReminderLiveUnseen(a, nowForSort) ? 0 : 1;
+            const lb = isReminderLiveUnseen(b, nowForSort) ? 0 : 1;
+            if (la !== lb) return la - lb;
+            return (a.dueTime || '').localeCompare(b.dueTime || '');
+        });
         const dayListHtml = dayReminders.length ? dayReminders.map(renderReminderRow).join('') : `
             <div class="fav-empty" style="text-align:center;padding:18px 20px 4px;color:${c.muted};">
                 <p style="margin:0;font-family:Inter,sans-serif;font-size:0.85rem;">No reminders on this day.</p>
@@ -4852,15 +4864,8 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
             <div style="color:${c.muted};font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;margin:16px 0 8px;font-family:Inter,sans-serif;">No due date</div>
             ${undated.map(renderReminderRow).join('')}` : '';
 
-        bodyHtml = `
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                <div style="color:${c.title};font-weight:700;font-size:0.85rem;font-family:Inter,sans-serif;">${escapeHtml(selectedDayLabel)}</div>
-                <div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;">${dayReminders.length} reminder${dayReminders.length === 1 ? '' : 's'}</div>
-            </div>
-            <div id="remDayList">${dayListHtml}</div>
-            ${undatedHtml}
-            <div style="background:${c.rowBg};border:${c.rowBorder};border-radius:16px;padding:12px;margin-top:16px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        bodyHtml = `            <div style="background:${c.rowBg};border:${c.rowBorder};border-radius:16px;padding:10px;margin-bottom:11px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                     <button id="remCalPrev" aria-label="Previous month" style="width:26px;height:26px;border-radius:50%;border:${c.rowBorder};background:transparent;color:${c.rowText};cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;"><i class="fas fa-chevron-left" style="font-size:0.65rem;"></i></button>
                     <div style="color:${c.rowText};font-weight:700;font-size:0.85rem;font-family:Inter,sans-serif;">${monthNames[remindersCalMonth]} ${remindersCalYear}</div>
                     <button id="remCalNext" aria-label="Next month" style="width:26px;height:26px;border-radius:50%;border:${c.rowBorder};background:transparent;color:${c.rowText};cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;"><i class="fas fa-chevron-right" style="font-size:0.65rem;"></i></button>
@@ -4868,7 +4873,13 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
                 <div style="display:flex;margin-bottom:4px;">${weekdayRow}</div>
                 <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">${calDayCells}</div>
             </div>
-            <button id="expdocAddReminder" style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:11px 0;margin-top:12px;border-radius:12px;border:none;background:linear-gradient(135deg,#f9a825,#ef7a0c);color:#fff;font-size:0.82rem;font-weight:700;font-family:Inter,sans-serif;cursor:pointer;box-shadow:0 6px 16px rgba(239,122,12,0.35);"><i class="fas fa-plus"></i> Add reminder</button>`;
+
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <div style="color:${c.title};font-weight:700;font-size:0.85rem;font-family:Inter,sans-serif;">${escapeHtml(selectedDayLabel)}</div>
+                <div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;">${dayReminders.length} reminder${dayReminders.length === 1 ? '' : 's'}</div>
+            </div>
+            <div id="remDayList">${dayListHtml}</div>
+            ${undatedHtml}`;
         titleHtml = `<i class="fas fa-list-check" style="color:#f59e0b;margin-right:6px;"></i>Reminders`;
         summaryHtml = reminders.length ? `<p style="color:${c.muted};font-size:0.8rem;margin:0 0 14px;font-family:Inter,sans-serif;">${reminders.length} total reminder${reminders.length === 1 ? '' : 's'}</p>` : '<div style="margin-bottom:10px;"></div>';
     } else {
