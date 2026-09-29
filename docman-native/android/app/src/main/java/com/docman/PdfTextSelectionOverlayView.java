@@ -73,6 +73,11 @@ public class PdfTextSelectionOverlayView extends View {
         // long-press still results in a selection instead of silently
         // doing nothing.
         void onPageTextNeeded(int pageIndex, float touchX, float touchY);
+
+        // Fired when a long-press found no text under the finger even after
+        // the page was (re)read -- e.g. a CAD drawing whose labels are lines,
+        // not text. Lets the viewer say why instead of doing nothing.
+        void onNoTextAt(int pageIndex);
     }
 
     private PDFView pdfView;
@@ -553,14 +558,41 @@ public class PdfTextSelectionOverlayView extends View {
         float refSize = Math.max(Math.max(a.height, b.height), 1f);
         if (Math.abs(a.y - b.y) > refSize * 0.5f) return true; // wrapped to a new line
         float gap = b.x - (a.x + a.width);
-        return gap > refSize * 0.5f; // disconnected run, no shared space glyph
+        // pdfium's boxes hug the ink, so a narrow glyph like "1" sits well
+        // inside its advance and left a gap past half the height: long-press
+        // on "117818" selected only "17818". Real word breaks come through
+        // as space characters (checked above); this only has to catch runs
+        // with no space glyph at all, such as separate table columns.
+        return gap > refSize; // disconnected run, no shared space glyph
     }
 
     // Exposed so PdfViewerActivity can re-run the same long-press once it's
     // finished lazily extracting a page that wasn't ready the first time
     // (see OnSelectionListener.onPageTextNeeded below).
     public void retrySelectionAt(float screenX, float screenY) {
-        startSelectionAt(screenX, screenY);
+        retryingSelection = true;
+        try {
+            startSelectionAt(screenX, screenY);
+        } finally {
+            retryingSelection = false;
+        }
+    }
+
+    private boolean retryingSelection = false;
+
+    // The nearest character can be anywhere on the page. On a drawing with
+    // only a title block as real text, a press on a label used to "select"
+    // that far-away title, off screen, so nothing seemed to happen.
+    private boolean isNearTouch(int page, int idx, float screenX, float screenY) {
+        RectF pageRect = pageScreenRect(page);
+        PdfViewerActivity.PageTextLayout layout = textLayouts.get(page);
+        if (pageRect == null || layout == null || idx < 0 || idx >= layout.chars.size()) return false;
+        RectF r = charScreenRect(pageRect, layout, layout.chars.get(idx));
+        if (r == null) return false;
+        float reach = Math.max(longPressCancelSlopPx * 2.5f, r.height() * 2f);
+        float dx = Math.max(0f, Math.max(r.left - screenX, screenX - r.right));
+        float dy = Math.max(0f, Math.max(r.top - screenY, screenY - r.bottom));
+        return dx * dx + dy * dy <= reach * reach;
     }
 
     private void startSelectionAt(float screenX, float screenY) {
@@ -577,7 +609,14 @@ public class PdfTextSelectionOverlayView extends View {
         }
 
         int hit = nearestCharIndex(page, screenX, screenY);
-        if (hit < 0) return;
+        if (hit < 0 || !isNearTouch(page, hit, screenX, screenY)) {
+            if (listener == null) return;
+            // First miss: let the viewer re-read the page (this is where OCR
+            // runs for a page whose text is drawn as lines), then retry once.
+            if (!retryingSelection) listener.onPageTextNeeded(page, screenX, screenY);
+            else listener.onNoTextAt(page);
+            return;
+        }
 
         List<PdfViewerActivity.CharBox> chars = textLayouts.get(page).chars;
         int start = hit, end = hit;

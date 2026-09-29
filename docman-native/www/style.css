@@ -8831,3 +8831,353 @@ body:not(.light-mode) .card.press-depth-3d {
         border-color: rgba(249, 115, 22, 0.9);
     }
 }
+
+/* Quick note -- a comment bubble pinned to the file row, the way a
+   spreadsheet shows one. No dimmed backdrop: the point is that the note
+   belongs to the row behind it, which stays visible. The catcher is an
+   invisible full-screen layer purely so a tap anywhere else closes it. */
+.qnote-catcher {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: transparent;
+}
+.qnote-bubble {
+    position: fixed;
+    width: 250px;
+    max-height: 42vh;
+    overflow-y: auto;
+    background: #fdf6d3;
+    border: 1px solid #d9c98a;
+    border-radius: 6px;
+    padding: 9px 11px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+    animation: qnotePop 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/* Grows out of the icon that was tapped -- transform-origin is set in JS to
+   the anchor's centre, so it opens from the note rather than from nowhere. */
+@keyframes qnotePop {
+    from { opacity: 0; transform: scale(0.86); }
+    to   { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .qnote-bubble { animation: none; } }
+.qnote-arrow {
+    position: absolute;
+    top: -6px;
+    width: 11px; height: 11px;
+    background: #fdf6d3;
+    border-left: 1px solid #d9c98a;
+    border-top: 1px solid #d9c98a;
+    transform: rotate(45deg);
+}
+/* Flipped above the row when there is no space below it. */
+.qnote-bubble.qnote-above .qnote-arrow {
+    top: auto;
+    bottom: -6px;
+    border-left: none; border-top: none;
+    border-right: 1px solid #d9c98a;
+    border-bottom: 1px solid #d9c98a;
+}
+.qnote-name {
+    color: #6b5b12;
+    font-size: 0.62rem;
+    font-weight: 700;
+    font-family: Inter, sans-serif;
+    margin-bottom: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.qnote-body {
+    color: #2f2a12;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    font-family: Inter, sans-serif;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.qnote-actions {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    margin-top: 9px;
+    padding-top: 7px;
+    border-top: 1px solid rgba(0, 0, 0, 0.12);
+}
+.qnote-act {
+    background: none;
+    border: none;
+    padding: 4px 0;
+    cursor: pointer;
+    color: #7a5c0a;
+    font-size: 0.7rem;
+    font-weight: 600;
+    font-family: Inter, sans-serif;
+    display: flex; align-items: center; gap: 4px;
+}
+.qnote-act i { font-size: 0.68rem; }
+.qnote-act-danger { color: #a33; }
+.qnote-act-close { margin-left: auto; color: #8a7c3f; font-weight: 500; }
+
+
+/* ============================================================
+   THEME SWITCH — CIRCULAR REVEAL
+   Only active while themeReveal() has .theme-vt on <html>. The default
+   View Transition cross-fades the two snapshots, which would wash the
+   colours out mid-switch; turning that off leaves the new theme sitting
+   over the old one, and JS clips it open from the tapped point.
+   ============================================================ */
+html.theme-vt::view-transition-old(root),
+html.theme-vt::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+}
+html.theme-vt::view-transition-old(root) { z-index: 0; }
+html.theme-vt::view-transition-new(root) { z-index: 1; }
+
+
+/* ============================================================
+   SLIDING TAB PILL
+   The active gradient moves to a floating pill so it can travel between
+   tabs instead of jumping. Only rows that moveTabGlider() has touched get
+   .has-glider, so every other tab row in the app is untouched.
+   ============================================================ */
+.has-glider { position: relative; }
+
+.tab-glider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    border-radius: 20px;
+    background: linear-gradient(135deg, #ff6b4a, #e91e8c);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3),
+                inset 0 -2px 5px rgba(0, 0, 0, 0.25),
+                0 3px 10px rgba(233, 30, 140, 0.45);
+    pointer-events: none;
+    z-index: 0;
+    /* overshoot slightly on arrival, the way a physical switch settles */
+    transition: transform 0.42s cubic-bezier(0.34, 1.4, 0.64, 1),
+                width 0.42s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* the buttons ride above the pill */
+.has-glider .subtab-btn { position: relative; z-index: 1; }
+
+/* the active button hands its background to the pill and keeps only its text */
+.has-glider .subtab-btn.active,
+body.light-mode .has-glider .subtab-btn.active {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    color: #fff !important;
+}
+
+/* honour the app's own animation switch and the system setting */
+body.reduce-motion .tab-glider { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+    .tab-glider { transition: none; }
+}
+
+
+/* ============================================================
+   LIST ROWS RISE IN
+   The same idiom the search results use (.search-stagger, srchRise), applied
+   to the two lists that appeared fully formed with no motion at all: the
+   Expiring rows, and the reminders for the day picked on the calendar. The
+   ladder is capped at the 8th row, so a long list still finishes in ~0.6s
+   instead of trickling in for several seconds.
+   ============================================================ */
+.stagger-rows > * {
+    animation: srchRise 0.44s cubic-bezier(0.18, 0.9, 0.3, 1) both;
+}
+.stagger-rows > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger-rows > *:nth-child(2) { animation-delay: 0.09s; }
+.stagger-rows > *:nth-child(3) { animation-delay: 0.16s; }
+.stagger-rows > *:nth-child(4) { animation-delay: 0.23s; }
+.stagger-rows > *:nth-child(5) { animation-delay: 0.30s; }
+.stagger-rows > *:nth-child(6) { animation-delay: 0.37s; }
+.stagger-rows > *:nth-child(7) { animation-delay: 0.44s; }
+.stagger-rows > *:nth-child(n+8) { animation-delay: 0.51s; }
+
+body.reduce-motion .stagger-rows > * { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+    .stagger-rows > * { animation: none; }
+}
+
+
+/* ============================================================
+   THE PILL ON THE EXPIRING / REMINDERS ROW
+   Same pill, this row's own colours: fully round tabs and the mango-to-pink
+   ramp rather than the Recent row's coral. The active tab is styled inline
+   from the panel template, so handing its fill to the pill takes !important.
+   ============================================================ */
+.expdoc-tab-row .tab-glider {
+    border-radius: 999px;
+    background: linear-gradient(135deg, #f97316, #ec4899);
+    box-shadow: 0 4px 12px rgba(236, 72, 153, 0.34);
+}
+
+/* all three buttons ride above the pill, the add-reminder one included */
+.expdoc-tab-row.has-glider > button { position: relative; z-index: 1; }
+
+.expdoc-tab-row.has-glider .expdoc-tab-active {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    color: #fff !important;
+}
+
+
+/* ============================================================
+   TEAR A ROW OFF
+   Borrowed from a desk calendar: the row hinges on its top edge, lifts, then
+   goes over and away. Used when a reminder is deleted. The record is already
+   saved as gone before this runs, so the animation is only the flourish.
+   ============================================================ */
+.tear-away {
+    transform-origin: top center;
+    pointer-events: none;
+    animation: rowTear 0.4s cubic-bezier(0.45, 0.05, 0.35, 1) both;
+}
+
+@keyframes rowTear {
+    0%   { transform: perspective(700px) rotateX(0deg); opacity: 1; }
+    30%  { transform: perspective(700px) rotateX(32deg) translateY(-4px); opacity: 1; }
+    100% { transform: perspective(700px) rotateX(150deg) translateY(-14px); opacity: 0; }
+}
+
+body.reduce-motion .tear-away { animation: none; opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+    .tear-away { animation: none; opacity: 0; }
+}
+
+
+/* A destroyed row tears off its top edge instead of sliding sideways. The
+   height still collapses underneath, so the rows below close the gap while
+   this one goes over. Restoring from the Recycle Bin keeps the slide. */
+.row-leaving.row-tear {
+    transform-origin: top center;
+    transform: perspective(700px) rotateX(155deg) translateY(-10px) !important;
+    transition:
+        transform 0.36s cubic-bezier(0.45, 0.05, 0.35, 1),
+        opacity 0.3s ease,
+        max-height 0.34s cubic-bezier(0.4, 0, 0.2, 1),
+        margin 0.34s cubic-bezier(0.4, 0, 0.2, 1),
+        padding 0.34s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+
+/* ============================================================
+   THE STORAGE BAR DRAWS ITSELF
+   Each segment grows from its own left edge, one after the next, so the split
+   reads as being measured out rather than appearing finished. scaleX rather
+   than width: the segments are sized in percentages inline, and scaling costs
+   no layout.
+   ============================================================ */
+.dash-bar2-draw > span {
+    transform-origin: left center;
+    animation: dashBarDraw 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.dash-bar2-draw > span:nth-child(1) { animation-delay: 0.05s; }
+.dash-bar2-draw > span:nth-child(2) { animation-delay: 0.13s; }
+.dash-bar2-draw > span:nth-child(3) { animation-delay: 0.21s; }
+.dash-bar2-draw > span:nth-child(n+4) { animation-delay: 0.29s; }
+
+@keyframes dashBarDraw {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+}
+
+body.reduce-motion .dash-bar2-draw > span { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+    .dash-bar2-draw > span { animation: none; }
+}
+
+
+/* ============================================================
+   ROWS LEAN TOWARD THE THUMB
+   setPressTilt() writes --rx/--ry from where the row was touched, so the card
+   tips toward the finger for the 150ms of the press instead of only shrinking.
+   Rows only: .dept-oval keeps the flat scale it has always had.
+   ============================================================ */
+.card.press-depth-3d {
+    transform: perspective(600px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) scale(0.96);
+}
+
+body.reduce-motion .card.press-depth-3d { transform: scale(0.96); }
+@media (prefers-reduced-motion: reduce) {
+    .card.press-depth-3d { transform: scale(0.96); }
+}
+
+
+/* Each department's usage bar grows from its left edge, one row after the
+   next -- the same draw-in as the storage split bar, which only appears when
+   there is more than one file type to split. Reuses dashBarDraw. */
+.dash-dep-draw .dash-dep-fill {
+    transform-origin: left center;
+    animation: dashBarDraw 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.dash-dep-draw .dash-dep-row:nth-child(1) .dash-dep-fill { animation-delay: 0.06s; }
+.dash-dep-draw .dash-dep-row:nth-child(2) .dash-dep-fill { animation-delay: 0.14s; }
+.dash-dep-draw .dash-dep-row:nth-child(3) .dash-dep-fill { animation-delay: 0.22s; }
+.dash-dep-draw .dash-dep-row:nth-child(4) .dash-dep-fill { animation-delay: 0.30s; }
+.dash-dep-draw .dash-dep-row:nth-child(n+5) .dash-dep-fill { animation-delay: 0.38s; }
+
+body.reduce-motion .dash-dep-draw .dash-dep-fill { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+    .dash-dep-draw .dash-dep-fill { animation: none; }
+}
+
+
+ }
+
+/* "PRO" badge beside the DOCMAN wordmark, shown only once Pro is bought
+   (body.docman-pro, set by updateProBadge() in app.js). Approved 2026-09-29. */
+.logo-pro { display: none; }
+body.docman-pro .logo-pro {
+    display: inline-block;
+    align-self: flex-start;
+    margin: 1px 0 0 5px;
+    padding: 2px 5px 1px;
+    border-radius: 5px;
+    font-size: 0.5rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    line-height: 1;
+    color: #1a0f02 !important;
+    -webkit-text-fill-color: #1a0f02 !important;
+    background: linear-gradient(135deg, #ffd27a, #f59e0b 55%, #e8720a) !important;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.45);
+}
+/* The wordmark is clipped to .header-title (see HEADER TEXT vs THE SYSTEM
+   FONT SIZE SETTING above), which cut the badge down to its "P". The badge
+   may use the space held clear of the gear instead: about 50px on the S23,
+   enough for it. On narrow screens the wordmark gives up a little size so
+   the badge still clears the gear. */
+body.docman-pro .header-title h1 {
+    overflow: visible !important;
+    text-overflow: clip !important;
+}
+@media (max-width: 380px) {
+    body.docman-pro .header-title h1 {
+        font-size: clamp(0.95rem, 6.2vw, 1.7rem) !important;
+    }
+    body.docman-pro .logo-pro {
+        font-size: 0.45rem;
+        letter-spacing: 0.8px;
+        margin-left: 4px;
+    }
+}
+/* Clear the few decorative dots sitting right behind the PRO badge
+   (approved 2026-09-29), leaving the rest of the grid. The badge sits over
+   the grid's top-left corner, so only that corner is masked out. */
+body.docman-pro .header-dots {
+    -webkit-mask-image: linear-gradient(#000, #000), linear-gradient(#000, #000);
+    -webkit-mask-size: 100% 100%, 40px 18px;
+    -webkit-mask-position: 0 0, 0 0;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-composite: xor;
+    mask-image: linear-gradient(#000, #000), linear-gradient(#000, #000);
+    mask-size: 100% 100%, 40px 18px;
+    mask-position: 0 0, 0 0;
+    mask-repeat: no-repeat;
+    mask-composite: exclude;
+}

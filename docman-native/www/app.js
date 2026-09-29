@@ -1799,34 +1799,70 @@ function showFileDetailModal(file, folderPath) {
 // File Detail for the common case of just wanting to (re-)read it.
 // Its own Edit button hands off to the same textarea prompt the
 // long-press menu's "Add Note" uses, so both paths stay in sync.
-function showNoteViewModal(file, folderPath) {
+function showNoteViewModal(file, folderPath, anchorEl) {
     const existing = document.getElementById('customNoteViewModal');
     if (existing) existing.remove();
 
+    // A comment bubble pinned to the row, the way a spreadsheet shows one --
+    // not a dialog in the middle of the screen. It used to be a tall card
+    // starting 12vh down with no transition, which read as a page rather than
+    // a note. Growing out of the icon that was tapped is what makes it feel
+    // attached to the file instead of to the app.
     const overlay = document.createElement('div');
     overlay.id = 'customNoteViewModal';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
+    overlay.className = 'qnote-catcher';
     overlay.innerHTML = `
-        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(56,189,248,0.3);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
-            <button id="noteViewCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
-            <p style="color:#94a3b8;font-size:0.72rem;font-weight:600;margin-bottom:8px;font-family:Inter,sans-serif;text-transform:uppercase;letter-spacing:0.04em;margin-right:26px;">Note · ${escapeHtml(file.name)}</p>
-            <div style="color:#ffffff;font-size:0.9rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;font-family:Inter,sans-serif;margin-bottom:22px;">${escapeHtml(file.note || '')}</div>
-            <div style="display:flex;gap:12px;justify-content:flex-end;">
-                <button id="noteViewEditBtn" style="padding:10px 22px;border-radius:40px;border:none;background:linear-gradient(135deg,#38bdf8,#0284c7);color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">Edit</button>
-                <button id="noteViewDeleteBtn" style="padding:10px 22px;border-radius:40px;border:none;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">Delete</button>
+        <div class="qnote-bubble" role="dialog" aria-label="Quick note">
+            <div class="qnote-arrow"></div>
+            <div class="qnote-name">${escapeHtml(file.name)}</div>
+            <div class="qnote-body">${escapeHtml(file.note || '')}</div>
+            <div class="qnote-actions">
+                <button id="noteViewEditBtn" class="qnote-act"><i class="fas fa-pen"></i>Edit</button>
+                <button id="noteViewDeleteBtn" class="qnote-act qnote-act-danger"><i class="fas fa-trash"></i>Delete</button>
+                <button id="noteViewCloseX" class="qnote-act qnote-act-close">Close</button>
             </div>
         </div>`;
     document.body.appendChild(overlay);
 
-    const close = () => overlay.remove();
+    // Placed after it is in the DOM, so the bubble has a real measured size.
+    // Below the anchor by default; above it when there is no room, and always
+    // clamped inside the screen -- an anchored popup that runs off the edge is
+    // the usual way this goes wrong.
+    const bubble = overlay.querySelector('.qnote-bubble');
+    const arrow = overlay.querySelector('.qnote-arrow');
+    const place = () => {
+        const M = 8;
+        const r = anchorEl && anchorEl.getBoundingClientRect
+            ? anchorEl.getBoundingClientRect()
+            : { left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 3, bottom: innerHeight / 3, width: 0, height: 0 };
+        const bw = bubble.offsetWidth, bh = bubble.offsetHeight;
+        let left = Math.min(Math.max(M, r.right - bw), innerWidth - bw - M);
+        let top = r.bottom + 10;
+        let above = false;
+        if (top + bh > innerHeight - M) {
+            const up = r.top - bh - 10;
+            if (up > M) { top = up; above = true; } else { top = Math.max(M, innerHeight - bh - M); }
+        }
+        bubble.style.left = left + 'px';
+        bubble.style.top = top + 'px';
+        bubble.classList.toggle('qnote-above', above);
+        // the pointer tracks the anchor's centre, clamped to the bubble's ends
+        const cx = r.left + r.width / 2;
+        arrow.style.left = Math.min(Math.max(14, cx - left - 6), bw - 26) + 'px';
+        bubble.style.transformOrigin = (cx - left) + 'px ' + (above ? bh + 'px' : '0px');
+    };
+    place();
+    window.addEventListener('resize', place);
+
+    const close = () => { window.removeEventListener('resize', place); overlay.remove(); };
     overlay.querySelector('#noteViewCloseX').onclick = close;
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     overlay.querySelector('#noteViewEditBtn').onclick = () => {
         close();
-        showTextareaPromptModal(`Note for "${file.name}":`, file.note || '', (val) => {
+        showTextareaPromptModal(`Quick note for "${file.name}":`, file.note || '', (val) => {
             if (val === null) return;
             setFileNote(folderPath, file.name, val.trim());
-        }, { icon: 'fa-note-sticky', subtitle: 'Add a quick note for this file', placeholder: 'Write your note...' });
+        }, { icon: 'fa-note-sticky', subtitle: 'A short note kept with this file', placeholder: 'Write your note...' });
     };
     overlay.querySelector('#noteViewDeleteBtn').onclick = () => {
         close();
@@ -3486,12 +3522,36 @@ function editReminderFlow(reminderId) {
     }, { icon: 'fa-bell', subtitle: 'Update the reminder title', placeholder: 'Reminder title' });
 }
 
+// Tear a row off the list, the way a day comes off a desk calendar: it hinges
+// on its top edge, lifts, and goes over. Resolves when the animation ends, or
+// after a hard cap, so a row that never fires animationend -- a hidden tab, a
+// WebView that drops the event -- can never leave the caller waiting. The
+// caller has already saved the change before this runs, so the worst case is
+// that the redraw happens without the flourish.
+function tearAwayRow(row) {
+    const still = document.body.classList.contains('reduce-motion')
+        || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!row || still) return Promise.resolve();
+    return new Promise((resolve) => {
+        let done = false;
+        const finish = () => { if (!done) { done = true; resolve(); } };
+        row.addEventListener('animationend', finish, { once: true });
+        setTimeout(finish, 600);
+        row.classList.add('tear-away');
+    });
+}
+
 function deleteReminder(reminderId) {
     showConfirmModal('Delete this reminder?', async (confirmed) => {
         if (!confirmed) return;
+        // Save first, animate second: the record is gone from storage before
+        // anything on screen moves, so an interrupted animation cannot leave a
+        // deleted reminder behind.
         reminders = reminders.filter(x => x.id !== reminderId);
         saveReminders();
         await cancelReminderNotification(reminderId);
+        const row = document.querySelector('.reminder-row[data-id="' + (window.CSS && CSS.escape ? CSS.escape(reminderId) : reminderId) + '"]');
+        await tearAwayRow(row);
         showExpiringDocumentsPanel('reminders', { rerender: true });
     });
 }
@@ -4258,9 +4318,13 @@ function guardFolderDeletion(pathArr, onAllowed) {
 
 function goBack() {
     if (currentPath.length && !isSearchMode) {
+        // Leaving the last folder after arriving from the Dashboard puts the
+        // Dashboard back up, rather than the home screen.
+        const backToDashboard = currentPath.length === 1 && returnToDashboard;
         navigateWithPageTurn(() => {
             currentPath.pop();
             render();
+            if (backToDashboard) openDashboardView();
         }, 'back');
     } else if (isSearchMode) {
         clearSearch();
@@ -4268,6 +4332,7 @@ function goBack() {
 }
 
 function goHome() {
+    returnToDashboard = false;
     if (currentPath.length === 0 && !isSearchMode) return;
     if (isSearchMode) { clearSearch(); return; }
     navigateWithPageTurn(() => {
@@ -4321,6 +4386,7 @@ let lastNavigationAt = 0;
 function navigateWithPageTurn(navigationFn, direction = 'forward') {
     lastNavigationAt = Date.now();
     const isForward = direction !== 'back';
+
     const appEl = document.querySelector('.app');
     if (!appEl) { navigationFn(); return; }
 
@@ -4526,18 +4592,42 @@ async function duplicateFileInFolder(folderPath, fileName) {
     const original = files.find(f => f.name === fileName);
     if (!original) return;
 
-    const blob = await loadFileData(folderPath, fileName);
-    if (!blob) { showToast('Could not read file to copy', true); return; }
-
     const newName = uniqueNameFor(fileName, files.map(f => f.name), 'copy');
-    const fsPath = await writeFileToFS(folderPath, newName, blob);
+    const Filesystem = getFilesystemPlugin();
+    let blob = null;
+    let fsPath = null;
+    let size = original.size || 0;
+
+    // A file already on native storage is copied natively, file to file.
+    // Reading it into a Blob first put the whole file (a 285 MB PDF) in
+    // WebView memory just to write the same bytes back out.
+    if (original.fsPath && Filesystem && isNativePlatform()) {
+        const to = fsPathFor(folderPath, newName);
+        showBusyOverlay('Copying…');
+        try {
+            await Filesystem.copy({ from: original.fsPath, directory: 'DATA', to, toDirectory: 'DATA' });
+            const st = await Filesystem.stat({ path: to, directory: 'DATA' });
+            size = Number(st.size) || size;
+            fsPath = to;
+        } catch (e) {
+            console.warn('Native duplicate failed, falling back to a read/write copy:', e);
+        } finally {
+            hideBusyOverlay();
+        }
+    }
+    if (!fsPath) {
+        blob = await loadFileData(folderPath, fileName);
+        if (!blob) { showToast('Could not read file to copy', true); return; }
+        fsPath = await writeFileToFS(folderPath, newName, blob);
+        size = blob.size;
+    }
     const base = {
         name: newName,
-        type: original.type || blob.type || 'application/octet-stream',
+        type: original.type || blob?.type || 'application/octet-stream',
         uploadedAt: Date.now(),
         favourite: original.favourite || false,
         locked: original.locked || false,
-        size: blob.size,
+        size,
         expiryDate: original.expiryDate || null,
         note: original.note || '',
         tags: original.tags ? [...original.tags] : []
@@ -4564,7 +4654,7 @@ function deleteFileFromFolder(folderPath, fileName, rowEl) {
                 // rowEl comes straight from the card that opened this menu, so the right
                 // row animates even when two files share a name. animateRowOut always
                 // resolves, so the delete can never be lost to a stalled transition.
-                await animateRowOut(rowEl);
+                await animateRowOut(rowEl, { tear: true });
                 await moveFileToRecycleBin(folderPath, fileName);
                 render();
                 updateStats();
@@ -4704,6 +4794,25 @@ async function moveFileToFolder(oldFolderPath, fileOrName, newFolderPath) {
 // (the same data source as the on-load "expiring soon" popup), just with
 // no threshold so every dated file shows, not only the next 7 days.
 // ============================================================
+// Which tab the panel was showing last time it drew. Unlike the Recent
+// subtabs, this whole panel is rebuilt on every switch, so the pill has no
+// previous position to travel from: it is put back where the old tab was,
+// then moved to the new one on the next frame. Cleared when the panel closes,
+// so reopening places the pill instead of sliding it in from a stale spot.
+let expdocLastTab = null;
+
+function applyExpdocGlider(overlay, activeTab) {
+    const row = overlay.querySelector('.expdoc-tab-row');
+    const active = overlay.querySelector('.expdoc-tab.expdoc-tab-active');
+    if (!row || !active) return;
+    const previous = (expdocLastTab && expdocLastTab !== activeTab)
+        ? overlay.querySelector('.expdoc-tab[data-tab="' + expdocLastTab + '"]')
+        : null;
+    if (previous) moveTabGlider(row, previous, false);
+    requestAnimationFrame(() => moveTabGlider(row, active, !!previous));
+    expdocLastTab = activeTab;
+}
+
 function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     haptic.press();
     const existing = document.getElementById('expiringDocsOverlay');
@@ -4750,9 +4859,9 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     const hasDueReminder = reminders.some(r => isReminderLiveUnseen(r, dueNow));
 
     const tabRowHtml = `
-        <div style="display:flex;gap:6px;margin:0 0 12px;">
-            <button class="expdoc-tab" data-tab="expiring" style="flex:1 1 0;min-width:0;text-align:center;padding:7px 0;border-radius:999px;font-size:0.7rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'expiring' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'expiring' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'expiring' ? '#fff' : c.tabInactiveText};">Expiring</button>
-            <button class="expdoc-tab${hasDueReminder ? ' expdoc-tab-due' : ''}" data-tab="reminders" style="flex:1 1 0;min-width:0;text-align:center;padding:7px 0;border-radius:999px;font-size:0.7rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'reminders' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'reminders' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'reminders' ? '#fff' : c.tabInactiveText};">Reminders</button>
+        <div class="expdoc-tab-row" style="display:flex;gap:6px;margin:0 0 12px;">
+            <button class="expdoc-tab${activeTab === 'expiring' ? ' expdoc-tab-active' : ''}" data-tab="expiring" style="flex:1 1 0;min-width:0;text-align:center;padding:7px 0;border-radius:999px;font-size:0.7rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'expiring' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'expiring' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'expiring' ? '#fff' : c.tabInactiveText};">Expiring</button>
+            <button class="expdoc-tab${hasDueReminder ? ' expdoc-tab-due' : ''}${activeTab === 'reminders' ? ' expdoc-tab-active' : ''}" data-tab="reminders" style="flex:1 1 0;min-width:0;text-align:center;padding:7px 0;border-radius:999px;font-size:0.7rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'reminders' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'reminders' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'reminders' ? '#fff' : c.tabInactiveText};">Reminders</button>
             <button id="expdocAddReminder" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:4px;padding:7px 11px;border-radius:999px;border:none;background:linear-gradient(135deg,#f9a825,#ef7a0c);color:#fff;font-size:0.7rem;font-weight:700;font-family:Inter,sans-serif;cursor:pointer;white-space:nowrap;box-shadow:0 5px 14px rgba(239,122,12,0.32);"><i class="fas fa-plus" style="font-size:0.65rem;"></i>Add reminder</button>
         </div>`;
 
@@ -4878,7 +4987,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
                 <div style="color:${c.title};font-weight:700;font-size:0.85rem;font-family:Inter,sans-serif;">${escapeHtml(selectedDayLabel)}</div>
                 <div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;">${dayReminders.length} reminder${dayReminders.length === 1 ? '' : 's'}</div>
             </div>
-            <div id="remDayList">${dayListHtml}</div>
+            <div id="remDayList" class="stagger-rows">${dayListHtml}</div>
             ${undatedHtml}`;
         titleHtml = `<i class="fas fa-list-check" style="color:#f59e0b;margin-right:6px;"></i>Reminders`;
         summaryHtml = reminders.length ? `<p style="color:${c.muted};font-size:0.8rem;margin:0 0 14px;font-family:Inter,sans-serif;">${reminders.length} total reminder${reminders.length === 1 ? '' : 's'}</p>` : '<div style="margin-bottom:10px;"></div>';
@@ -4924,9 +5033,10 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
             <p style="color:${c.title};font-size:0.98rem;font-weight:700;margin:0 0 4px;margin-right:26px;font-family:Inter,sans-serif;">${titleHtml}</p>
             ${summaryHtml}
             ${tabRowHtml}
-            <div id="expiringDocsList">${bodyHtml}</div>
+            <div id="expiringDocsList"${activeTab === 'expiring' ? ' class="stagger-rows"' : ''}>${bodyHtml}</div>
         </div>`;
     document.body.appendChild(overlay);
+    applyExpdocGlider(overlay, activeTab);
 
     // Only when the user actually opened the Reminders tab. This function is
     // also how the panel redraws itself after an add, edit, delete or a month
@@ -4937,7 +5047,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     // have seen what was behind another tab.
     if (!opts.rerender && activeTab === 'reminders') acknowledgeDueReminders();
 
-    const close = () => overlay.remove();
+    const close = () => { expdocLastTab = null; overlay.remove(); };
     overlay.querySelector('#expiringDocsCloseX').onclick = close;
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     overlay.querySelectorAll('.expdoc-tab').forEach(btn => {
@@ -5080,7 +5190,7 @@ async function renameNote(folderPath, noteId, newTitle) {
 
 async function deleteNoteFromFolder(folderPath, noteId, rowEl) {
     if (allNotes[folderPath]) {
-        await animateRowOut(rowEl);
+        await animateRowOut(rowEl, { tear: true });
         await moveNoteToRecycleBin(folderPath, noteId);
         render();
         updateStats();
@@ -5208,9 +5318,11 @@ function requirePinIfNoteLocked(folderPath, noteId) {
     });
 }
 
-async function openFileWithGesture(fileEntry, folderPath) {
-    if (!(await requirePinIfLocked(folderPath, fileEntry.name))) return;
-    trackRecentFile(fileEntry.name, folderPath);
+async function openFileWithGesture(fileEntry, folderPath, alreadyUnlocked) {
+    if (!alreadyUnlocked) {
+        if (!(await requirePinIfLocked(folderPath, fileEntry.name))) return;
+        trackRecentFile(fileEntry.name, folderPath);
+    }
 
     // Inside the Capacitor Android WebView, navigator.share() is unreliable —
     // on many WebView builds it either doesn't exist, or silently no-ops
@@ -5218,6 +5330,13 @@ async function openFileWithGesture(fileEntry, folderPath) {
     // plugin (Filesystem.writeFile + Share.share) is what actually works, so
     // on native platforms we go straight there and skip navigator.share().
     if (isNativePlatform()) {
+        // A stored file is shared straight from its path (nativeDownload's
+        // fsPath fast path); its bytes are only read here as a fallback.
+        const shareFsPath = fileEntry.fsPath || allFiles[folderPath]?.find(f => f.name === fileEntry.name)?.fsPath;
+        if (shareFsPath && !(fileEntry.fileData instanceof Blob)) {
+            await nativeDownload(null, fileEntry.name, shareFsPath, folderPath);
+            return;
+        }
         const fileData = fileEntry.fileData instanceof Blob
             ? fileEntry.fileData
             : await loadFileData(folderPath, fileEntry.name);
@@ -5273,13 +5392,25 @@ async function openFile(fileName, folderPath) {
     if (!(await requirePinIfLocked(folderPath, fileName))) return;
     trackRecentFile(fileName, folderPath);
 
+    const fileType = getFileType(fileName);
+
+    // A PDF already on native storage goes to the native viewer (or the
+    // external app) by path alone. Reading it into a Blob first held the
+    // whole file in WebView memory while the viewer was open: with a 285 MB
+    // PDF Android killed the WebView, and pressing back restarted the app.
+    if (fileType === 'pdf' && isNativePlatform()) {
+        const pdfMeta = allFiles[folderPath]?.find(f => f.name === fileName);
+        if (pdfMeta?.fsPath) {
+            await handlePdfFile(null, fileName, folderPath, pdfMeta.fsPath, pdfMeta.size);
+            return;
+        }
+    }
+
     const fileData = await loadFileData(folderPath, fileName);
     if (!fileData) {
         showToast('File not found or could not be loaded', true);
         return;
     }
-
-    const fileType = getFileType(fileName);
 
     if (fileType === 'image') {
         openImageViewer(fileData, fileName, folderPath);
@@ -7987,6 +8118,18 @@ async function bulkShare() {
     try {
         const uris = [];
         for (const f of shareable) {
+            // Stored files are shared from where they are: res/xml/file_paths.xml
+            // now exposes docs/, so no cache copy (and no whole-file read of a
+            // 285 MB PDF into WebView memory) is needed.
+            if (f.fsPath) {
+                try {
+                    const { uri } = await Filesystem.getUri({ path: f.fsPath, directory: 'DATA' });
+                    uris.push(uri);
+                    continue;
+                } catch (e) {
+                    console.warn('Bulk share: no native path for', f.name, e);
+                }
+            }
             const blob = await loadFileDataFor(currentPath.join('/'), f);
             if (!blob) continue;
             const cachePath = `share/${Date.now()}-${uris.length}-${sanitizePathSegment(f.name)}`;
@@ -8390,18 +8533,28 @@ function closeSheetViewer() {
 let isSharing = false;
 let shareTimeout = null;
 
-async function handlePdfFile(fileData, fileName, folderPath, fsPath) {
+// fileData may be null when the PDF is already on native storage (fsPath):
+// openFile() no longer reads a large PDF into WebView memory just to hand
+// its path to the native viewer (a 285 MB file there got the WebView killed
+// while the viewer was open, and back then restarted the app). knownSize
+// comes from the file's metadata in that case.
+async function handlePdfFile(fileData, fileName, folderPath, fsPath, knownSize) {
     const openMode = docmanSettings.pdfOpen || 'docman';
     const nativeViewerEligible = openMode === 'docman' && isNativePlatform() && isAndroid() && window.Capacitor?.Plugins?.PdfNative;
 
-    // Size threshold is checked BEFORE deciding native-vs-external -- it
-    // used to only run on the fallback path below, so the native viewer
-    // branch's early return meant "PDFs larger than this use External
-    // App" was silently never enforced on Android with the native viewer
-    // enabled (the default). The setting now applies uniformly.
-    const fileSizeMB = fileData.size / (1024 * 1024);
+    // "PDFs larger than this use External App" (Settings) applies to every
+    // PDF. The native viewer copes with any size, so someone who wants big
+    // files in DOCMAN raises the threshold (up to 500 MB).
+    let size = fileData ? fileData.size : (knownSize || 0);
+    if (!size && fsPath) {
+        try {
+            const st = await getFilesystemPlugin()?.stat({ path: fsPath, directory: 'DATA' });
+            size = Number(st?.size) || 0;
+        } catch (e) { /* unknown size: treat as under the threshold */ }
+    }
+    const fileSizeMB = size / (1024 * 1024);
     const thresholdBytes = (docmanSettings.pdfThreshold || 50) * 1024 * 1024;
-    const overThreshold = fileData.size >= thresholdBytes;
+    const overThreshold = size >= thresholdBytes;
 
     // NATIVE ANDROID: hand off to the native PdfiumAndroid viewer. Renders
     // outside the WebView — smooth zoom, no lag, no WASM memory ceiling.
@@ -8424,12 +8577,49 @@ function isAndroid() {
     return /android/i.test(navigator.userAgent);
 }
 
+// "Open with" another app for a file already on native storage: a real
+// ACTION_VIEW with a FileProvider content URI and a read grant (see
+// PdfNativePlugin.openExternal). Returns false when that isn't possible here,
+// so the caller can fall back to the share sheet.
+async function openExternallyNative(fsPath, fileName) {
+    const PdfNative = window.Capacitor?.Plugins?.PdfNative;
+    const Filesystem = getFilesystemPlugin();
+    if (!fsPath || !PdfNative?.openExternal || !Filesystem || !isAndroid()) return false;
+    try {
+        const { uri } = await Filesystem.getUri({ path: fsPath, directory: 'DATA' });
+        const mimeType = getFileType(fileName) === 'pdf' ? 'application/pdf' : '*/*';
+        expectNativeReturn();
+        await PdfNative.openExternal({ path: uri, mimeType });
+        return true;
+    } catch (e) {
+        if (e?.code === 'NO_APP') {
+            showToast('No app on this phone can open this file', true);
+            return true;
+        }
+        console.warn('Open with another app failed, falling back to share:', e);
+        return false;
+    }
+}
+
+// External-app mode tap on a PDF row (Settings > PDF Open > External App).
+async function openPdfInExternalApp(fileEntry, folderPath) {
+    if (!(await requirePinIfLocked(folderPath, fileEntry.name))) return;
+    trackRecentFile(fileEntry.name, folderPath);
+    const meta = allFiles[folderPath]?.find(f => f.name === fileEntry.name);
+    const fsPath = fileEntry.fsPath || meta?.fsPath;
+    if (isNativePlatform() && await openExternallyNative(fsPath, fileEntry.name)) return;
+    await openFileWithGesture(fileEntry, folderPath, true);
+}
+
 async function sharePdfExternally(fileData, fileName, fsPath) {
     // On native (Capacitor) Android, the WebView's navigator.share() is
     // unreliable — it can silently no-op instead of throwing. The native
     // Capacitor Share plugin reliably triggers the OS chooser, so use that
     // directly whenever we're actually running as a native app.
     if (isNativePlatform()) {
+        if (await openExternallyNative(fsPath, fileName)) return;
+        if (!fileData && fsPath) fileData = await readBlobFromFS(fsPath);
+        if (!fileData) { showToast('File not found or could not be loaded', true); return; }
         await nativeDownload(fileData, fileName, fsPath);
         return;
     }
@@ -8537,7 +8727,9 @@ function blobChunkToBase64(chunk) {
     });
 }
 
-async function nativeDownload(blob, fileName, fsPath) {
+// blob may be null when fsPath is given; it is then read only if sharing
+// straight from the path fails.
+async function nativeDownload(blob, fileName, fsPath, folderPath) {
     const Filesystem = window.Capacitor?.Plugins?.Filesystem;
     const Share = window.Capacitor?.Plugins?.Share;
 
@@ -8558,8 +8750,15 @@ async function nativeDownload(blob, fileName, fsPath) {
                     await Share.share({ title: fileName, url: uri });
                     return;
                 } catch (e) {
+                    // Closing the share sheet rejects too. That is not a
+                    // failure: copying the file and reopening the sheet
+                    // would be.
+                    if (/cancel/i.test(String(e?.message || e))) return;
                     console.warn('fsPath share fast path failed, falling back to chunked copy:', e);
                 }
+                if (!blob) blob = await readBlobFromFS(fsPath);
+                if (!blob && folderPath !== undefined) blob = await loadFileData(folderPath, fileName);
+                if (!blob) { showToast('File not found or could not be loaded', true); return; }
             }
             // Written in bounded-size chunks rather than one base64 encode
             // of the WHOLE file -- the Capacitor JS<->native bridge JSON-
@@ -8589,11 +8788,13 @@ async function nativeDownload(blob, fileName, fsPath) {
             await Share.share({ title: fileName, url: result.uri });
             return;
         } catch (e) {
+            if (/cancel/i.test(String(e?.message || e))) return;
             console.warn('Capacitor download failed, falling back:', e);
         }
     }
 
     // PWA / browser fallback
+    if (!blob) { showToast('Could not share this file', true); return; }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -8866,7 +9067,7 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onMove, onDelete, 
         ${onAddNote ? `
         <div class="ctx-menu-item" id="ctxAddNote">
             <i class="fas fa-note-sticky ctx-item-icon ctx-icon-note"></i>
-            <span class="ctx-menu-item-label">Add Note</span>
+            <span class="ctx-menu-item-label">Quick note</span>
         </div>` : ''}
         ${onEditTags ? `
         <div class="ctx-menu-item" id="ctxEditTags">
@@ -9100,7 +9301,7 @@ function createFileCard(file, folderPath, opts = {}) {
             noteBtn.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
             noteBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                setTimeout(() => showNoteViewModal(file, folderPath), 260);
+                setTimeout(() => showNoteViewModal(file, folderPath, noteBtn), 260);
             });
         }
     }
@@ -9187,7 +9388,7 @@ function createFileCard(file, folderPath, opts = {}) {
                 onConvertToPdf: getFileType(file.name) === 'image' ? () => imgConvertSingleFileToPdf(folderPath, file.name) : null,
                 onAddToPdf: getFileType(file.name) === 'image' ? () => imgAddToPdfQueue(folderPath, file.name) : null,
                 onMergePdfs: getFileType(file.name) === 'pdf' ? () => startPdfMergeSelection(folderPath, file) : null,
-                onAddNote: () => showTextareaPromptModal(`Note for "${file.name}":`, file.note || '', (val) => {
+                onAddNote: () => showTextareaPromptModal(`Quick note for "${file.name}":`, file.note || '', (val) => {
                     if (val === null) return; // cancelled
                     setFileNote(folderPath, file.name, val.trim());
                 }, { icon: 'fa-note-sticky', subtitle: 'Add a quick note for this file', placeholder: 'Write your note...' }),
@@ -9267,7 +9468,7 @@ function createFileCard(file, folderPath, opts = {}) {
         if (!longPressTriggered && !isScrolling && Date.now() - touchStartTime < 300) {
             tappedByTouch = true;
             if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'docman') === 'external') {
-                openFileWithGesture(file, folderPath);
+                openPdfInExternalApp(file, folderPath);
             } else {
                 openFile(file.name, folderPath);
             }
@@ -9299,7 +9500,7 @@ function createFileCard(file, folderPath, opts = {}) {
         // without blocking a genuine, deliberate fast tap afterward.
         if (Date.now() - lastNavigationAt < 400) return;
         if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'docman') === 'external') {
-            openFileWithGesture(file, folderPath);
+            openPdfInExternalApp(file, folderPath);
         } else {
             openFile(file.name, folderPath);
         }
@@ -10061,6 +10262,7 @@ let devProOverride = false;   // see the dev-build block below
         if (info && typeof info.id === 'string' && info.id.endsWith('.dev')) {
             devProOverride = true;
             entitlement.purchased = true;
+            updateProBadge();
             console.warn('DOCMAN dev build: Pro unlocked for testing');
         }
     } catch (e) {
@@ -10158,6 +10360,13 @@ async function refreshPurchasedState() {
     } catch (e) {
         // leave entitlement.purchased as-is
     }
+    updateProBadge();
+}
+
+// "PRO" beside the DOCMAN wordmark once Pro is bought (approved 2026-09-29).
+// Follows entitlement.purchased, so a refund removes it on the next check.
+function updateProBadge() {
+    document.body.classList.toggle('docman-pro', !!entitlement.purchased);
 }
 
 // Required by Play, and the thing that prevents "I paid and lost it" support
@@ -10366,6 +10575,7 @@ async function buyPro() {
 
 function onProUnlocked(message) {
     entitlement.purchased = true;
+    updateProBadge();
     closePaywall();
     refreshSettingsListSubtitles();
     render();
@@ -12267,11 +12477,73 @@ function buildRecentRow({ icon, iconClass, name, folderPath, meta, onClick }) {
     return row;
 }
 
+// Slide a pill to the tab that was picked, instead of the colour jumping from
+// one button to the next. The pill carries the active gradient and the active
+// button goes transparent underneath it (see .has-glider in style.css), so the
+// look is unchanged once it settles -- only the way it gets there is new.
+// Measured from the live layout rather than assumed widths, because the tab
+// labels differ in length and the row scrolls sideways on a narrow screen.
+function moveTabGlider(row, activeBtn, animate) {
+    if (!row || !activeBtn) return;
+    // A hidden row measures zero; wait for the frame where it has been laid out.
+    if (!activeBtn.offsetWidth) {
+        requestAnimationFrame(() => moveTabGlider(row, activeBtn, false));
+        return;
+    }
+    let glider = row.querySelector(':scope > .tab-glider');
+    if (!glider) {
+        glider = document.createElement('span');
+        glider.className = 'tab-glider';
+        row.insertBefore(glider, row.firstChild);
+        row.classList.add('has-glider');
+        animate = false;            // first placement should not fly in from 0
+    }
+    // Measure against the row's own box instead of offsetLeft. The pill is
+    // absolutely positioned inside the scrolling row, so it travels with the
+    // content and its origin is the row's content start -- while offsetLeft is
+    // relative to whichever ancestor the browser treats as the offset parent.
+    // The two disagreed by a fixed amount, which put the pill between tabs as
+    // soon as the row was scrolled sideways.
+    const rowBox = row.getBoundingClientRect();
+    const btnBox = activeBtn.getBoundingClientRect();
+    glider.style.transition = animate ? '' : 'none';
+    glider.style.width = btnBox.width + 'px';
+    glider.style.height = btnBox.height + 'px';
+    glider.style.top = (btnBox.top - rowBox.top) + 'px';
+    glider.style.transform = 'translateX(' + (btnBox.left - rowBox.left + row.scrollLeft) + 'px)';
+    if (!animate) {
+        void glider.offsetWidth;    // commit the jump before transitions resume
+        glider.style.transition = '';
+    }
+    scrollTabIntoView(row, activeBtn);
+}
+
+// Bring the picked tab fully into the row. The last tab sat half off the right
+// edge with nothing to scroll it in, so picking it left it unreadable.
+function scrollTabIntoView(row, btn) {
+    if (row.scrollWidth <= row.clientWidth) return;
+    const edge = 14;                        // breathing room, not flush to the edge
+    const rowBox = row.getBoundingClientRect();
+    const btnBox = btn.getBoundingClientRect();
+    const start = btnBox.left - rowBox.left + row.scrollLeft;
+    const end = start + btnBox.width;
+    const still = document.body.classList.contains('reduce-motion')
+        || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const behavior = still ? 'auto' : 'smooth';
+    if (end + edge > row.scrollLeft + row.clientWidth) {
+        row.scrollTo({ left: end + edge - row.clientWidth, behavior: behavior });
+    } else if (start - edge < row.scrollLeft) {
+        row.scrollTo({ left: Math.max(0, start - edge), behavior: behavior });
+    }
+}
+
 async function renderRecentsTab(tab) {
     currentRecentsTab = tab;
+    const subtabRow = document.getElementById('recentsSubtabRow');
     document.querySelectorAll('#recentsSubtabRow .subtab-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.recentsTab === tab);
     });
+    moveTabGlider(subtabRow, subtabRow ? subtabRow.querySelector('.subtab-btn.active') : null, true);
 
     const list = document.getElementById('recentsViewList');
     list.innerHTML = '<div class="fav-empty"><i class="fas fa-spinner fa-spin"></i></div>';
@@ -12525,8 +12797,12 @@ function renderDashboardView() {
                 </div>
                 <div class="dash-hero2-counts">${fileCount} file${fileCount === 1 ? '' : 's'}<br>${folderCount} folder${folderCount === 1 ? '' : 's'}</div>
             </div>
-            ${shownBuckets.length > 1 ? `
-            <div class="dash-bar2">
+            ${shownBuckets.length ? `
+            <!-- Drawn for a single file type too: with one bucket it is a
+                 full-width bar in that type's colour. The legend below still
+                 drops to its solo form, since a percentage split needs
+                 something to split against. -->
+            <div class="dash-bar2 dash-bar2-draw">
                 ${shownBuckets.map(b => `<span style="width:${(b.bytes / totalBytes) * 100}%;background:var(--dash-${b.id});"></span>`).join('')}
             </div>` : ''}
             ${!shownBuckets.length
@@ -12587,7 +12863,7 @@ function renderDashboardView() {
             <div class="dash-sec-t">BY DEPARTMENT</div>
             <div class="dash-pill" id="dashManageDepts">Manage <i class="fas fa-chevron-right"></i></div>
         </div>
-        <div class="dash-depts">
+        <div class="dash-depts dash-dep-draw">
             ${deptSizes.length ? deptSizes.map(({ dept, bytes }) => {
                 const [h, h2] = dashDeptHue(dept);
                 return `<div class="dash-dep dash-dep-row" data-dept="${escapeHtml(dept)}" style="--h:${h};--h2:${h2}">
@@ -12604,7 +12880,10 @@ function renderDashboardView() {
     `;
 
     const backupRow = body.querySelector('#dashBackupRow');
-    if (backupRow) backupRow.onclick = () => { closeDashboardView(); exportBackupData(); };
+    // Leaves the Dashboard standing: the backup dialog is a z-index 9999
+    // overlay, so it covers the Dashboard and closing it returns here rather
+    // than dropping the user on the home screen.
+    if (backupRow) backupRow.onclick = () => { exportBackupData(); };
 
     const manageBtn = body.querySelector('#dashManageDepts');
     if (manageBtn) manageBtn.onclick = () => { closeDashboardView(); openSettingsPage(); showSettingsScreen('settingsPanel-departments'); };
@@ -12612,6 +12891,7 @@ function renderDashboardView() {
     body.querySelectorAll('.dash-dep-row').forEach(row => {
         row.onclick = () => {
             closeDashboardView();
+            returnToDashboard = true;
             currentPath = [row.dataset.dept];
             render();
         };
@@ -12623,7 +12903,9 @@ function renderDashboardView() {
             const folderPath = largestRow.dataset.folder;
             const fileName = largestRow.dataset.file;
             const file = allFiles[folderPath]?.find(f => f.name === fileName);
-            if (file) { closeDashboardView(); openFile(fileName, folderPath); }
+            // Deliberately does NOT close the Dashboard: the viewer opens on
+            // top of it, so closing the document returns here.
+            if (file) openFile(fileName, folderPath);
         };
     }
 
@@ -12632,7 +12914,7 @@ function renderDashboardView() {
             const folderPath = row.dataset.folder;
             const fileName = row.dataset.file;
             const file = allFiles[folderPath]?.find(f => f.name === fileName);
-            if (file) { closeDashboardView(); openFile(fileName, folderPath); }
+            if (file) openFile(fileName, folderPath);
         };
     });
 }
@@ -12672,7 +12954,13 @@ function openDashboardView(focusExpiring) {
     backBtn.onclick = backAction;
 }
 
+// Set when a Dashboard row navigated away to a folder, so coming back out of
+// that folder reopens the Dashboard instead of landing on the home screen.
+// Cleared by closing the Dashboard itself, and by going home on purpose.
+let returnToDashboard = false;
+
 function closeDashboardView() {
+    returnToDashboard = false;
     const view = document.getElementById('dashboardView');
     view.classList.remove('fav-view-visible');
     updateDeptAddFabVisibility();
@@ -12721,7 +13009,7 @@ function renderRecycleBinList() {
             showConfirmModal(`Permanently delete <b>"${escapeHtml(item.name)}"</b>?<br><span style="opacity:.75;font-size:0.82rem">This cannot be undone.</span>`, async (confirmed) => {
                 if (!confirmed) return;
                 haptic.warning();
-                await animateRowOut(row);
+                await animateRowOut(row, { tear: true });
                 await permanentlyDeleteRecycleBinItem(item.id);
                 renderRecycleBinList();
             });
@@ -12813,12 +13101,53 @@ function setActiveTab(tab) {
 // THEME
 // ============================================================
 
-function toggleTheme() {
+// Switch the theme with a circle of the new colours opening out from the point
+// that was tapped, instead of the whole screen flipping at once. The browser
+// snapshots the old and new pages; we stop it cross-fading them and clip the
+// new one open ourselves, because only JS knows the radius needed to reach the
+// furthest corner from an arbitrary point. Falls back to the plain switch where
+// View Transitions are unavailable or less motion was asked for. applyTheme()
+// itself is untouched, so the call at start-up still paints with no animation.
+function themeReveal(apply, ev) {
+    const reduced = document.body.classList.contains('reduce-motion')
+        || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced || !document.startViewTransition) {
+        apply();
+        return;
+    }
+
+    const btn = document.getElementById('themeToggle');
+    const box = btn ? btn.getBoundingClientRect() : null;
+    const hasPoint = ev && (ev.clientX || ev.clientY);
+    const x = hasPoint ? ev.clientX : (box ? box.left + box.width / 2 : window.innerWidth - 40);
+    const y = hasPoint ? ev.clientY : (box ? box.top + box.height / 2 : 40);
+    const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+
+    const root = document.documentElement;
+    root.classList.add('theme-vt');
+    let vt;
+    try {
+        vt = document.startViewTransition(apply);
+    } catch (e) {
+        root.classList.remove('theme-vt');
+        apply();
+        return;
+    }
+    vt.ready.then(() => {
+        root.animate(
+            { clipPath: ['circle(0px at ' + x + 'px ' + y + 'px)', 'circle(' + radius + 'px at ' + x + 'px ' + y + 'px)'] },
+            { duration: 620, easing: 'cubic-bezier(.2, .8, .2, 1)', pseudoElement: '::view-transition-new(root)' }
+        );
+    }).catch(() => {});
+    vt.finished.finally(() => root.classList.remove('theme-vt'));
+}
+
+function toggleTheme(ev) {
     const isLight = document.body.classList.contains('light-mode');
     const newTheme = isLight ? 'dark' : 'light';
     docmanSettings.theme = newTheme;
     saveSettings();
-    applyTheme(newTheme);
+    themeReveal(() => applyTheme(newTheme), ev);
 }
 
 function updateThemeIcon() {
@@ -15106,20 +15435,20 @@ function initSettingsPage() {
     });
 
     // Appearance
-    document.getElementById('themePickDark').onclick = () => {
+    document.getElementById('themePickDark').onclick = (ev) => {
         docmanSettings.theme = 'dark';
         saveSettings();
-        applyTheme('dark');
+        themeReveal(() => applyTheme('dark'), ev);
     };
-    document.getElementById('themePickLight').onclick = () => {
+    document.getElementById('themePickLight').onclick = (ev) => {
         docmanSettings.theme = 'light';
         saveSettings();
-        applyTheme('light');
+        themeReveal(() => applyTheme('light'), ev);
     };
-    document.getElementById('themePickSystem').onclick = () => {
+    document.getElementById('themePickSystem').onclick = (ev) => {
         docmanSettings.theme = 'system';
         saveSettings();
-        applyTheme('system');
+        themeReveal(() => applyTheme('system'), ev);
     };
 
     const enableAnimToggle = document.getElementById('enableAnimationsToggle');
@@ -15371,9 +15700,11 @@ function initSettingsPage() {
     importFileInput.onchange = (e) => {
         if (e.target.files[0]) {
             // Android has already finished copying the file out of Drive by
-            // the time this fires; the card below covers that silent wait.
-            pendingFilePick = false;
-            clearTimeout(pendingFilePickTimer);
+            // the time this fires. Take the download card down now: left up
+            // (it used to be), it sat at "100%" on top of the backup's
+            // password prompt, so the restore looked frozen while the
+            // keyboard waited for a password nobody could see.
+            finishFilePick();
             importBackupData(e.target.files[0]);
             e.target.value = '';
         }
@@ -15556,9 +15887,33 @@ function armTapHaptic(el, startEvent) {
     el.addEventListener('touchcancel', done, { passive: true });
 }
 
+// Lean a row toward the thumb while it is pressed, so the card reacts to
+// WHERE it was touched rather than just shrinking. File, folder and note rows
+// only -- departments keep their flat press. This rides the existing press
+// path, which already waits for a confirmed tap: no new touch handlers, since
+// binding on touchstart is what caused the scroll-vibration bug.
+// A press with no coordinates (keyboard, a synthetic click) just leaves the
+// angles unset and the card scales as before.
+function setPressTilt(element, event) {
+    if (!element.classList.contains('card') || element.classList.contains('dept-oval')) return;
+    const point = (event && event.touches && event.touches[0]) || event;
+    if (!point || typeof point.clientX !== 'number') return;
+    const box = element.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    const px = (point.clientX - box.left) / box.width - 0.5;    // -0.5 .. 0.5
+    const py = (point.clientY - box.top) / box.height - 0.5;
+    // px/py only ever reach +/-0.5 (the edge of the card), so these
+    // multipliers are halved in practice: 28 and 20 give about 10 and 7
+    // degrees at the very edge. Measured 4 degrees first and it was as
+    // invisible on the phone as the 10px rise was.
+    element.style.setProperty('--rx', (-py * 20).toFixed(2) + 'deg');
+    element.style.setProperty('--ry', (px * 28).toFixed(2) + 'deg');
+}
+
 function addDepthEffect(element, event, withHaptic = true) {
     if (!element || element.hasAttribute('data-press-animating')) return;
     element.setAttribute('data-press-animating', 'true');
+    setPressTilt(element, event);
     // This class was only ever REMOVED here and had no CSS at all, so the press
     // animation never actually ran -- the haptic was the whole effect. Adding
     // it (and the rule in style.css) is animation 1.
@@ -15566,6 +15921,8 @@ function addDepthEffect(element, event, withHaptic = true) {
     if (withHaptic) haptic.press();
     setTimeout(() => {
         element.classList.remove('press-depth-3d');
+        element.style.removeProperty('--rx');
+        element.style.removeProperty('--ry');
         element.removeAttribute('data-press-animating');
     }, 150);
 }
@@ -17212,7 +17569,10 @@ document.addEventListener('DOMContentLoaded', async () => {
    fires. The caller awaits this before deleting data, so a promise that
    never settles would mean the delete never happens. The 420ms timeout is
    the backstop for that: it is longer than the 340ms transition. */
-function animateRowOut(row) {
+// opts.tear swaps the slide-away for a tear off the top edge, used where the
+// row is being destroyed. Restoring from the Recycle Bin deliberately keeps
+// the slide: the item is coming back, so tearing it off would say the opposite.
+function animateRowOut(row, opts = {}) {
     return new Promise(resolve => {
         if (!row || !row.isConnected) return resolve();
         let settled = false;
@@ -17222,6 +17582,7 @@ function animateRowOut(row) {
             row.style.maxHeight = row.offsetHeight + 'px';
             void row.offsetHeight;          // flush, so the class change has a real value to animate FROM
             row.classList.add('row-leaving');
+            if (opts.tear) row.classList.add('row-tear');
             row.addEventListener('transitionend', e => {
                 if (e.target === row && (e.propertyName === 'max-height' || e.propertyName === 'transform')) finish();
             });

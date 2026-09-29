@@ -12,4 +12,9 @@
          Without this, Share failed and Drive said "request contained no
          data". -->
     <external-path name="documents" path="Documents/" />
+    <!-- "Open with" another app (PdfNativePlugin.openExternal) hands over a
+         content:// URI to the stored file itself, with a one-time read
+         grant, so a 285 MB PDF is not copied first. Only docs/ is exposed,
+         and the provider is not exported. -->
+    <files-path name="docs" path="docs/" />
 </paths>

@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/sacramento/sacramento.css">
-<link rel="stylesheet" href="style.css?v=455">
+<link rel="stylesheet" href="style.css?v=477">
 
 </head>
 <body>
@@ -367,7 +367,7 @@ border: 1px solid rgba(255,255,255,0.2);
 <div class="logo" id="appLogoBtn" role="button" tabindex="0" aria-label="Expiring documents"><div class="logo-inner"><div class="logo-tray-icon"></div></div></div>
 
     <div class="header-title">
-      <h1><span class="logo-doc">DOC</span><span class="logo-man">MAN</span></h1>
+      <h1><span class="logo-doc">DOC</span><span class="logo-man">MAN</span><span class="logo-pro" aria-label="Pro">PRO</span></h1>
       <span class="doc-tag">Document Manager</span>
     </div>
     <div class="header-dots"></div>
@@ -1430,13 +1430,18 @@ border: 1px solid rgba(255,255,255,0.2);
   </div>
 
   <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🗒️</div>
+    <div class="dept-info-help-text"><b>Quick Note on a File</b> &mdash; Tap <b>&#8943;</b> on any file and choose <b>Quick note</b> to pin a short note to that document &mdash; a reference number, who sent it, what still needs doing. The row then shows a note icon: tap it and the note opens as a small bubble beside the file, the way a comment pops up in a spreadsheet, with <b>Edit</b>, <b>Delete</b> and <b>Close</b> inside it. No full page and no leaving the folder.</div>
+  </div>
+
+  <div class="dept-info-help-row">
     <div class="dept-info-help-icon">📆</div>
     <div class="dept-info-help-text"><b>Expiry Dates &amp; Alerts</b> &mdash; Tap <b>&#8943;</b> on a file and set an <b>Expiry date</b> for anything that runs out: passport, licence, insurance. Your phone then alerts you even when DOCMAN is closed &mdash; <b>7 days before</b> and <b>3 days before</b> at 9am, and on the day itself <b>every 30 minutes from 7am</b> until you tap <b>Got it</b>. It stops at 9pm, so it never wakes you at night, and if the document still isn&rsquo;t renewed you get one reminder a day for a week. <b>Renew date</b> sets a new date and starts the cycle again. The <b>Expiring</b> list shows this month plus anything already overdue, so it stays about what needs doing now rather than everything with a date on it.</div>
   </div>
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">⏰</div>
-    <div class="dept-info-help-text"><b>Reminders</b> &mdash; Tap the DOCMAN logo at the top for <b>Expiring</b> and <b>Reminders</b>. Add one with a title, due date and time. When it falls due your phone alerts you with sound and vibration, and keeps reminding you <b>every 30 minutes for 3 hours</b> until you tap <b>Got it</b> &mdash; so a missed notification isn&rsquo;t the end of it. In the panel the reminders sit at the top with the calendar below, and anything overdue pulses, including the <b>Reminders</b> tab itself so you can see it from the Expiring side. Once you&rsquo;ve opened the list, DOCMAN stops raising it at start-up; the reminder stays until you delete it.</div>
+    <div class="dept-info-help-text"><b>Reminders</b> &mdash; Tap the DOCMAN logo at the top for <b>Expiring</b> and <b>Reminders</b>. Add one with a title, due date and time. When it falls due your phone alerts you with sound and vibration, and keeps reminding you <b>every 30 minutes for 3 hours</b> until you tap <b>Got it</b> &mdash; so a missed notification isn&rsquo;t the end of it. <b>Expiring</b>, <b>Reminders</b> and <b>+ Add reminder</b> sit together on one row at the top. The month calendar is above the list &mdash; tap any day to see just that day&rsquo;s reminders, and dated days carry a dot &mdash; and anything overdue pulses, including the <b>Reminders</b> tab itself, so you can see it from the Expiring side. When something needs you, DOCMAN opens <b>one</b> popup at start-up covering expiring documents and due reminders together, and <b>View</b> takes you straight to the list. Once you&rsquo;ve seen it, DOCMAN stops raising that reminder at start-up; the reminder itself stays until you delete it, and a newly added one still announces itself.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1579,7 +1584,7 @@ border: 1px solid rgba(255,255,255,0.2);
     '</div>';
 })();
 </script>
-<script src="app.js?v=437"></script>
+<script src="app.js?v=461"></script>
 
 
 <script>

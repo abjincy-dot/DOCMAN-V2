@@ -149,7 +149,7 @@ public class PdfViewerActivity extends AppCompatActivity {
     // text selection on scanned pages keeps working until the viewer closes.
     private volatile boolean ocrUnlockedThisVisit = false;
     private String docId = "";
-    private int lastKnownPage = 0;
+    private volatile int lastKnownPage = 0;
     private int lastKnownPageCount = 0;
     static final String PROGRESS_PREFS = PdfNativePlugin.PROGRESS_PREFS;
 
@@ -364,7 +364,9 @@ public class PdfViewerActivity extends AppCompatActivity {
                 // while on a large file -- once that's done every page is
                 // fast, so there's nothing more to warn about even if this
                 // particular page still needs its own (quick) extraction.
-                if (textLayoutDoc == null && !shownPreparingLargeDocToast) {
+                boolean pageNotRead = pageTextLayoutCache == null || pageIndex < 0
+                        || pageIndex >= pageTextLayoutCache.size() || pageTextLayoutCache.get(pageIndex) == null;
+                if (pageNotRead && textLayoutDoc == null && !isTooLargeForPdfBox() && !shownPreparingLargeDocToast) {
                     shownPreparingLargeDocToast = true;
                     showNotice(NOTICE_INFO, "Preparing text selection", "Large files can take 10–15 seconds the first time");
                 }
@@ -374,6 +376,21 @@ public class PdfViewerActivity extends AppCompatActivity {
                         textSelectionOverlay.retrySelectionAt(touchX, touchY);
                     }
                 });
+            }
+
+            @Override
+            public void onNoTextAt(int pageIndex) {
+                long now = System.currentTimeMillis();
+                if (now - lastTextNotReadyToastMs < 3000) return;
+                lastTextNotReadyToastMs = now;
+                if (isPro || ocrUnlockedThisVisit) {
+                    showNotice(NOTICE_INFO, "No text here", "Press and hold on a word to select it");
+                } else {
+                    // Drawings and scans carry their labels as lines or
+                    // pixels; only the OCR pass (a Pro tool) can read them.
+                    showNotice(NOTICE_INFO, "This text is part of the drawing",
+                            "DOCMAN Pro can read it so you can select and copy it");
+                }
             }
         });
         copySelectionBtn.setOnClickListener(new View.OnClickListener() {
@@ -621,8 +638,7 @@ public class PdfViewerActivity extends AppCompatActivity {
         // taking the whole process down and bouncing the user back to the
         // launcher: the task is abandoned, the viewer stays open, and the
         // reason is logged.
-        searchExecutor = Executors.newSingleThreadExecutor();
-        thumbnailExecutor = Executors.newSingleThreadExecutor(new java.util.concurrent.ThreadFactory() {
+        java.util.concurrent.ThreadFactory workerFactory = new java.util.concurrent.ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
                 Thread t = new Thread(r, "docman-pdf-worker");
@@ -640,7 +656,10 @@ public class PdfViewerActivity extends AppCompatActivity {
                 });
                 return t;
             }
-        });
+        };
+        // Search runs its own PDFBox fallback, so it gets the same handler.
+        searchExecutor = Executors.newSingleThreadExecutor(workerFactory);
+        thumbnailExecutor = Executors.newSingleThreadExecutor(workerFactory);
 
         SharedPreferences viewerPrefs = getSharedPreferences(VIEWER_PREFS, MODE_PRIVATE);
         nightModeEnabled = viewerPrefs.getBoolean("nightMode", false);
@@ -1181,6 +1200,10 @@ public class PdfViewerActivity extends AppCompatActivity {
         if (textLayoutDoc != null) { try { textLayoutDoc.close(); } catch (Exception ignored) { } }
         if (cachedContentCopyFile != null) { try { cachedContentCopyFile.delete(); } catch (Exception ignored) { } }
         zoomScrollIdlePollerStarted = false;
+        // The idle poller and delayed redraws re-post themselves every 60 ms;
+        // drop anything still queued so none of it runs against a PDFView
+        // whose document is already being closed.
+        mainHandler.removeCallbacksAndMessages(null);
     }
 
     // ============================================================
@@ -1389,6 +1412,18 @@ public class PdfViewerActivity extends AppCompatActivity {
     // True when the tool may be used now: Pro is bought, or its free try is
     // still unused. Otherwise explains why and offers the Pro screen.
     private boolean requireTool(final String key) {
+        // Every editing tool saves through PDFBox, which is refused for very
+        // large files. Say so before the user marks up a page, not after.
+        if (isTooLargeForPdfBox()) {
+            if (!isFinishing()) {
+                new AlertDialog.Builder(this, R.style.PdfDialogTheme)
+                        .setTitle("File too large to edit")
+                        .setMessage(PDF_TOO_LARGE_MESSAGE)
+                        .setPositiveButton("OK", null)
+                        .show();
+            }
+            return false;
+        }
         if (isPro) return true;
         if (freeTries.contains(key)) {
             if (freeTryNoticeShown.add(key)) {
@@ -2039,7 +2074,67 @@ public class PdfViewerActivity extends AppCompatActivity {
         } catch (Exception ignored) {
             // Fall back to the platform temp dir.
         }
-        return PDDocument.load(resolveLocalFileForExtraction(), mem);
+        File source = resolveLocalFileForExtraction();
+        // PDFBox keeps the parsed object tree on the Java heap. Past a quarter
+        // of the heap (128 MB on the S23) that is not safe: even when the
+        // parse itself survives, it can starve the viewer's own render thread,
+        // and an OutOfMemoryError there cannot be caught. Refuse up front with
+        // a clear message rather than gamble. Viewing, search, text selection
+        // and bookmarks do not use PDFBox and keep working at any size.
+        if (source.length() > pdfBoxMaxBytes()) {
+            throw new java.io.IOException(PDF_TOO_LARGE_MESSAGE);
+        }
+        try {
+            return PDDocument.load(source, mem);
+        } catch (OutOfMemoryError e) {
+            // Confirmed on the S23 with a 285 MB PDF: PDFBox's object tree
+            // alone filled the 512 MB heap, and an OutOfMemoryError escaping a
+            // worker thread killed the whole process ("app restarts"). The
+            // half-parsed document is garbage once we leave here, so turning
+            // it into an ordinary exception lets every caller's existing
+            // failure path (toast / empty result) handle it.
+            throw new java.io.IOException(PDF_TOO_LARGE_MESSAGE, e);
+        }
+    }
+
+    static final String PDF_TOO_LARGE_MESSAGE =
+            "This PDF is too large to edit on a phone. Reading, search and bookmarks still work.";
+
+    private static long pdfBoxMaxBytes() {
+        return Runtime.getRuntime().maxMemory() / 4;
+    }
+
+    // True when a PDFBox-based tool would be refused (see
+    // openPdDocumentForExtraction). Used to tell the user before they spend
+    // time placing a signature or marking areas that could never be saved.
+    private boolean isTooLargeForPdfBox() {
+        try {
+            if (pdfPath == null) return false;
+            File f;
+            if (pdfPath.startsWith("content://")) {
+                f = cachedContentCopyFile;
+                if (f == null) return false;
+            } else {
+                f = pdfPath.startsWith("file://") ? new File(Uri.parse(pdfPath).getPath()) : new File(pdfPath);
+            }
+            return f.length() > pdfBoxMaxBytes();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // Above this size PDFBox is not parsed up front on open; text tools still
+    // try on demand and fail with a message instead of taking the app down.
+    private static final long PDFBOX_WARM_MAX_BYTES = 60L * 1024 * 1024;
+
+    private boolean isTooLargeToWarmPdfBox() {
+        try {
+            if (pdfPath == null || pdfPath.startsWith("content://")) return false;
+            File f = pdfPath.startsWith("file://") ? new File(Uri.parse(pdfPath).getPath()) : new File(pdfPath);
+            return f.length() > PDFBOX_WARM_MAX_BYTES;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // Extracts every page's text once (background thread -- PDFBox parsing
@@ -2494,6 +2589,14 @@ public class PdfViewerActivity extends AppCompatActivity {
         thumbnailExecutor.execute(new Runnable() {
             @Override
             public void run() {
+                // Every page change queues a prefetch for three pages on this
+                // single thread. A fast scroll through a 4000-page file left
+                // thousands queued, each asking the text service for a page
+                // the reader had long passed, and a real long-press waited
+                // behind all of them ("selection doesn't work after
+                // scrolling"). A prefetch for a page no longer near the
+                // screen is dropped here at no cost.
+                if (prefetchThisTask && Math.abs(pageIndex - lastKnownPage) > 2) return;
                 PageTextLayout fast = pageLayoutFromPdfium(pageIndex);
                 // TEMP: compare the new engine's character boxes with the old
                 // one's for the same page, to find the misplaced highlight.
@@ -2507,6 +2610,23 @@ public class PdfViewerActivity extends AppCompatActivity {
                            .append(" h=").append(Math.round(c.height));
                     }
                     android.util.Log.i("DOCMANBOX", dbg.toString());
+                }
+                // A page with no real text at all (every label drawn as lines)
+                // used to fall through to PDFBox for its OCR pass. PDFBox is
+                // refused for very large files, so read such a page with OCR
+                // right here instead.
+                final boolean bigFile = isTooLargeForPdfBox();
+                if (fast != null && fast.chars.isEmpty() && bigFile && fast.pageWidthPts > 0
+                        && !prefetchThisTask && (isPro || ocrUnlockedThisVisit)) {
+                    runOcrFallback(fast, pageIndex);
+                    fast.ocrDone = true;
+                }
+                if (fast != null && fast.chars.isEmpty() && bigFile && fast.pageWidthPts > 0) {
+                    if (pageTextLayoutCache != null && pageIndex >= 0 && pageIndex < pageTextLayoutCache.size()) {
+                        pageTextLayoutCache.set(pageIndex, fast);
+                    }
+                    mainHandler.post(onReady);
+                    return;
                 }
                 if (fast != null && !fast.chars.isEmpty()) {
                     // A CAD sheet carries a few real characters (a title block
@@ -2532,6 +2652,10 @@ public class PdfViewerActivity extends AppCompatActivity {
                     mainHandler.post(onReady);
                     return;
                 }
+                // Scrolling a large scanned PDF would otherwise fall through to
+                // a full PDFBox parse on the first page change (see
+                // warmTextLayoutDocument). Only a real selection pays for it.
+                if (prefetchThisTask && isTooLargeToWarmPdfBox()) return;
                 final PageTextLayout layout = new PageTextLayout();
                 try {
                     if (textLayoutDoc == null) {
@@ -2647,6 +2771,9 @@ public class PdfViewerActivity extends AppCompatActivity {
     private void warmTextLayoutDocument() {
         if (textLayoutDoc != null) return;
         if (thumbnailExecutor == null || thumbnailExecutor.isShutdown()) return;
+        // A very large file is not worth parsing just in case someone selects
+        // text: on a 285 MB PDF this warm-up is what ran the app out of memory.
+        if (isTooLargeToWarmPdfBox()) return;
         thumbnailExecutor.execute(new Runnable() {
             @Override
             public void run() {
@@ -2654,7 +2781,7 @@ public class PdfViewerActivity extends AppCompatActivity {
                     if (textLayoutDoc == null) {
                         textLayoutDoc = openPdDocumentForExtraction();
                     }
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     // Leave textLayoutDoc null -- the next real
                     // ensurePageTextLayoutForPage() call will just retry the
                     // open itself and surface the failure there instead.
@@ -2791,6 +2918,12 @@ public class PdfViewerActivity extends AppCompatActivity {
     }
 
     private void showAttachmentsDialog() {
+        // Attachments are read with PDFBox; without this a very large file
+        // would wrongly report "No attachments".
+        if (isTooLargeForPdfBox()) {
+            showNotice(NOTICE_INFO, "File too large", "Attachments can't be read from a PDF this large on a phone");
+            return;
+        }
         ensureAttachmentsExtracted(new Runnable() {
             @Override
             public void run() {

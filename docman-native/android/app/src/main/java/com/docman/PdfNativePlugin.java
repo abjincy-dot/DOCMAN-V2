@@ -154,6 +154,47 @@ public class PdfNativePlugin extends Plugin {
         call.resolve();
     }
 
+    // "Open with" another app (Adobe, Drive PDF viewer, ...). Share.share sends
+    // ACTION_SEND, which readers like Adobe treat as an import and then report
+    // "file could not be accessed"; a viewer wants ACTION_VIEW with a
+    // content:// URI and a read grant. `path` is the file:// URI from
+    // Filesystem.getUri (or a plain absolute path) of a file under docs/,
+    // the directory res/xml/file_paths.xml exposes.
+    @PluginMethod
+    public void openExternal(PluginCall call) {
+        String path = call.getString("path");
+        String mimeType = call.getString("mimeType", "application/pdf");
+        if (path == null || path.isEmpty()) {
+            call.reject("No path provided");
+            return;
+        }
+        try {
+            java.io.File file = path.startsWith("file:")
+                    ? new java.io.File(android.net.Uri.parse(path).getPath())
+                    : new java.io.File(path);
+            if (!file.exists()) {
+                call.reject("File not found");
+                return;
+            }
+            android.net.Uri uri = androidx.core.content.FileProvider.getUriForFile(
+                    getContext(), getContext().getPackageName() + ".fileprovider", file);
+            Intent view = new Intent(Intent.ACTION_VIEW);
+            view.setDataAndType(uri, mimeType);
+            view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            // ClipData carries the grant through the chooser to whichever app
+            // is picked, including apps that re-launch themselves internally.
+            view.setClipData(android.content.ClipData.newRawUri("", uri));
+            Intent chooser = Intent.createChooser(view, "Open with");
+            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            getActivity().startActivity(chooser);
+            call.resolve();
+        } catch (android.content.ActivityNotFoundException e) {
+            call.reject("No app can open this file", "NO_APP");
+        } catch (Exception e) {
+            call.reject("Could not open file: " + e.getMessage());
+        }
+    }
+
     // Continue Reading: returns the last saved page/pageCount for a docId,
     // written by PdfViewerActivity as the user scrolls. Resolves with
     // { found: false } if nothing has been saved for this document yet.
