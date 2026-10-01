@@ -1490,6 +1490,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
                 // easy way back to "no date chosen" if a day gets tapped by
                 // accident, without having to cancel the whole reminder.
                 selectedIso = selectedIso === btn.dataset.iso ? null : btn.dataset.iso;
+                if (window.__docmanClampPickerTime) window.__docmanClampPickerTime();
                 if (selectedIso) {
                     const [y, m] = selectedIso.split('-').map(Number);
                     viewYear = y;
@@ -1644,6 +1645,60 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
         var readMinuteIdx = setupWheel('#wheelMinute', minuteValues, v => pad2(v), defM);
         var readAmPmIdx = setupAmPm('#wheelAmPm', defAmPm);
 
+        // A time already gone cannot be picked. The calendar has always
+        // disabled past DAYS; this does the same for the hours and minutes on
+        // today, which were still free to land in the morning when it is
+        // already afternoon. Rather than let it settle and complain on Save,
+        // the wheels roll themselves forward to the next free minute, so the
+        // past is simply not somewhere they come to rest.
+        const WHEEL_REPEATS = 5;              // as built in setupWheel
+        const WHEEL_HOME_COPY = Math.floor(WHEEL_REPEATS / 2);
+
+        const scrollWheelToValue = (colId, values, value) => {
+            const col = overlay.querySelector(colId);
+            if (!col) return;
+            const i = values.indexOf(value);
+            if (i < 0) return;
+            col.scrollTo({ top: (WHEEL_HOME_COPY * values.length + i) * WHEEL_ITEM_H, behavior: 'smooth' });
+        };
+
+        const currentPickedMinutes = () => {
+            let h24 = hourValues[readHourIdx()] % 12;
+            if (ampmValues[readAmPmIdx()] === 'PM') h24 += 12;
+            return h24 * 60 + minuteValues[readMinuteIdx()];
+        };
+
+        let clampTimer = null;
+        const clampTimeToFuture = () => {
+            if (!opts.disallowPast || selectedIso !== todayIso) return;
+            const now = new Date();
+            const nowMinutes = now.getHours() * 60 + now.getMinutes();
+            if (currentPickedMinutes() > nowMinutes) return;
+            // The next whole minute, never past the end of the day.
+            const target = Math.min(nowMinutes + 1, 23 * 60 + 59);
+            const h24 = Math.floor(target / 60);
+            let h12 = h24 % 12;
+            if (h12 === 0) h12 = 12;
+            scrollWheelToValue('#wheelHour', hourValues, h12);
+            scrollWheelToValue('#wheelMinute', minuteValues, target % 60);
+            const col = overlay.querySelector('#wheelAmPm');
+            if (col) col.scrollTo({ top: (h24 >= 12 ? 1 : 0) * WHEEL_ITEM_H, behavior: 'smooth' });
+        };
+
+        // Debounced: run once the wheel has come to rest, not on every frame
+        // of the flick, or it would fight the finger mid-scroll.
+        const scheduleClamp = () => {
+            if (clampTimer) clearTimeout(clampTimer);
+            clampTimer = setTimeout(clampTimeToFuture, 420);
+        };
+        ['#wheelHour', '#wheelMinute', '#wheelAmPm'].forEach((id) => {
+            const col = overlay.querySelector(id);
+            if (col) col.addEventListener('scroll', scheduleClamp);
+        });
+        // Picking today while the wheels sit on a morning hour has to correct
+        // itself too, not only scrolling does.
+        window.__docmanClampPickerTime = scheduleClamp;
+
         // End time -- optional, so its wheels are only actually built (and
         // scrolled into position) the first time the section is revealed.
         // Building them eagerly while display:none would leave scrollTop
@@ -1702,6 +1757,15 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
         }
         if (opts.withTime) {
             if (!selectedIso) { close(null); return; }
+            if (opts.disallowPast && selectedIso === todayIso) {
+                const nowM = new Date().getHours() * 60 + new Date().getMinutes();
+                let ch = hourValues[readHourIdx()] % 12;
+                if (ampmValues[readAmPmIdx()] === 'PM') ch += 12;
+                if (ch * 60 + minuteValues[readMinuteIdx()] <= nowM) {
+                    showToast('Pick a time later than now', true);
+                    return;
+                }
+            }
             let h24 = hourValues[readHourIdx()] % 12;
             if (ampmValues[readAmPmIdx()] === 'PM') h24 += 12;
             const time = `${pad2(h24)}:${pad2(minuteValues[readMinuteIdx()])}`;
@@ -3011,10 +3075,15 @@ async function imgScheduleExpiryNotification(folderPath, fileName, dateStr, opts
     const now = new Date();
     const extra = { kind: 'expiry', folderPath, fileName, expiryDate: dateStr };
     const notifications = [];
+    // Every alert for this document carries the same group. Each repeat has to
+    // be scheduled under its own id -- two alarms cannot share one -- so the
+    // group is what ties them together once they fire, and the publisher uses
+    // it to drop the previous one instead of stacking another copy.
+    const group = `docman-expiry-${imgNotificationIdFor(folderPath, fileName, 0)}`;
     const add = (id, title, body, at, withActions) => {
         if (at <= now) return; // a slot already in the past is simply skipped
         const n = { id, title, body, schedule: { at, allowWhileIdle: true }, autoCancel: true, extra,
-            channelId: ALERT_CHANNEL_ID, visibility: 1 };
+            channelId: ALERT_CHANNEL_ID, visibility: 1, group };
         if (withActions) n.actionTypeId = EXPIRY_ACTION_TYPE;
         notifications.push(n);
     };
@@ -3112,7 +3181,39 @@ async function registerExpiryNotificationActions() {
             }]
         });
     } catch (e) { /* older plugin build -- the notification itself still works */ }
-    plugin.addListener('localNotificationActionPerformed', async (event) => {
+    attachNotificationTapListener();
+}
+
+// Tapping a notification delivers its event within a beat of the WebView
+// loading -- long before the file metadata comes back from IndexedDB, and
+// previously before this listener even existed, so the tap was dropped and the
+// app just opened on the home screen with nothing to show for it. The listener
+// is now attached as early as the plugin exists; an event that arrives before
+// the data is ready waits in the queue below and is handled once it is.
+let notificationTapListenerAttached = false;
+let notificationDataReady = false;
+let pendingNotificationActions = [];
+
+function attachNotificationTapListener() {
+    const plugin = window.Capacitor?.Plugins?.LocalNotifications;
+    if (!plugin || !isNativePlatform() || notificationTapListenerAttached) return;
+    notificationTapListenerAttached = true;
+    plugin.addListener('localNotificationActionPerformed', (event) => {
+        if (!notificationDataReady) { pendingNotificationActions.push(event); return; }
+        handleNotificationAction(event);
+    });
+}
+
+// Called once the documents are loaded: anything the user tapped on the way in
+// is handled now, in the order it arrived.
+function flushPendingNotificationActions() {
+    notificationDataReady = true;
+    const queued = pendingNotificationActions;
+    pendingNotificationActions = [];
+    queued.forEach(handleNotificationAction);
+}
+
+async function handleNotificationAction(event) {
         const extra = event && event.notification && event.notification.extra;
         if (!extra) return;
         if (extra.kind === 'reminder') {
@@ -3121,14 +3222,74 @@ async function registerExpiryNotificationActions() {
             const r = reminders.find(x => x.id === extra.reminderId);
             if (r) { r.dueAckFor = reminderOccurrenceKey(r); saveReminders(); }
             await cancelReminderNotification(extra.reminderId);
+            // Tapping the notification itself used to stop here, so the app
+            // opened on the home screen with nothing to show -- unlike an
+            // expiry tap, which opens its card. Only the Got it button should
+            // dismiss silently; a tap opens the list on the reminder.
+            if (event.actionId === 'reminder-ack') return;
+            if (r) showReminderDueModal(r);
+            else showToast('That reminder has been deleted', true);
             return;
         }
         if (extra.kind !== 'expiry') return;
         if (event.actionId === 'expiry-ack') { await acknowledgeExpiry(extra.folderPath, extra.fileName); return; }
         if (event.actionId === 'expiry-renew') { renewExpiryDate(extra.folderPath, extra.fileName); return; }
         const file = (allFiles[extra.folderPath] || []).find(f => f.name === extra.fileName);
-        if (file) showExpiryTodayModal([{ folderPath: extra.folderPath, file }]);
+        if (file) { showExpiryTodayModal([{ folderPath: extra.folderPath, file }]); return; }
+        // Renamed, moved or deleted since the alert was scheduled. Saying so
+        // beats opening the app and showing nothing at all.
+        showToast(`"${extra.fileName}" is no longer in that folder`, true);
+}
+
+// Tapping a reminder notification opens this card first, so what was due is
+// readable without hunting for it. Going on to the list is a deliberate second
+// step, where the reminder is scrolled to and flashed.
+function showReminderDueModal(reminder) {
+    const existing = document.getElementById('reminderDueModal');
+    if (existing) existing.remove();
+
+    const when = [reminder.dueAt, reminder.dueTime].filter(Boolean).join(' \u00b7 ');
+    const overlay = document.createElement('div');
+    overlay.id = 'reminderDueModal';
+    overlay.className = 'expiry-modal-overlay';
+    overlay.innerHTML = `
+        <div class="expiry-modal" role="dialog" aria-modal="true" aria-label="Reminder due">
+            <div class="expiry-modal-icon"><i class="fas fa-bell"></i></div>
+            <h3 class="rem-modal-h">Reminder</h3>
+            <p class="rem-modal-title">${escapeHtml(reminder.title || 'Untitled reminder')}</p>
+            ${when ? `<p class="rem-modal-when">${escapeHtml(when)}</p>` : ''}
+            <div class="expiry-modal-btns">
+                <button class="expiry-modal-renew">View in Reminders</button>
+                <button class="expiry-modal-ack">Got it</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('.expiry-modal-renew').addEventListener('click', () => {
+        haptic.press();
+        close();
+        openRemindersAndHighlight(reminder.id);
     });
+    overlay.querySelector('.expiry-modal-ack').addEventListener('click', () => {
+        haptic.toggle();
+        close();
+    });
+}
+
+// Opens the Reminders tab and flashes one row. The panel is rebuilt on every
+// open, so the row only exists a frame later -- hence the wait before looking.
+function openRemindersAndHighlight(reminderId) {
+    showExpiringDocumentsPanel('reminders');
+    setTimeout(() => {
+        const safe = (window.CSS && CSS.escape) ? CSS.escape(reminderId) : reminderId;
+        const row = document.querySelector('.reminder-row[data-id="' + safe + '"]');
+        if (!row) return;
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        row.classList.add('reminder-flash');
+        setTimeout(() => row.classList.remove('reminder-flash'), 2800);
+    }, 320);
 }
 
 // The same two choices as the notification, for someone who opens the app
@@ -3425,6 +3586,9 @@ async function scheduleReminderNotification(reminder) {
                 visibility: 1, // PUBLIC -- readable on the lock screen
                 actionTypeId: REMINDER_ACTION_TYPE,
                 extra: { kind: 'reminder', reminderId: reminder.id },
+                // Same grouping as the expiry alerts: every repeat of this one
+                // reminder lands in the same tray slot instead of stacking.
+                group: `docman-reminder-${reminderNotificationIdFor(reminder.id, 0)}`,
                 autoCancel: true,
             });
         }
@@ -11372,11 +11536,11 @@ function render() {
                         <div class="dept-pill-body">
                             <div class="dept-pill-name">${escapeHtml(dept)}</div>
                         </div>
-                        ${isDeptLocked ? '<i class="fas fa-lock dept-lock-indicator"></i>' : ''}
                     </div>
-                    <div class="dept-pill-icon">
-                        <span class="dept-count">${total}</span>
-                        <span class="dept-count-label">Items</span>
+                    <div class="dept-pill-icon${isDeptLocked ? ' dept-pill-icon-locked' : ''}">
+                        ${isDeptLocked
+                            ? '<i class="fas fa-lock dept-count-lock"></i><span class="dept-count-label">Locked</span>'
+                            : `<span class="dept-count">${total}</span><span class="dept-count-label">Items</span>`}
                     </div>
                 </div>`;
             }
@@ -13718,16 +13882,16 @@ function showPinVerifyModal(title, callback) {
     // relock decision settling (e.g. reopening a locked file shortly after
     // returning from viewing another one), and it must never end up
     // rendered but hidden underneath that full-screen layer.
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px;touch-action:manipulation;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(23,10,40,0.88);z-index:100000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px;touch-action:manipulation;';
     overlay.innerHTML = `
-        <div style="background:#1a1a1a;border:1px solid rgba(239,68,68,0.4);border-radius:24px;padding:28px 24px;width:100%;max-width:320px;box-shadow:0 24px 60px rgba(0,0,0,0.7);text-align:center;">
-            <div style="width:48px;height:48px;background:linear-gradient(135deg,#ef4444,#dc2626);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.2rem;color:#fff;"><i class="fas fa-lock"></i></div>
+        <div style="background:#1d1033;border:1px solid rgba(255,255,255,0.15);border-radius:24px;padding:28px 24px;width:100%;max-width:320px;box-shadow:0 24px 60px rgba(0,0,0,0.7);text-align:center;">
+            <div style="width:48px;height:48px;background:linear-gradient(135deg,#ff6b4a,#e91e8c);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.2rem;color:#fff;"><i class="fas fa-lock"></i></div>
             <p style="color:#e2e8f0;font-size:0.95rem;font-weight:700;margin:0 0 6px;font-family:Inter,sans-serif;">${title}</p>
             <p id="pinVerifySubtitle" style="color:#94a3b8;font-size:0.78rem;margin:0 0 20px;font-family:Inter,sans-serif;">Enter your 4-digit PIN to confirm</p>
             <div id="pinVerifyDots" style="display:flex;justify-content:center;gap:12px;margin-bottom:24px;">
                 ${[0,1,2,3].map(i => `<div id="pvDot${i}" class="pin-dot" style="background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.25);"></div>`).join('')}
             </div>
-            <div id="pinVerifyGrid" class="pin-pad" style="--pin-accent:#ef4444;margin-bottom:16px;">
+            <div id="pinVerifyGrid" class="pin-pad" style="--pin-accent:#ff6b4a;margin-bottom:16px;">
                 ${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k => `
                     <button class="pvKey pin-key${k===''?' pin-key-blank':''}${k==='⌫'?' pin-key-back':''}" data-key="${k}">${k==='⌫' ? '<i class="fas fa-delete-left"></i>' : k}</button>
                 `).join('')}
@@ -13748,8 +13912,8 @@ function showPinVerifyModal(title, callback) {
     function updateDots() {
         for (let i = 0; i < 4; i++) {
             const dot = document.getElementById(`pvDot${i}`);
-            dot.style.background = i < entered.length ? '#ef4444' : 'rgba(255,255,255,0.15)';
-            dot.style.borderColor = i < entered.length ? '#ef4444' : 'rgba(255,255,255,0.25)';
+            dot.style.background = i < entered.length ? '#ff6b4a' : 'rgba(255,255,255,0.15)';
+            dot.style.borderColor = i < entered.length ? '#ff6b4a' : 'rgba(255,255,255,0.25)';
         }
     }
 
@@ -16948,6 +17112,12 @@ function closeIntro() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // First thing of all. The tap that opened the app is delivered within
+    // milliseconds, and the plugin logs "No listeners found" and drops it if
+    // nothing is listening yet -- attaching after the database opened was
+    // still 2.7 seconds too late.
+    attachNotificationTapListener();
+
     initAndroidBackButton();
 
     // CSS :active alone doesn't reliably show its transition on mobile
@@ -17437,6 +17607,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         };
 
+        // Before the data load, so a tap that arrives while the database is
+        // still opening is caught rather than lost.
+        attachNotificationTapListener();
+
         loadAllFileMetadata().then(() => {
             const notesReq = db.transaction('notes', 'readonly').objectStore('notes').getAll();
             notesReq.onsuccess = () => {
@@ -17452,6 +17626,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // checked right after, once that first popup (if any) is
                 // dismissed, rather than both racing for the same modal.
                 registerExpiryNotificationActions();
+                flushPendingNotificationActions();
                 rescheduleAllExpiryNotifications();
                 recordReviewUsageDay();
                 setTimeout(() => checkExpiryTodayOnLoad(() => checkLaunchAlertsOnLoad()), 1200);

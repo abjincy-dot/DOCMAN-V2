@@ -9181,3 +9181,106 @@ body.docman-pro .header-dots {
     mask-repeat: no-repeat;
     mask-composite: exclude;
 }
+
+
+/* ============================================================
+   ABOUT PAGE -- TIGHTER TOP, AND CLEAR OF THE NAV BAR
+   Two separate problems, two separate fixes.
+
+   1. The bottom of every settings panel ran under the Android nav bar.
+      .settings-page-inner reserved a flat 60px, which is less than the bar
+      on a phone that draws one, so the last row was cut in half. The reserve
+      now follows the real bar height MainActivity publishes as --nav-bottom,
+      falling back to the safe-area inset. Applied to the shared container,
+      so every settings panel gains it, not just About.
+
+   2. About alone opened with roughly 60px of dead space above the icon: the
+      shared 22px header margin plus the 28px top padding of its own card.
+      Both are trimmed here, scoped to About so no other panel shifts.
+   ============================================================ */
+.settings-page-inner {
+    padding-bottom: calc(28px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
+}
+
+/* Second pass. The first trimmed 30px and still read as unchanged, and the
+   badge-to-APP-INFO gap was three spacings stacking: the card padding-bottom,
+   the 4px body gap, and an 18px group-title margin. All three are cut, taking
+   that gap from 36px to 12px, and the identity block itself is tightened.
+   Scoped to About, so no other settings panel moves. */
+#settingsPanel-about .settings-header { margin-bottom: 2px; }
+#settingsPanel-about .about-card { padding: 0 16px 4px; gap: 3px; }
+#settingsPanel-about .about-icon { width: 66px; height: 66px; border-radius: 18px; }
+#settingsPanel-about .about-name { font-size: 1.18rem; }
+#settingsPanel-about .about-tagline { font-size: 0.74rem; }
+#settingsPanel-about .about-version-badge { margin-top: 2px; }
+#settingsPanel-about .settings-group-title { margin-top: 4px; }
+
+
+/* ============================================================
+   REMINDER CARD FROM A NOTIFICATION
+   The card reuses the expiry modal's shell; only its own text needs sizing.
+   .reminder-flash marks the row the card led to, so the eye lands on it
+   after the list scrolls.
+   ============================================================ */
+.rem-modal-h {
+    margin: 10px 0 2px;
+    font-size: 1.02rem;
+    font-weight: 700;
+    font-family: Inter, sans-serif;
+}
+.rem-modal-title {
+    margin: 0 0 4px;
+    font-size: 0.92rem;
+    font-weight: 600;
+    font-family: Inter, sans-serif;
+}
+.rem-modal-when {
+    margin: 0 0 14px;
+    font-size: 0.78rem;
+    opacity: 0.7;
+    font-family: Inter, sans-serif;
+}
+
+.reminder-flash {
+    animation: reminderFlash 0.7s ease-in-out 0s 4;
+}
+@keyframes reminderFlash {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); }
+    50%      { box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.65); }
+}
+body.reduce-motion .reminder-flash { animation: none; box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.65); }
+@media (prefers-reduced-motion: reduce) {
+    .reminder-flash { animation: none; box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.65); }
+}
+
+
+/* ============================================================
+   A LOCKED DEPARTMENT
+   The count circle carries the padlock and the item count is withheld --
+   amber on near-black, so the word never looks faint the way the old 0.7rem
+   corner icon did. That icon sat on the pill's rounded corner, half of it
+   outside the shape, which is why it was hard to see at all.
+   ============================================================ */
+/* The circle keeps the same pearl-white face as every other one, gloss and
+   all -- only what sits in it changes: a padlock instead of the count, since
+   how much is inside a locked department is what locking it was meant to keep
+   to yourself. Amber reads on white; the gold used on a dark circle did not. */
+.dept-count-lock {
+    font-size: 1.2rem;
+    color: #d97706;
+    line-height: 1;
+    /* A hairline of black around the glyph. On the pale circle it gives the
+       padlock an edge to sit against, so it reads as an object rather than a
+       flat amber shape. */
+    -webkit-text-stroke: 0.6px rgba(0, 0, 0, 0.8);
+    /* the circle paints its highlight in ::before at z-index 2 */
+    position: relative;
+    z-index: 3;
+}
+/* style.css:1679 hides every direct <i> in this circle -- an old rule from when
+   an icon could land there by accident. The padlock IS a direct <i>, so without
+   this it was hidden and the circle looked empty. */
+.dept-pill-icon-locked > i.dept-count-lock { display: block !important; }
+/* No word at all. The padlock says it on its own, and a small label in that
+   circle was the part that read as faint. */
+.dept-pill-icon-locked .dept-count-label { display: none !important; }
