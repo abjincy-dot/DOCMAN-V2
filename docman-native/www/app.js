@@ -1327,7 +1327,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
     const isLight = document.body.classList.contains('light-mode');
     const innerBorder = isLight ? 'rgba(120, 95, 65, 0.55)' : 'rgba(255,255,255,0.4)';
     const c = {
-        cardBg: 'var(--panel-bg)', cardBorder: 'var(--glass-border)',
+        cardBg: 'var(--panel-bg)', cardBorder: 'var(--float-border)',
         closeBg: 'var(--glass-bg)', closeColor: 'var(--text-primary)',
         title: 'var(--text-primary)',
         innerBg: 'var(--glass-bg)',
@@ -1348,15 +1348,16 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
     // it doesn't shift the card itself up, so that never actually helped --
     // shrinking the top offset instead does, by giving the whole card (and
     // so its bottom edge) more headroom to sit higher on screen.
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:4vh;padding-bottom:calc(20px + env(safe-area-inset-bottom));overflow-y:auto;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom));overflow:hidden;';
     overlay.innerHTML = `
         <style>.time-wheel-col,.ampm-col{scrollbar-width:none;}.time-wheel-col::-webkit-scrollbar,.ampm-col::-webkit-scrollbar{display:none;}</style>
-        <div style="position:relative;background:${c.cardBg};border:1px solid ${c.cardBorder};border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+        <div style="position:relative;background:${c.cardBg};border:1px solid ${c.cardBorder};border-radius:20px;padding:20px 20px 18px;width:100%;max-width:360px;display:flex;flex-direction:column;max-height:calc(100vh - 86px);max-height:calc(100dvh - 86px);box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="dateModalCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:${c.closeBg};color:${c.closeColor};font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
-            <p style="color:${c.title};font-size:0.95rem;font-weight:600;margin-bottom:16px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;">${message}</p>
-            <div style="background:${c.innerBg};border-radius:20px;padding:16px 14px 14px;margin-bottom:20px;position:relative;overflow:hidden;">
+            <p style="color:${c.title};font-size:0.95rem;font-weight:600;margin-bottom:8px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.35;">${message}</p>
+            <div id="dateModalScroll" style="flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 -4px;padding:0 4px;">
+            <div style="background:${c.innerBg};border-radius:18px;padding:10px 10px 8px;margin-bottom:12px;position:relative;overflow:hidden;">
                 <div style="position:absolute;top:-46px;left:50%;transform:translateX(-50%);width:150px;height:90px;background:radial-gradient(ellipse at center, rgba(139,92,246,0.55) 0%, transparent 70%);pointer-events:none;"></div>
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;position:relative;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;position:relative;">
                     <button id="calPrevMonth" aria-label="Previous month" style="width:30px;height:30px;border-radius:50%;border:1px solid ${c.navBorder};background:transparent;color:${c.navColor};display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;"><i class="fas fa-chevron-left" style="font-size:0.7rem;"></i></button>
                     <div id="calMonthLabel" style="color:${c.monthLabel};font-weight:700;font-size:1rem;font-family:Inter,sans-serif;"></div>
                     <button id="calNextMonth" aria-label="Next month" style="width:30px;height:30px;border-radius:50%;border:1px solid ${c.navBorder};background:transparent;color:${c.navColor};display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;"><i class="fas fa-chevron-right" style="font-size:0.7rem;"></i></button>
@@ -1364,18 +1365,18 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
                 <div id="calWeekdays" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:4px;"></div>
                 <div id="calDays" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;"></div>
             </div>
-            <p id="dateModalSelectedLabel" style="color:${c.selectedLabelMuted};font-size:0.78rem;margin:-12px 0 16px;font-family:Inter,sans-serif;"></p>
+            <p id="dateModalSelectedLabel" style="color:${c.selectedLabelMuted};font-size:0.73rem;margin:-6px 0 10px;font-family:Inter,sans-serif;"></p>
             ${opts.withTime ? `
-            <div style="margin-bottom:20px;">
+            <div style="margin-bottom:14px;">
                 <div style="color:${c.timeLabel};font-size:0.78rem;font-weight:600;margin-bottom:8px;font-family:Inter,sans-serif;">Time</div>
                 <div style="position:relative;background:${c.innerBg};border-radius:16px;padding:4px 10px;display:flex;gap:4px;">
                     <div style="position:absolute;left:8px;right:8px;top:50%;transform:translateY(-50%);height:42px;border-radius:12px;background:rgba(139,92,246,0.16);border-top:1px solid rgba(139,92,246,0.5);border-bottom:1px solid rgba(139,92,246,0.5);pointer-events:none;"></div>
-                    <div id="wheelHour" class="time-wheel-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:63px 0;"></div></div>
-                    <div id="wheelMinute" class="time-wheel-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:63px 0;"></div></div>
-                    <div id="wheelAmPm" class="ampm-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="ampm-inner" style="padding:63px 0;"></div></div>
+                    <div id="wheelHour" class="time-wheel-col" style="flex:1;height:116px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:37px 0;"></div></div>
+                    <div id="wheelMinute" class="time-wheel-col" style="flex:1;height:116px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:37px 0;"></div></div>
+                    <div id="wheelAmPm" class="ampm-col" style="flex:1;height:116px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="ampm-inner" style="padding:37px 0;"></div></div>
                 </div>
                 ${opts.withEndTime ? `
-                <button id="toggleEndTime" type="button" style="display:flex;align-items:center;gap:6px;background:none;border:none;color:#a78bfa;font-size:0.78rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;padding:10px 0 0;"><i class="fas fa-plus" style="font-size:0.65rem;"></i> Add end time</button>
+                <button id="toggleEndTime" type="button" style="display:flex;align-items:center;gap:6px;background:none;border:none;color:#a78bfa;font-size:0.78rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;padding:8px 0 0;"><i class="fas fa-plus" style="font-size:0.65rem;"></i> Add end time</button>
                 <div id="endTimeSection" style="display:none;margin-top:14px;">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                         <div style="color:${c.timeLabel};font-size:0.78rem;font-weight:600;font-family:Inter,sans-serif;">End time</div>
@@ -1383,19 +1384,45 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
                     </div>
                     <div style="position:relative;background:${c.innerBg};border-radius:16px;padding:4px 10px;display:flex;gap:4px;">
                         <div style="position:absolute;left:8px;right:8px;top:50%;transform:translateY(-50%);height:42px;border-radius:12px;background:rgba(139,92,246,0.16);border-top:1px solid rgba(139,92,246,0.5);border-bottom:1px solid rgba(139,92,246,0.5);pointer-events:none;"></div>
-                        <div id="wheelEndHour" class="time-wheel-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:63px 0;"></div></div>
-                        <div id="wheelEndMinute" class="time-wheel-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:63px 0;"></div></div>
-                        <div id="wheelEndAmPm" class="ampm-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="ampm-inner" style="padding:63px 0;"></div></div>
+                        <div id="wheelEndHour" class="time-wheel-col" style="flex:1;height:116px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:37px 0;"></div></div>
+                        <div id="wheelEndMinute" class="time-wheel-col" style="flex:1;height:116px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:37px 0;"></div></div>
+                        <div id="wheelEndAmPm" class="ampm-col" style="flex:1;height:116px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="ampm-inner" style="padding:37px 0;"></div></div>
                     </div>
                 </div>` : ''}
             </div>` : ''}
-            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+            ${opts.withRepeat ? `
+            <div style="margin-bottom:14px;">
+                <div style="color:${c.timeLabel};font-size:0.78rem;font-weight:600;margin-bottom:8px;font-family:Inter,sans-serif;">Repeat</div>
+                <div id="repeatChips" style="display:flex;gap:8px;flex-wrap:wrap;">
+                    ${[['none', 'Never'], ['monthly', 'Every month'], ['yearly', 'Every year']].map(([v, l]) =>
+                        `<button type="button" class="date-repeat-chip" data-repeat="${v}" style="padding:8px 15px;border-radius:40px;border:1px solid ${innerBorder};background:transparent;color:${c.cancelColor};font-family:Inter,sans-serif;font-size:0.78rem;cursor:pointer;">${l}</button>`).join('')}
+                </div>
+            </div>` : ''}
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;padding-top:14px;flex-shrink:0;">
                 ${defaultVal ? `<button id="dateModalClear" style="padding:10px 18px;border-radius:40px;border:1px solid rgba(239,68,68,0.4);background:transparent;color:#f87171;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Clear</button>` : ''}
                 <button id="dateModalCancel" style="padding:10px 22px;border-radius:40px;border:1px solid ${c.cancelBorder};background:transparent;color:${c.cancelColor};cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
                 <button id="dateModalOk" style="padding:10px 22px;border-radius:40px;border:none;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">Save</button>
             </div>
         </div>`;
     document.body.appendChild(overlay);
+
+    // Repeat chips. Kept inside the date step rather than added as a third
+    // screen: how often a reminder comes back is part of when it is due, and
+    // a separate step for one three-way choice is a step too many.
+    let repeatMode = opts.defaultRepeat || 'none';
+    if (opts.withRepeat) {
+        const chips = overlay.querySelectorAll('.date-repeat-chip');
+        const paintChips = () => chips.forEach(ch => {
+            const on = ch.dataset.repeat === repeatMode;
+            ch.style.background = on ? 'rgba(139,92,246,0.18)' : 'transparent';
+            ch.style.borderColor = on ? 'rgba(139,92,246,0.75)' : innerBorder;
+            ch.style.color = on ? '#c4b5fd' : c.cancelColor;
+            ch.style.fontWeight = on ? '700' : '400';
+        });
+        chips.forEach(ch => { ch.onclick = () => { repeatMode = ch.dataset.repeat; paintChips(); }; });
+        paintChips();
+    }
 
     const monthLabelEl = overlay.querySelector('#calMonthLabel');
     const weekdaysEl = overlay.querySelector('#calWeekdays');
@@ -1440,7 +1467,8 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
             cells.push({ day: d, iso: isoFor(viewYear, viewMonth, d), inMonth: true });
         }
         let nextDay = 1;
-        while (cells.length < 42) {
+        const cellsNeeded = Math.ceil((startOffset + daysInMonth) / 7) * 7;
+        while (cells.length < cellsNeeded) {
             cells.push({ day: nextDay, iso: isoFor(nextYear, nextMonth, nextDay), inMonth: false });
             nextDay++;
         }
@@ -1461,7 +1489,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
             } else if (cell.iso === todayIso) {
                 border = '1.5px solid rgba(139,92,246,0.6)';
             }
-            return `<button class="cal-day" data-iso="${cell.iso}" ${isPast ? 'disabled' : ''} style="aspect-ratio:1;border:${border};background:${bg};color:${color};font-size:0.85rem;font-family:Inter,sans-serif;font-weight:${fontWeight};border-radius:50%;cursor:${isPast ? 'default' : 'pointer'};display:flex;align-items:center;justify-content:center;padding:0;">${cell.day}</button>`;
+            return `<button class="cal-day" data-iso="${cell.iso}" ${isPast ? 'disabled' : ''} style="width:32px;height:32px;margin:0 auto;border:${border};background:${bg};color:${color};font-size:0.82rem;font-family:Inter,sans-serif;font-weight:${fontWeight};border-radius:50%;cursor:${isPast ? 'default' : 'pointer'};display:flex;align-items:center;justify-content:center;padding:0;">${cell.day}</button>`;
         }).join('');
 
         daysEl.querySelectorAll('.cal-day:not(:disabled)').forEach(btn => {
@@ -1775,7 +1803,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
                 if (ampmValues[readEndAmPmIdx()] === 'PM') eh24 += 12;
                 endTime = `${pad2(eh24)}:${pad2(minuteValues[readEndMinuteIdx()])}`;
             }
-            close({ date: selectedIso, time, endTime });
+            close({ date: selectedIso, time, endTime, repeat: repeatMode });
             return;
         }
         close(selectedIso);
@@ -1814,7 +1842,7 @@ function showFileDetailModal(file, folderPath) {
         : '<span style="color:#64748b;font-size:0.8rem;">No tags</span>';
 
     overlay.innerHTML = `
-        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(96,165,250,0.3);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+        <div style="position:relative;background:#1a1a1a;border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="fileDetailCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:16px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;word-break:break-word;">${escapeHtml(file.name)}</p>
             <div style="font-family:Inter,sans-serif;">
@@ -1946,7 +1974,7 @@ function showTagViewModal(file, folderPath) {
     overlay.id = 'customTagViewModal';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
     overlay.innerHTML = `
-        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(236,72,153,0.4);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+        <div style="position:relative;background:#1a1a1a;border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="tagViewCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:#94a3b8;font-size:0.72rem;font-weight:600;margin-bottom:8px;font-family:Inter,sans-serif;text-transform:uppercase;letter-spacing:0.04em;margin-right:26px;">Tags · ${escapeHtml(file.name)}</p>
             <div style="color:#ffffff;font-size:0.9rem;line-height:1.5;word-break:break-word;font-family:Inter,sans-serif;margin-bottom:22px;">${escapeHtml((file.tags || []).join(', '))}</div>
@@ -2091,6 +2119,47 @@ function reminderOccurrenceKey(r) {
 // reminders whose exact minute had passed meant one set for 14:00 was invisible
 // at 13:08 -- the app said nothing about a reminder the user had set for that
 // same day, which is the opposite of useful.
+const REMINDER_REPEAT_LABELS = { none: '', monthly: 'Every month', yearly: 'Every year' };
+
+// Move a repeating reminder on to its next occurrence. Steps one month/year
+// at a time rather than jumping once, so a reminder left alone for half a
+// year lands on a date still ahead of now instead of one already gone. The
+// ORIGINAL day of the month is kept as the anchor and only clamped to the
+// month being landed on -- otherwise a reminder set for the 31st would creep
+// down to the 28th permanently after its first February.
+function advanceReminderOccurrence(r) {
+    if (!r || !r.dueAt) return false;
+    if (r.repeat !== 'monthly' && r.repeat !== 'yearly') return false;
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const anchorDay = r.repeatAnchorDay || Number(r.dueAt.slice(8, 10)) || 1;
+    let y = Number(r.dueAt.slice(0, 4));
+    let m = Number(r.dueAt.slice(5, 7)) - 1;
+    const build = () => `${y}-${pad2(m + 1)}-${pad2(Math.min(anchorDay, new Date(y, m + 1, 0).getDate()))}`;
+    const now = new Date();
+    let guard = 0;
+    do {
+        if (r.repeat === 'yearly') y++;
+        else { m++; if (m > 11) { m = 0; y++; } }
+        r.dueAt = build();
+    } while (new Date(r.dueAt + 'T' + (r.dueTime || '09:00') + ':00') <= now && ++guard < 240);
+    r.repeatAnchorDay = anchorDay;
+    r.dueAckFor = null;
+    return true;
+}
+
+// A reminder that has been seen either rolls on to its next occurrence or is
+// simply marked seen. Either way the tray notification goes: read in the app
+// means it has no business still sitting in the status bar.
+function settleSeenReminder(r) {
+    if (advanceReminderOccurrence(r)) {
+        cancelReminderNotification(r.id);
+        scheduleReminderNotification(r);
+    } else {
+        r.dueAckFor = reminderOccurrenceKey(r);
+        cancelReminderNotification(r.id);
+    }
+}
+
 function isReminderLive(r, now) {
     if (!r.dueAt) return false;
     const today = new Date(now || new Date()); today.setHours(0, 0, 0, 0);
@@ -2106,12 +2175,18 @@ function isReminderDue(r, now) {
     return new Date(reminderOccurrenceKey(r) + ':00') <= (now || new Date());
 }
 // Called when the panel is opened: everything already due has now been seen.
+// "Already due" means the minute has actually passed -- isReminderLiveUnseen
+// was used here once, and it counts a reminder as live from the start of its
+// day, so opening the panel at 12:05 marked a 12:18 reminder as seen before
+// it had ever alerted. The alert then fired at 12:18 and the app had nothing
+// to show for it: no launch dialog, no bar. Seeing a reminder in a list is
+// not the same as having been told about it.
 function acknowledgeDueReminders() {
     const now = new Date();
     let changed = false;
     for (const r of reminders) {
-        if (isReminderLiveUnseen(r, now)) {
-            r.dueAckFor = reminderOccurrenceKey(r);
+        if (isReminderDue(r, now) && r.dueAckFor !== reminderOccurrenceKey(r)) {
+            settleSeenReminder(r);
             changed = true;
         }
     }
@@ -2330,6 +2405,30 @@ function uniqueNameFor(name, existingNames, label = 'restored') {
     return candidate;
 }
 
+// A scheduled alert outlives whatever it was about unless something cancels
+// it. Deleting a file left its expiry alarm armed: it fired days later and
+// opening it landed on a document that was no longer there. These four run on
+// the way into the Recycle Bin and on the way back out, so an alert exists
+// exactly as long as its subject does.
+async function cancelFileAlerts(folderPath, file) {
+    if (file && file.expiryDate) await imgScheduleExpiryNotification(folderPath, file.name, null);
+}
+async function restoreFileAlerts(folderPath, file) {
+    if (file && file.expiryDate) await imgScheduleExpiryNotification(folderPath, file.name, file.expiryDate);
+}
+// A note's alerts live on the reminders that point at it. The reminder itself
+// is left alone -- only the alarm goes, so restoring the note brings its
+// reminder back to life instead of needing it re-made.
+function remindersForNote(folderPath, noteId) {
+    return reminders.filter(r => r.noteRef && r.noteRef.noteId === noteId && r.noteRef.folderPath === folderPath);
+}
+async function cancelNoteAlerts(folderPath, noteId) {
+    for (const r of remindersForNote(folderPath, noteId)) await cancelReminderNotification(r.id);
+}
+async function restoreNoteAlerts(folderPath, noteId) {
+    for (const r of remindersForNote(folderPath, noteId)) await scheduleReminderNotification(r);
+}
+
 async function moveFileToRecycleBin(folderPath, fileName) {
     const arr = allFiles[folderPath];
     if (!arr) return;
@@ -2337,6 +2436,7 @@ async function moveFileToRecycleBin(folderPath, fileName) {
     if (idx === -1) return;
     const [entry] = arr.splice(idx, 1);
     if (!arr.length) delete allFiles[folderPath];
+    await cancelFileAlerts(folderPath, entry);
     recycleBin.unshift({ id: genRecycleId(), kind: 'file', name: fileName, folderPath, deletedAt: Date.now(), payload: entry });
     await saveFilesForFolder(folderPath);
     await saveRecycleBin();
@@ -2349,6 +2449,7 @@ async function moveNoteToRecycleBin(folderPath, noteId) {
     if (idx === -1) return;
     const [entry] = arr.splice(idx, 1);
     if (!arr.length) delete allNotes[folderPath];
+    await cancelNoteAlerts(folderPath, noteId);
     recycleBin.unshift({ id: genRecycleId(), kind: 'note', name: entry.title, folderPath, deletedAt: Date.now(), payload: entry });
     await saveNotesForFolder(folderPath);
     await saveRecycleBin();
@@ -2373,6 +2474,14 @@ async function moveFolderToRecycleBin(pathArr) {
     for (const k of Object.keys(folderMeta)) {
         if (k === path || k.startsWith(prefix)) { folderMetaSnapshot[k] = folderMeta[k];
             delete folderMeta[k]; }
+    }
+    // Every document under this folder loses its alarm too, not just the
+    // folder row itself.
+    for (const k of Object.keys(filesSnapshot)) {
+        for (const f of filesSnapshot[k]) await cancelFileAlerts(k, f);
+    }
+    for (const k of Object.keys(notesSnapshot)) {
+        for (const n of notesSnapshot[k]) await cancelNoteAlerts(k, n.id);
     }
 
     const parentPathArr = pathArr.slice(0, -1);
@@ -2416,11 +2525,15 @@ async function restoreRecycleBinItem(id) {
         item.payload.name = uniqueNameFor(item.payload.name, existingNames);
         allFiles[item.folderPath].push(item.payload);
         await saveFilesForFolder(item.folderPath);
+        // Re-armed under whatever name it came back as -- uniqueNameFor may
+        // have changed it, and the alert is keyed on the name.
+        await restoreFileAlerts(item.folderPath, item.payload);
     } else if (item.kind === 'note') {
         ensureFolderPathExists(item.folderPath);
         if (!allNotes[item.folderPath]) allNotes[item.folderPath] = [];
         allNotes[item.folderPath].push(item.payload);
         await saveNotesForFolder(item.folderPath);
+        await restoreNoteAlerts(item.folderPath, item.payload.id);
     } else if (item.kind === 'folder') {
         ensureFolderPathExists(item.folderPath);
         const parent = item.folderPath ? item.folderPath.split('/').reduce((o, p) => o?.[p], fileSystem) : fileSystem;
@@ -2443,14 +2556,38 @@ async function restoreRecycleBinItem(id) {
 
         const renamed = restoredName !== item.name;
         const newFullPath = (item.folderPath ? item.folderPath + '/' : '') + restoredName;
+        const restoredFileKeys = [];
+        const restoredNoteKeys = [];
         for (const k of Object.keys(item.payload.filesSnapshot || {})) {
             const newKey = renamed ? newFullPath + k.slice(item.payload.fullPath.length) : k;
             allFiles[newKey] = item.payload.filesSnapshot[k];
+            restoredFileKeys.push([k, newKey]);
         }
         for (const k of Object.keys(item.payload.notesSnapshot || {})) {
             const newKey = renamed ? newFullPath + k.slice(item.payload.fullPath.length) : k;
             allNotes[newKey] = item.payload.notesSnapshot[k];
+            restoredNoteKeys.push([k, newKey]);
         }
+        // Re-arm what was cancelled when the folder went in. If the folder came
+        // back under a new name, a note's reminder is still pointing at the old
+        // path, so move the pointer before re-scheduling -- otherwise the alert
+        // would be re-armed for a note the reminder can no longer find.
+        for (const [, newKey] of restoredFileKeys) {
+            for (const f of allFiles[newKey] || []) await restoreFileAlerts(newKey, f);
+        }
+        for (const [oldKey, newKey] of restoredNoteKeys) {
+            for (const n of allNotes[newKey] || []) {
+                if (renamed) {
+                    reminders.forEach(r => {
+                        if (r.noteRef && r.noteRef.noteId === n.id && r.noteRef.folderPath === oldKey) {
+                            r.noteRef.folderPath = newKey;
+                        }
+                    });
+                }
+                await restoreNoteAlerts(newKey, n.id);
+            }
+        }
+        if (renamed) saveReminders();
         for (const k of Object.keys(item.payload.folderMetaSnapshot || {})) {
             const newKey = renamed ? newFullPath + k.slice(item.payload.fullPath.length) : k;
             folderMeta[newKey] = item.payload.folderMetaSnapshot[k];
@@ -3017,6 +3154,8 @@ const EXPIRY_DAY_END_HOUR = 21;
 const EXPIRY_REPEAT_MINUTES = 30;
 const EXPIRY_OVERDUE_DAYS = 7;
 const EXPIRY_ACTION_TYPE = 'EXPIRY_DUE';
+// Kept only so an alert scheduled by an older build, which still carries this
+// type id, is recognised on tap; nothing new is scheduled with it.
 const REMINDER_ACTION_TYPE = 'REMINDER_DUE';
 // A reminder used to fire ONCE and that was it -- miss the notification and
 // nothing else ever came. Expiry already repeats every 30 minutes on the day
@@ -3173,12 +3312,13 @@ async function registerExpiryNotificationActions() {
                     { id: 'expiry-ack', title: 'Got it' },
                     { id: 'expiry-renew', title: 'Renew date' }
                 ]
-            }, {
-                id: REMINDER_ACTION_TYPE,
-                actions: [
-                    { id: 'reminder-ack', title: 'Got it' }
-                ]
             }]
+            // A reminder alert carries no buttons. It had a "Got it" that was
+            // meant to clear it without opening anything, but Android brings
+            // the app to the front for an action button whatever the handler
+            // does -- so the app opened and showed nothing at all, which reads
+            // as the button having failed. With no button there is one way to
+            // answer the alert, and it ends on the reminder itself.
         });
     } catch (e) { /* older plugin build -- the notification itself still works */ }
     attachNotificationTapListener();
@@ -3222,12 +3362,10 @@ async function handleNotificationAction(event) {
             const r = reminders.find(x => x.id === extra.reminderId);
             if (r) { r.dueAckFor = reminderOccurrenceKey(r); saveReminders(); }
             await cancelReminderNotification(extra.reminderId);
-            // Tapping the notification itself used to stop here, so the app
-            // opened on the home screen with nothing to show -- unlike an
-            // expiry tap, which opens its card. Only the Got it button should
-            // dismiss silently; a tap opens the list on the reminder.
-            if (event.actionId === 'reminder-ack') return;
-            if (r) showReminderDueModal(r);
+            // However the alert was answered, it ends on the reminder itself.
+            // There are no buttons on it any more, so there is no path through
+            // here that opens the app and then shows nothing.
+            if (r) openReminderStickyNote(r.id);
             else showToast('That reminder has been deleted', true);
             return;
         }
@@ -3241,56 +3379,117 @@ async function handleNotificationAction(event) {
         showToast(`"${extra.fileName}" is no longer in that folder`, true);
 }
 
-// Tapping a reminder notification opens this card first, so what was due is
-// readable without hunting for it. Going on to the list is a deliberate second
-// step, where the reminder is scrolled to and flashed.
-function showReminderDueModal(reminder) {
-    const existing = document.getElementById('reminderDueModal');
+// Tapping a reminder notification lands on the Reminders page with the
+// reminder popped up as a sticky note over its own row -- the same paper
+// bubble a file's quick note uses (showNoteViewModal above), not a dialog in
+// the middle of the screen. Once the note is closed the row keeps a steady
+// amber banner, so what was due stays marked without anything blinking.
+let reminderBannerId = null;
+
+function reminderRowEl(id) {
+    const safe = (window.CSS && CSS.escape) ? CSS.escape(id) : id;
+    return document.querySelector('.reminder-row[data-id="' + safe + '"]');
+}
+
+function openReminderStickyNote(reminderId) {
+    const r = reminders.find(x => x.id === reminderId);
+    if (!r) { showToast('That reminder has been deleted', true); return; }
+    // The day list under the calendar only holds the selected day, so the
+    // calendar has to be moved onto the reminder's own date first -- otherwise
+    // there is no row for the note to sit on.
+    if (r.dueAt) {
+        const [y, m] = r.dueAt.split('-').map(Number);
+        if (y && m) { remindersCalYear = y; remindersCalMonth = m - 1; remindersCalSelectedIso = r.dueAt; }
+    }
+    reminderBannerId = r.id;
+    // noAck: opening the panel this way must NOT mark the reminder seen. Only
+    // the note's own X does that, so a back press out of the note leaves the
+    // bar on the main screen rather than quietly swallowing the alert.
+    showExpiringDocumentsPanel('reminders', { noAck: true });
+    // The panel is rebuilt on every open, so the row only exists a frame
+    // later -- hence the wait before looking for it.
+    setTimeout(() => {
+        const row = reminderRowEl(r.id);
+        if (!row) { showToast(r.title || 'Reminder', false); return; }
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        // Placed after the smooth scroll settles, against where the row ends
+        // up rather than where it started.
+        setTimeout(() => showReminderStickyNote(r, row), 380);
+    }, 320);
+}
+
+// The note itself. It only reads out what is due: edit and delete both stay
+// on the row behind it (a long press edits, the row's own trash deletes), so
+// nothing on the note can lose a reminder by a mis-tap.
+function showReminderStickyNote(reminder, anchorEl) {
+    const existing = document.getElementById('reminderStickyNote');
     if (existing) existing.remove();
 
-    const when = [reminder.dueAt, reminder.dueTime].filter(Boolean).join(' \u00b7 ');
+    // Putting the note on screen IS the reminder being seen. It was once the
+    // X alone that counted, so backing out of the note put the bar straight
+    // back on the main screen -- being shown the same reminder again,
+    // moments after reading it, on the page you went back to. Nothing after
+    // this point needs to mark it: the notification goes from the status bar
+    // and the bar goes from the main screen, however the note is closed.
+    settleSeenReminder(reminder);
+    saveReminders();
+
+    const when = reminder.dueAt ? formatReminderDue(reminder.dueAt, reminder.dueTime, reminder.endTime) : '';
     const overlay = document.createElement('div');
-    overlay.id = 'reminderDueModal';
-    overlay.className = 'expiry-modal-overlay';
+    overlay.id = 'reminderStickyNote';
+    overlay.className = 'rnote-catcher';
     overlay.innerHTML = `
-        <div class="expiry-modal" role="dialog" aria-modal="true" aria-label="Reminder due">
-            <div class="expiry-modal-icon"><i class="fas fa-bell"></i></div>
-            <h3 class="rem-modal-h">Reminder</h3>
-            <p class="rem-modal-title">${escapeHtml(reminder.title || 'Untitled reminder')}</p>
-            ${when ? `<p class="rem-modal-when">${escapeHtml(when)}</p>` : ''}
-            <div class="expiry-modal-btns">
-                <button class="expiry-modal-renew">View in Reminders</button>
-                <button class="expiry-modal-ack">Got it</button>
+        <div class="rnote-sticky" role="dialog" aria-label="Reminder">
+            <div class="rnote-arrow"></div>
+            <div class="rnote-main">
+                <div class="rnote-label"><i class="fas fa-bell"></i>Reminder</div>
+                <div class="rnote-title">${escapeHtml(reminder.title || 'Untitled reminder')}</div>
+                ${when ? `<div class="rnote-when">${escapeHtml(when)}</div>` : ''}
+                ${reminder.place ? `<div class="rnote-place"><i class="fas fa-location-dot"></i>${escapeHtml(reminder.place)}</div>` : ''}
+                ${reminder.noteRef ? `<button type="button" class="rnote-open-note"><i class="fas fa-note-sticky"></i>Open note</button>` : ''}
+            </div>
+            <div class="rnote-side">
+                <button class="rnote-side-btn rnote-close" aria-label="Close">&#10005;</button>
             </div>
         </div>`;
     document.body.appendChild(overlay);
 
-    const close = () => overlay.remove();
+    // Same placement rules as the quick-note bubble: below the row by
+    // default, flipped above when there is no room, always clamped inside the
+    // screen, and growing out of the row's own centre.
+    const sticky = overlay.querySelector('.rnote-sticky');
+    const arrow = overlay.querySelector('.rnote-arrow');
+    const place = () => {
+        const M = 8;
+        const r = anchorEl && anchorEl.getBoundingClientRect
+            ? anchorEl.getBoundingClientRect()
+            : { left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 3, bottom: innerHeight / 3, width: 0, height: 0 };
+        const bw = sticky.offsetWidth, bh = sticky.offsetHeight;
+        let left = Math.min(Math.max(M, r.left + r.width / 2 - bw / 2), innerWidth - bw - M);
+        let top = r.bottom + 10;
+        let above = false;
+        if (top + bh > innerHeight - M) {
+            const up = r.top - bh - 10;
+            if (up > M) { top = up; above = true; } else { top = Math.max(M, innerHeight - bh - M); }
+        }
+        sticky.style.left = left + 'px';
+        sticky.style.top = top + 'px';
+        sticky.classList.toggle('rnote-above', above);
+        // the pointer tracks the row's centre, clamped to the note's ends
+        const cx = r.left + r.width / 2;
+        arrow.style.left = Math.min(Math.max(14, cx - left - 6), bw - 26) + 'px';
+        sticky.style.transformOrigin = (cx - left) + 'px ' + (above ? bh + 'px' : '0px');
+    };
+    place();
+    window.addEventListener('resize', place);
+
+    const close = () => { window.removeEventListener('resize', place); overlay.remove(); };
+    overlay.querySelector('.rnote-close').onclick = () => { haptic.toggle(); close(); };
+    const openNoteBtn = overlay.querySelector('.rnote-open-note');
+    if (openNoteBtn) openNoteBtn.onclick = () => { haptic.press(); openNoteFromReminder(reminder.noteRef); };
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-    overlay.querySelector('.expiry-modal-renew').addEventListener('click', () => {
-        haptic.press();
-        close();
-        openRemindersAndHighlight(reminder.id);
-    });
-    overlay.querySelector('.expiry-modal-ack').addEventListener('click', () => {
-        haptic.toggle();
-        close();
-    });
 }
 
-// Opens the Reminders tab and flashes one row. The panel is rebuilt on every
-// open, so the row only exists a frame later -- hence the wait before looking.
-function openRemindersAndHighlight(reminderId) {
-    showExpiringDocumentsPanel('reminders');
-    setTimeout(() => {
-        const safe = (window.CSS && CSS.escape) ? CSS.escape(reminderId) : reminderId;
-        const row = document.querySelector('.reminder-row[data-id="' + safe + '"]');
-        if (!row) return;
-        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        row.classList.add('reminder-flash');
-        setTimeout(() => row.classList.remove('reminder-flash'), 2800);
-    }, 320);
-}
 
 // The same two choices as the notification, for someone who opens the app
 // instead of tapping it: renew the date, or stop the reminders.
@@ -3584,7 +3783,6 @@ async function scheduleReminderNotification(reminder) {
                 schedule: { at: at_i, allowWhileIdle: true },
                 channelId: ALERT_CHANNEL_ID,
                 visibility: 1, // PUBLIC -- readable on the lock screen
-                actionTypeId: REMINDER_ACTION_TYPE,
                 extra: { kind: 'reminder', reminderId: reminder.id },
                 // Same grouping as the expiry alerts: every repeat of this one
                 // reminder lands in the same tray slot instead of stacking.
@@ -3636,8 +3834,8 @@ function formatTimeOfDay(timeStr) {
     return new Date(2000, 0, 1, h, m).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
-function addReminderFlow(presetDateIso) {
-    showPromptModal('Reminder title:', '', (title) => {
+function addReminderFlow(presetDateIso, noteRef, presetTitle) {
+    showPromptModal('Reminder title:', presetTitle || '', (title) => {
         if (title === null || title === undefined || !title.trim()) return;
         showDateModal('Due date & time:', presetDateIso || '', async (result) => {
             // undefined = the user hit Cancel/X/tapped outside the date step
@@ -3651,14 +3849,21 @@ function addReminderFlow(presetDateIso) {
                 dueAt: result.date,
                 dueTime: result.time,
                 endTime: result.endTime || null,
+                repeat: result.repeat || 'none',
+                repeatAnchorDay: Number(result.date.slice(8, 10)) || 1,
+                noteRef: noteRef || null,
                 place: null,
                 createdAt: Date.now()
             };
             reminders.unshift(reminder);
             saveReminders();
             await scheduleReminderNotification(reminder);
+            // Set from a note: the note is what the user is looking at, so
+            // redraw that (the bell appears straight away) instead of
+            // throwing the reminders panel over the top of it.
+            if (noteRef) { render(); showToast('⏰ Reminder set'); return; }
             showExpiringDocumentsPanel('reminders', { rerender: true });
-        }, { disallowPast: true, withTime: true, withEndTime: true, requireDate: true });
+        }, { disallowPast: true, withTime: true, withEndTime: true, requireDate: true, withRepeat: true });
     }, { icon: 'fa-bell', subtitle: 'What would you like to be reminded about?', placeholder: 'Reminder title' });
 }
 
@@ -3678,11 +3883,13 @@ function editReminderFlow(reminderId) {
                 reminder.dueAt = result ? result.date : null;
                 reminder.dueTime = result ? result.time : null;
                 reminder.endTime = result ? (result.endTime || null) : null;
+                reminder.repeat = result ? (result.repeat || 'none') : 'none';
+                reminder.repeatAnchorDay = result ? (Number(result.date.slice(8, 10)) || 1) : null;
             }
             saveReminders();
             await scheduleReminderNotification(reminder);
             showExpiringDocumentsPanel('reminders', { rerender: true });
-        }, { disallowPast: true, withTime: true, withEndTime: true, defaultTime: reminder.dueTime || '09:00', defaultEndTime: reminder.endTime || null });
+        }, { disallowPast: true, withTime: true, withEndTime: true, defaultTime: reminder.dueTime || '09:00', defaultEndTime: reminder.endTime || null, withRepeat: true, defaultRepeat: reminder.repeat || 'none' });
     }, { icon: 'fa-bell', subtitle: 'Update the reminder title', placeholder: 'Reminder title' });
 }
 
@@ -3703,6 +3910,45 @@ function tearAwayRow(row) {
         setTimeout(finish, 600);
         row.classList.add('tear-away');
     });
+}
+
+// A reminder made from a note carries the note's folder and id, so the
+// reminder can take you back to what it is about instead of leaving you to
+// find it. The note may have been deleted or moved since -- say so rather
+// than opening an empty editor.
+// Does any reminder point at this note? Used only to draw the little bell on
+// the card, so a miss costs nothing more than a missing indicator.
+function noteHasReminder(folderPath, noteId) {
+    return reminders.some(r => r.noteRef && r.noteRef.noteId === noteId && r.noteRef.folderPath === folderPath);
+}
+
+// Take the reminder off a note. The reminder list is the only record of the
+// link, so dropping the reminder is all there is to it -- the bell on the
+// card is derived from this list and goes on the next draw.
+function removeNoteReminder(folderPath, noteId) {
+    const linked = reminders.filter(r => r.noteRef && r.noteRef.noteId === noteId && r.noteRef.folderPath === folderPath);
+    if (!linked.length) return;
+    showConfirmModal('Remove the reminder on this note?', (confirmed) => {
+        if (!confirmed) return;
+        linked.forEach(r => cancelReminderNotification(r.id));
+        const gone = new Set(linked.map(r => r.id));
+        reminders = reminders.filter(r => !gone.has(r.id));
+        saveReminders();
+        render();
+        showToast('Reminder removed');
+    });
+}
+
+async function openNoteFromReminder(ref) {
+    if (!ref || !ref.noteId) return;
+    const list = allNotes[ref.folderPath] || [];
+    const note = list.find(n => n.id === ref.noteId);
+    if (!note) { showToast('That note no longer exists', true); return; }
+    document.getElementById('expiringDocsOverlay')?.remove();
+    document.getElementById('reminderStickyNote')?.remove();
+    currentPath = ref.folderPath ? ref.folderPath.split('/') : [];
+    setActiveTab('notes');
+    await openNote({ ...note, folder: ref.folderPath });
 }
 
 function deleteReminder(reminderId) {
@@ -3738,6 +3984,11 @@ function checkLaunchAlertsOnLoad(onDone) {
     const overdueCount = 0;
     const soonCount = expiring.length;
 
+    // A due reminder is raised in this same dialog, exactly as an expiring
+    // document is. This dialog is the whole of it: a bar on the home screen
+    // was tried for a day and taken out again -- having read the reminder
+    // through the notification, being shown it a second time on the page you
+    // land on is nagging, not helping.
     const now = new Date();
     const due = reminders.filter(r => isReminderLiveUnseen(r, now));
 
@@ -3762,15 +4013,11 @@ function checkLaunchAlertsOnLoad(onDone) {
         `<span style="display:block;color:#eef2f9;font-size:0.92rem;font-weight:700;line-height:1.5;">${t}</span>`
     ).join('');
     showConfirmModal(lines, (view) => {
-        // Each alert used to lead somewhere different. With one button, the
-        // destination follows whatever is actually being reported; when both
-        // are, the panel carrying tabs for each is the only place that shows
-        // the whole picture.
         if (view) {
-            // A reminder wins the destination. Landing on Expiring when one is
-            // due hid the thing that had just asked for attention behind a tab
-            // the user then had to find.
-            if (due.length) showExpiringDocumentsPanel('reminders');
+            // A reminder wins the destination, and goes all the way to the
+            // note on its own row rather than only to the list -- the same
+            // place the notification and the bar both land.
+            if (due.length) openReminderStickyNote(due[0].id);
             else openDashboardView(true);
         }
         if (onDone) onDone();
@@ -4837,6 +5084,16 @@ function deleteFileFromFolder(folderPath, fileName, rowEl) {
 // folderPath+name elsewhere.
 async function renameFileInFolder(folderPath, oldName, newName) {
     if (!newName?.trim()) return showToast("Name empty", true);
+    // The extension is not a part of the name the user owns -- it is how the
+    // app, and Android, decide what the file IS. Renaming "report.pdf" to
+    // "report" left a file nothing would open, which reads as the rename
+    // having corrupted it. The prompt now hides the extension and this puts
+    // it back for every caller, including any that forgets.
+    const dot = oldName.lastIndexOf('.');
+    const oldExt = dot > 0 ? oldName.slice(dot) : '';
+    if (oldExt && !newName.toLowerCase().endsWith(oldExt.toLowerCase())) {
+        newName = newName.trim() + oldExt;
+    }
     if (allFiles[folderPath]) {
         const idx = allFiles[folderPath].findIndex(f => f.name === oldName);
         if (idx !== -1) {
@@ -4863,13 +5120,41 @@ function collectAllFolderPaths() {
         for (const key of Object.keys(node)) {
             if (node[key] && typeof node[key] === 'object') {
                 const newPath = [...pathArr, key];
-                paths.push({ path: newPath.join('/'), label: newPath.join(' / ') });
+                paths.push({
+                    path: newPath.join('/'),
+                    label: newPath.join(' / '),
+                    // A folder that already holds subfolders is an
+                    // organisational folder, not a place for loose files.
+                    hasSubfolders: Object.keys(node[key]).length > 0
+                });
                 walk(node[key], newPath);
             }
         }
     };
     walk(fileSystem, []);
     return paths;
+}
+
+// Rows for the Move pickers. Folders that already hold subfolders are listed
+// but not selectable: the app's rule is that a folder holds EITHER subfolders
+// OR files, and Move was the one door left open on that -- the Upload button
+// is hidden inside such a folder, but nothing stopped a file being sent there
+// from somewhere else. Greyed out rather than dropped, so a folder that is
+// missing from the list does not look like a bug.
+function moveDestRowsHtml(destinations) {
+    if (!destinations.length) {
+        return '<p style="color:#94a3b8;font-family:Inter,sans-serif;font-size:0.85rem;">No other folders to move into.</p>';
+    }
+    return destinations.map(d => d.hasSubfolders
+        ? `<div class="move-dest-blocked" style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.03);margin-bottom:8px;color:#64748b;font-family:Inter,sans-serif;font-size:0.9rem;display:flex;align-items:center;gap:10px;cursor:default;">
+                <i class="fas fa-folder" style="color:#475569;"></i>
+                <span style="flex:1;min-width:0;">${escapeHtml(d.label)}</span>
+                <span style="font-size:0.7rem;white-space:nowrap;">holds folders</span>
+            </div>`
+        : `<div class="move-dest-row" data-path="${escapeHtml(d.path)}" style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.06);margin-bottom:8px;color:#ffffff;font-family:Inter,sans-serif;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-folder" style="color:#a78bfa;"></i>
+                <span>${escapeHtml(d.label)}</span>
+            </div>`).join('');
 }
 
 // Picker modal for Move: lists every folder except the file's current one.
@@ -4885,16 +5170,10 @@ function showMoveFileModal(folderPath, fileName) {
     overlay.id = 'customMoveModal';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
 
-    const rowsHtml = destinations.length
-        ? destinations.map(d => `
-            <div class="move-dest-row" data-path="${escapeHtml(d.path)}" style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.06);margin-bottom:8px;color:#ffffff;font-family:Inter,sans-serif;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;gap:10px;">
-                <i class="fas fa-folder" style="color:#a78bfa;"></i>
-                <span>${escapeHtml(d.label)}</span>
-            </div>`).join('')
-        : `<p style="color:#94a3b8;font-family:Inter,sans-serif;font-size:0.85rem;">No other folders to move into.</p>`;
+    const rowsHtml = moveDestRowsHtml(destinations);
 
     overlay.innerHTML = `
-        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(167,139,250,0.35);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+        <div style="position:relative;background:#1a1a1a;border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="moveModalCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:16px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;">Move "<b>${escapeHtml(fileName)}</b>" to:</p>
             <div id="moveDestList">${rowsHtml}</div>
@@ -5059,10 +5338,17 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
             // Past its time: the row pulses so it is findable at a glance
             // instead of reading like every other row in the list.
             const isDue = isReminderLiveUnseen(r, nowForDue);
-            const subtitle = r.dueAt ? `Due ${formatReminderDue(r.dueAt, r.dueTime, r.endTime)}` : 'No due date';
+            // Its time has passed and it has been read. There is nothing left
+            // to change about it, so the row offers the one thing still worth
+            // doing -- throwing it away. A long press still opens the editor
+            // for anyone who wants it.
+            const isSeen = isReminderDue(r, nowForDue) && r.dueAckFor === reminderOccurrenceKey(r);
+            const repeatLabel = REMINDER_REPEAT_LABELS[r.repeat] || '';
+            const subtitle = (r.dueAt ? `Due ${formatReminderDue(r.dueAt, r.dueTime, r.endTime)}` : 'No due date')
+                + (repeatLabel ? ` &middot; ${repeatLabel}` : '');
             const placeRow = r.place ? `<div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;margin-top:2px;"><i class="fas fa-location-dot" style="font-size:0.65rem;margin-right:4px;opacity:0.8;"></i>${escapeHtml(r.place)}</div>` : '';
             return `
-                <div class="reminder-row${isDue ? ' reminder-due' : ''}" data-id="${escapeHtml(r.id)}" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;background:${c.rowBg};border:${c.rowBorder};margin-bottom:8px;">
+                <div class="reminder-row${isDue ? ' reminder-due' : ''}${isSeen ? ' reminder-seen' : ''}${r.id === reminderBannerId ? ' reminder-banner' : ''}" data-id="${escapeHtml(r.id)}" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;background:${c.rowBg};border:${c.rowBorder};margin-bottom:8px;">
                     <div style="flex:1;min-width:0;">
                         <div style="color:${c.rowText};font-size:0.87rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Inter,sans-serif;">${escapeHtml(r.title)}</div>
                         <div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;">${subtitle}</div>
@@ -5192,7 +5478,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     }
 
     overlay.innerHTML = `
-        <div style="position:relative;background:${c.panelBg};border:1px solid ${c.panelBorder};border-radius:20px;padding:28px 24px;width:100%;max-width:400px;max-height:80vh;overflow-y:auto;box-shadow:${c.panelShadow};">
+        <div style="position:relative;background:${c.panelBg};border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:400px;max-height:80vh;overflow-y:auto;box-shadow:${c.panelShadow};">
             <button id="expiringDocsCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:${c.closeBg};color:${c.closeColor};font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:${c.title};font-size:0.98rem;font-weight:700;margin:0 0 4px;margin-right:26px;font-family:Inter,sans-serif;">${titleHtml}</p>
             ${summaryHtml}
@@ -5209,9 +5495,17 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     // appeared at launch. Redraws pass rerender:true and change nothing.
     // Opening on the Expiring tab does not mark reminders either: you cannot
     // have seen what was behind another tab.
-    if (!opts.rerender && activeTab === 'reminders') acknowledgeDueReminders();
+    if (!opts.rerender && !opts.noAck && activeTab === 'reminders') acknowledgeDueReminders();
 
-    const close = () => { expdocLastTab = null; overlay.remove(); };
+    // The sticky note floats above this panel in its own layer, so closing
+    // the panel has to take it with it -- otherwise back left the note
+    // hanging over the home screen with nothing underneath it.
+    const close = () => {
+        expdocLastTab = null;
+        reminderBannerId = null;
+        document.getElementById('reminderStickyNote')?.remove();
+        overlay.remove();
+    };
     overlay.querySelector('#expiringDocsCloseX').onclick = close;
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     overlay.querySelectorAll('.expdoc-tab').forEach(btn => {
@@ -5282,11 +5576,14 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     });
     overlay.querySelectorAll('.reminder-row').forEach(row => {
         let pressTimer = null;
+        let longPressed = false;
         let touchStart = { x: 0, y: 0 };
         const start = (e) => {
             const t = e.touches ? e.touches[0] : e;
             touchStart = { x: t.clientX, y: t.clientY };
+            longPressed = false;
             pressTimer = setTimeout(() => {
+                longPressed = true;
                 haptic.longPress();
                 editReminderFlow(row.dataset.id);
             }, 500);
@@ -5303,6 +5600,15 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
         row.addEventListener('mousedown', start);
         row.addEventListener('mouseup', cancelPress);
         row.addEventListener('mouseleave', cancelPress);
+        // A tap on a note's reminder goes to the note. Long press still opens
+        // the editor, so the flag below stops the press that opened the
+        // editor from also navigating when the finger comes up.
+        row.addEventListener('click', (e) => {
+            if (e.target.closest('.reminder-edit, .reminder-delete')) return;
+            if (longPressed) { longPressed = false; return; }
+            const r = reminders.find(x => x.id === row.dataset.id);
+            if (r && r.noteRef) openNoteFromReminder(r.noteRef);
+        });
     });
 }
 
@@ -5310,7 +5616,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
 // NOTE OPERATIONS
 // ============================================================
 
-async function addNoteToCurrentFolder(title, content) {
+async function addNoteToCurrentFolder(title, content, color) {
     const folderPath = currentPath.join('/');
     if (!allNotes[folderPath]) allNotes[folderPath] = [];
     const note = {
@@ -5319,7 +5625,8 @@ async function addNoteToCurrentFolder(title, content) {
         content: content.trim(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        favourite: false
+        favourite: false,
+        color: color || 'violet'
     };
     allNotes[folderPath].push(note);
     await saveNotesForFolder(folderPath);
@@ -5327,7 +5634,7 @@ async function addNoteToCurrentFolder(title, content) {
     render();
 }
 
-async function updateNote(folderPath, noteId, title, content) {
+async function updateNote(folderPath, noteId, title, content, color) {
     const idx = allNotes[folderPath]?.findIndex(n => n.id === noteId);
     if (idx !== -1) {
         allNotes[folderPath][idx].title = title.trim();
@@ -5362,6 +5669,113 @@ async function deleteNoteFromFolder(folderPath, noteId, rowEl) {
     }
 }
 
+// A note can carry one of six colours. It is a real field on the note, not
+// just a swatch in the dialog: the editor's body tints to it and so does the
+// note row in the list, which is the only reason the picker earns its space.
+const NOTE_COLORS = [
+    { id: 'violet', from: '#7c3aed', to: '#2563eb' },
+    { id: 'blue',   from: '#2563eb', to: '#0ea5e9' },
+    { id: 'green',  from: '#059669', to: '#10b981' },
+    { id: 'amber',  from: '#d97706', to: '#f59e0b' },
+    { id: 'red',    from: '#dc2626', to: '#f43f5e' },
+    { id: 'slate',  from: '#64748b', to: '#94a3b8' }
+];
+let noteModalColor = 'violet';
+
+function noteColorById(id) {
+    return NOTE_COLORS.find(c => c.id === id) || NOTE_COLORS[0];
+}
+
+function paintNoteModalColor() {
+    const c = noteColorById(noteModalColor);
+    const body = document.querySelector('.note-field-body');
+    if (body) {
+        body.style.background = `linear-gradient(135deg, ${c.from} 0%, ${c.to} 100%)`;
+        body.style.borderColor = c.to;
+    }
+    document.querySelectorAll('.note-color-dot').forEach(d =>
+        d.classList.toggle('note-color-dot-on', d.dataset.color === noteModalColor));
+}
+
+function buildNoteColorPicker() {
+    const row = document.getElementById('noteColors');
+    if (!row || row.childElementCount) return;
+    row.innerHTML = NOTE_COLORS.map(c =>
+        `<button type="button" class="note-color-dot" data-color="${c.id}" role="radio" aria-label="${c.id}"
+                 style="background:linear-gradient(135deg,${c.from},${c.to});"></button>`).join('');
+    // Tapping a swatch moved focus off the text field, and Android closes the
+    // keyboard with it. Remember what was focused before the press and put the
+    // caret back afterwards, so picking a colour never interrupts typing.
+    let focusBefore = null;
+    row.querySelectorAll('.note-color-dot').forEach(dot => {
+        dot.addEventListener('pointerdown', () => { focusBefore = document.activeElement; });
+        dot.onclick = () => {
+            haptic.toggle();
+            noteModalColor = dot.dataset.color;
+            paintNoteModalColor();
+            if (focusBefore && typeof focusBefore.focus === 'function'
+                && (focusBefore.id === 'noteTitle' || focusBefore.id === 'noteContent')) {
+                focusBefore.focus();
+            }
+        };
+    });
+}
+
+// The counters sit inside each field. Wired once: both the new-note and the
+// edit-note paths reuse these same two inputs.
+function wireNoteCounters() {
+    const t = document.getElementById('noteTitle');
+    const c = document.getElementById('noteContent');
+    const tc = document.getElementById('noteTitleCount');
+    const cc = document.getElementById('noteContentCount');
+    if (!t || t.dataset.counted) return;
+    t.dataset.counted = '1';
+    const upd = () => {
+        if (tc) tc.textContent = t.value.length + '/100';
+        if (cc) cc.textContent = c.value.length + '/1000';
+    };
+    t.addEventListener('input', upd);
+    c.addEventListener('input', upd);
+    upd();
+}
+
+// Anywhere in the dialog that is not a field or a button -- the head, the
+// space around the swatches, the footer background -- used to take focus when
+// touched, and Android closes the keyboard the moment the field loses it. The
+// caret goes back where it was, so a stray tap no longer interrupts typing.
+function keepNoteFocus() {
+    // Bound to the whole overlay, not just the card: an accidental touch on
+    // the dimmed area outside the dialog blurred the field too, and nothing is
+    // bound to that area anyway (this modal does not close on an outside tap).
+    const card = document.getElementById('noteModal');
+    if (!card || card.dataset.keepFocus) return;
+    card.dataset.keepFocus = '1';
+    // Putting focus BACK is not enough on Android: a programmatic .focus()
+    // restores the caret but does not re-open the soft keyboard, so the blur
+    // has to be stopped from happening at all. Preventing the touch's default
+    // on the dialog's own chrome does that -- the field never loses focus, so
+    // the keyboard never closes. Fields and buttons are left alone so typing,
+    // text selection and the buttons all still work, and the writing box keeps
+    // its own scrolling because the touch starts inside the textarea.
+    card.addEventListener('touchstart', (e) => {
+        if (!e.target.closest('input, textarea, button')) e.preventDefault();
+    }, { passive: false });
+}
+
+function prepareNoteModal(heading, sub, color) {
+    keepNoteFocus();
+    buildNoteColorPicker();
+    wireNoteCounters();
+    noteModalColor = color || 'violet';
+    paintNoteModalColor();
+    const h = document.getElementById('noteModalHeading');
+    const s = document.getElementById('noteModalSub');
+    if (h) h.textContent = heading;
+    if (s) s.textContent = sub;
+    const t = document.getElementById('noteTitle');
+    if (t) t.dispatchEvent(new Event('input'));
+}
+
 async function openNote(note) {
     const folderPath = note.folder || currentPath.join('/');
     if (!(await requirePinIfNoteLocked(folderPath, note.id))) return;
@@ -5370,11 +5784,12 @@ async function openNote(note) {
     document.getElementById('noteTitle').value = note.title;
     document.getElementById('noteContent').value = note.content;
     editingNoteId = note.id;
+    prepareNoteModal('Edit Note', 'Change what you wrote', note.color);
     document.getElementById('saveNoteBtn').onclick = async () => {
         const newTitle = document.getElementById('noteTitle').value;
         const newContent = document.getElementById('noteContent').value;
         if (newTitle.trim()) {
-            await updateNote(note.folder || currentPath.join('/'), note.id, newTitle, newContent);
+            await updateNote(note.folder || currentPath.join('/'), note.id, newTitle, newContent, noteModalColor);
             closeNoteModal();
         } else showToast("Title empty", true);
     };
@@ -5385,10 +5800,11 @@ function openNewNoteModal() {
     editingNoteId = null;
     document.getElementById('noteTitle').value = '';
     document.getElementById('noteContent').value = '';
+    prepareNoteModal('New Note', 'Capture your thoughts', 'violet');
     document.getElementById('saveNoteBtn').onclick = async () => {
         const title = document.getElementById('noteTitle').value;
         const content = document.getElementById('noteContent').value;
-        if (title.trim()) { await addNoteToCurrentFolder(title, content);
+        if (title.trim()) { await addNoteToCurrentFolder(title, content, noteModalColor);
             closeNoteModal(); } else showToast("Title empty", true);
     };
     document.getElementById('noteModal').classList.add('show');
@@ -8217,19 +8633,13 @@ function bulkMove() {
     const overlay = document.createElement('div');
     overlay.id = 'customMoveModal';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
-    const rowsHtml = destinations.length
-        ? destinations.map(d => `
-            <div class="move-dest-row" data-path="${escapeHtml(d.path)}" style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.06);margin-bottom:8px;color:#ffffff;font-family:Inter,sans-serif;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;gap:10px;">
-                <i class="fas fa-folder" style="color:#a78bfa;"></i>
-                <span>${escapeHtml(d.label)}</span>
-            </div>`).join('')
-        : `<p style="color:#94a3b8;font-family:Inter,sans-serif;font-size:0.85rem;">No other folders to move into.</p>`;
+    const rowsHtml = moveDestRowsHtml(destinations);
     const parts = [];
     if (selectedFileObjs.length) parts.push(`${selectedFileObjs.length} file(s)`);
     if (selectedNoteObjs.length) parts.push(`${selectedNoteObjs.length} note(s)`);
     const movingLabel = parts.join(' and ');
     overlay.innerHTML = `
-        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(167,139,250,0.35);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+        <div style="position:relative;background:#1a1a1a;border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="moveModalCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:16px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;">Move ${movingLabel} to:</p>
             <div id="moveDestList">${rowsHtml}</div>
@@ -9161,7 +9571,7 @@ function ensurePinExistsForLock(onReady) {
     });
 }
 
-function showCardContextMenu({ title, isFav, onFav, onRename, onMove, onDelete, isLocked, onLock, onShare, onConvertToPdf, onAddToPdf, onMergePdfs, onSetExpiry, onEdit, onCopy, onAddNote, onEditTags, onDetail, onChangeIcon, triggerEl }) {
+function showCardContextMenu({ title, isFav, onFav, onRename, onMove, onDelete, isLocked, onLock, onShare, onConvertToPdf, onAddToPdf, onMergePdfs, onSetExpiry, onEdit, onCopy, onAddNote, onRemind, remindLabel, onEditTags, onDetail, onChangeIcon, triggerEl }) {
     const existing = document.getElementById('ctxMenuOverlay');
     if (existing) existing.remove();
 
@@ -9233,6 +9643,11 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onMove, onDelete, 
             <i class="fas fa-note-sticky ctx-item-icon ctx-icon-note"></i>
             <span class="ctx-menu-item-label">Quick note</span>
         </div>` : ''}
+        ${onRemind ? `
+        <div class="ctx-menu-item" id="ctxRemind">
+            <i class="fas fa-bell ctx-item-icon ctx-icon-note"></i>
+            <span class="ctx-menu-item-label">${remindLabel || 'Remind me'}</span>
+        </div>` : ''}
         ${onEditTags ? `
         <div class="ctx-menu-item" id="ctxEditTags">
             <i class="fas fa-tags ctx-item-icon ctx-icon-tags"></i>
@@ -9257,11 +9672,16 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onMove, onDelete, 
     `;
 
     const close = () => {
+        window.removeEventListener('scroll', close);
         menu.style.animation = 'ctxPopOut 0.15s ease forwards';
         overlay.style.opacity = '0';
         overlay.style.transition = 'opacity 0.15s ease';
         setTimeout(() => overlay.remove(), 160);
     };
+    // The menu is pinned to where its row was. Scroll the list and it is left
+    // pointing at whatever moved into that spot, so a scroll dismisses it
+    // rather than letting it hang over the wrong file.
+    window.addEventListener('scroll', close, { passive: true });
 
     overlay.appendChild(menu);
     document.body.appendChild(overlay);
@@ -9336,6 +9756,9 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onMove, onDelete, 
     const addNoteEl = document.getElementById('ctxAddNote');
     if (addNoteEl) addNoteEl.addEventListener('click', () => { haptic.press(); close();
         onAddNote(); });
+    const remindEl = document.getElementById('ctxRemind');
+    if (remindEl) remindEl.addEventListener('click', () => { haptic.press(); close();
+        onRemind(); });
     const editTagsEl = document.getElementById('ctxEditTags');
     if (editTagsEl) editTagsEl.addEventListener('click', () => { haptic.press(); close();
         onEditTags(); });
@@ -9527,11 +9950,23 @@ function createFileCard(file, folderPath, opts = {}) {
                     render();
                     showToast(file.favourite ? '⭐ Added to favourites' : 'Removed from favourites');
                 },
-                onRename: () => showPromptModal('Rename file:', file.name, async (newName) => {
-                    if (!newName?.trim()) return;
-                    if (!(await requirePinIfLocked(folderPath, file.name))) return;
-                    renameFileInFolder(folderPath, file.name, newName.trim());
-                }, { icon: 'fa-file', subtitle: 'New name for this file', placeholder: 'File name' }),
+                onRename: () => {
+                    // Only the part the user named is offered for editing. The
+                    // extension is kept out of the box entirely, so it cannot be
+                    // dropped or mistyped; renameFileInFolder puts it back.
+                    const dot = file.name.lastIndexOf('.');
+                    const base = dot > 0 ? file.name.slice(0, dot) : file.name;
+                    const ext = dot > 0 ? file.name.slice(dot + 1).toUpperCase() : '';
+                    showPromptModal('Rename file:', base, async (newName) => {
+                        if (!newName?.trim()) return;
+                        if (!(await requirePinIfLocked(folderPath, file.name))) return;
+                        renameFileInFolder(folderPath, file.name, newName.trim());
+                    }, {
+                        icon: 'fa-file',
+                        subtitle: ext ? `New name — it stays a ${ext} file` : 'New name for this file',
+                        placeholder: 'File name'
+                    });
+                },
                 onMove: async () => {
                     if (!(await requirePinIfLocked(folderPath, file.name))) return;
                     showMoveFileModal(folderPath, file.name);
@@ -9686,6 +10121,9 @@ function createFileCard(file, folderPath, opts = {}) {
 function createNoteCard(note, folderPath, opts = {}) {
     const div = document.createElement('div');
     div.className = 'card note-card';
+    // The stripe down the left edge is the colour the note was saved with.
+    const nc = noteColorById(note.color);
+    div.style.setProperty('--note-stripe', 'linear-gradient(180deg,' + nc.from + ',' + nc.to + ')');
     const titleHtml = opts.highlightQuery ? highlightMatch(note.title, opts.highlightQuery) : escapeHtml(note.title);
     div.innerHTML = `
         <div class="card-icon"><i class="fas fa-sticky-note"></i></div>
@@ -9694,6 +10132,7 @@ function createNoteCard(note, folderPath, opts = {}) {
         </div>
         ${note.locked ? '<i class="fas fa-lock card-lock-indicator"></i>' : ''}
         <i class="fas fa-star card-fav-indicator${note.favourite ? '' : ' card-fav-hidden'}"></i>
+        ${noteHasReminder(folderPath, note.id) ? '<i class="fas fa-bell card-remind-indicator"></i>' : ''}
         <button class="frow-menu row-menu" aria-label="Options for ${escapeHtml(note.title)}">
             <i class="fas fa-ellipsis frow-dots"></i></button>
     `;
@@ -9769,6 +10208,10 @@ function createNoteCard(note, folderPath, opts = {}) {
                     if (!(await requirePinIfNoteLocked(folderPath, note.id))) return;
                     renameNote(folderPath, note.id, newTitle.trim());
                 }, { icon: 'fa-note-sticky', subtitle: 'New title for this note', placeholder: 'Note title' }),
+                onRemind: noteHasReminder(folderPath, note.id)
+                    ? () => removeNoteReminder(folderPath, note.id)
+                    : () => addReminderFlow(null, { folderPath, noteId: note.id }, note.title),
+                remindLabel: noteHasReminder(folderPath, note.id) ? 'Remove reminder' : 'Remind me',
                 onDelete: async () => {
                     if (!(await requirePinIfNoteLocked(folderPath, note.id))) return;
                     showConfirmModal(`Delete note "<b>${escapeHtml(note.title)}</b>"?`, (confirmed) => {
@@ -11638,9 +12081,11 @@ function render() {
         folderCardEl.className = 'current-folder-card';
 
         const parentPath = currentPath.slice(0, -1);
-        const pathHtml = `<span class="cf-home" onclick="navigateToBreadcrumb(-1)"><i class="fas fa-home"></i> <span style="color:#ff6b4a">Home</span></span>` +
-            parentPath.map((p, i) => `<span class="cf-sep"> / </span><span class="cf-part cf-part-nav" onclick="navigateToBreadcrumb(${i})">${escapeHtml(p)}</span>`).join('') +
-            `<span class="cf-sep"> / </span><span class="cf-part cf-part-current">${escapeHtml(currentPath[currentPath.length - 1])}</span>`;
+        // Each step is its own pill with its own icon, chevrons between them,
+        // rather than one strip of slash-separated text.
+        const pathHtml = `<span class="cf-home" onclick="navigateToBreadcrumb(-1)"><i class="fas fa-house"></i><span>Home</span></span>` +
+            parentPath.map((p, i) => `<span class="cf-sep"><i class="fas fa-chevron-right"></i></span><span class="cf-part cf-part-nav" onclick="navigateToBreadcrumb(${i})"><i class="fas fa-folder"></i><span>${escapeHtml(p)}</span></span>`).join('') +
+            `<span class="cf-sep"><i class="fas fa-chevron-right"></i></span><span class="cf-part cf-part-current"><i class="fas fa-file-lines"></i><span>${escapeHtml(currentPath[currentPath.length - 1])}</span></span>`;
 
         const curFolderPath = currentPath.join('/');
         const curIsFav = !!(folderMeta[curFolderPath] && folderMeta[curFolderPath].favourite);
@@ -11995,7 +12440,7 @@ function showIconPickerModal(dept) {
         </button>`).join('');
 
     overlay.innerHTML = `
-        <div style="position:relative;background:var(--panel-bg);border:1px solid rgba(255, 140, 40, 0.4);border-radius:20px;padding:28px 24px;width:100%;max-width:400px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.8), 0 1.5px 0 rgba(255,255,255,0.22) inset, 0 -4px 10px rgba(0,0,0,0.6) inset, 0 0 0 1px rgba(255, 140, 40, 0.15);">
+        <div style="position:relative;background:var(--panel-bg);border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:400px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.8), 0 1.5px 0 rgba(255,255,255,0.22) inset, 0 -4px 10px rgba(0,0,0,0.6) inset, 0 0 0 1px rgba(255, 140, 40, 0.15);">
             <button id="iconPickerCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(125,130,150,0.18);color:var(--text-primary);font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:var(--text-primary);font-size:0.98rem;font-weight:700;margin:0 0 4px;margin-right:26px;font-family:Inter,sans-serif;"><i class="fas fa-icons" style="color:#f59e0b;margin-right:6px;"></i>Change Icon</p>
             <p style="color:var(--text-secondary);font-size:0.8rem;margin:0 0 16px;font-family:Inter,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(dept)}</p>
@@ -12877,6 +13322,35 @@ function dashDeptHue(dept) {
     return DASH_HUE_FALLBACKS[hash % DASH_HUE_FALLBACKS.length];
 }
 
+// Departments holding nothing collapse to a single line. A run of "Empty"
+// rows breaks the very comparison the bars exist to make, and on a library
+// where six of eight are untouched that run is most of the section.
+function bareDeptLine(deptSizes) {
+    const bare = deptSizes.filter(d => !d.bytes).length;
+    if (!bare || bare === deptSizes.length) return '';
+    return `<div class="dash-dep dash-dep-bare">${bare} more department${bare > 1 ? 's' : ''} &middot; empty</div>`;
+}
+
+// A share rounded to a whole number contradicts itself at the two ends:
+// 618.63 MB of PDFs beside 1.66 MB of images came out as "100%" and "0%" --
+// the images are listed with a real size on the line that says they take up
+// none of it, and the two add up to 100% with a row left over. Near the ends
+// the number carries one decimal instead (99.7% / 0.3%), which is a figure
+// anyone reads without having to decode a "<" or a ">". Everything in the
+// ordinary middle stays a whole number, so a normal split still reads
+// 72% / 28%. Only a type that genuinely holds everything says 100%.
+function sharePctLabel(bytes, totalBytes) {
+    if (!totalBytes || !bytes) return '0%';
+    if (bytes >= totalBytes) return '100%';
+    const raw = (bytes / totalBytes) * 100;
+    // One decimal would still round to a whole 100.0% or 0.0% this close to
+    // the ends, so those two are held just short of it.
+    if (raw >= 99.9) return '99.9%';
+    if (raw < 0.1) return '0.1%';
+    if (raw < 1 || raw > 99) return raw.toFixed(1) + '%';
+    return Math.round(raw) + '%';
+}
+
 function renderDashboardView() {
     const body = document.getElementById('dashboardViewBody');
 
@@ -12984,7 +13458,7 @@ function renderDashboardView() {
                             <span class="dash-leg2-dot" style="background:var(--dash-${b.id});"></span>
                             <span class="dash-leg2-n">${b.label}</span>
                             <span class="dash-leg2-v">${formatBytes(b.bytes)}</span>
-                            <span class="dash-leg2-p">${Math.round((b.bytes / totalBytes) * 100)}%</span>
+                            <span class="dash-leg2-p">${sharePctLabel(b.bytes, totalBytes)}</span>
                         </div>`).join('')}
         </div>
         <div class="dash-backup dash-backup-${backupState}" id="dashBackupRow">
@@ -13034,7 +13508,7 @@ function renderDashboardView() {
                         <div class="dash-dep-ico"><i class="fas ${deptIconOverrides[dept] || DEFAULT_DEPT_ICONS[dept] || 'fa-folder'}"></i></div>
                         <div class="dash-dep-mid">
                             <div class="dash-dep-n">${escapeHtml(dept)}</div>
-                            ${bytes ? `<div class="dash-dep-track"><span class="dash-dep-fill" style="width:${(bytes / deptMax) * 100}%"></span></div>` : ''}
+                            <div class="dash-dep-track"><span class="dash-dep-fill" style="width:${bytes ? (bytes / deptMax) * 100 : 0}%"></span></div>
                         </div>
                         <div class="dash-dep-v${bytes ? '' : ' is-empty'}">${bytes ? formatBytes(bytes) : 'Empty'}</div>
                         <div class="dash-go"><i class="fas fa-chevron-right"></i></div>
@@ -13073,12 +13547,52 @@ function renderDashboardView() {
         };
     }
 
+    // An expiring document is something to DEAL WITH -- renew the date,
+    // replace the file, throw it out -- and every one of those lives on the
+    // file's own row menu, inside its folder. Opening the document itself
+    // landed the reader somewhere with nothing to act on, and they had to
+    // come back and hunt the folder down. This goes to the folder and flashes
+    // the file instead, which is also what the Expiring panel already did.
     body.querySelectorAll('.dash-expiry-row').forEach(row => {
         row.onclick = () => {
             const folderPath = row.dataset.folder;
             const fileName = row.dataset.file;
-            const file = allFiles[folderPath]?.find(f => f.name === fileName);
-            if (file) openFile(fileName, folderPath);
+            closeDashboardView();
+            returnToDashboard = true;
+            currentPath = folderPath ? folderPath.split('/') : [];
+            // setActiveTab, not a bare assignment: the card only exists on the
+            // Files tab, and setting the variable alone left the FILES/NOTES
+            // switch sitting on NOTES while a file list was underneath it.
+            // setActiveTab moves the switch, swaps Upload/New note, and
+            // renders -- so no separate render() here.
+            setActiveTab('pdfs');
+            // render() rebuilds the grid, so the card is only there a frame
+            // later -- and on a big folder not even then. Looked up by
+            // comparing dataset values rather than with an attribute
+            // selector: CSS.escape is for identifiers, and on a name like
+            // "Passport.pdf" it produces "Passport\.pdf", which matches
+            // nothing inside a quoted selector. Retried a few times, then given
+            // up quietly.
+            let tries = 0;
+            const findAndFlash = () => {
+                let card = null;
+                const all = document.querySelectorAll('.file-card');
+                all.forEach(c => {
+                    if (!card && c.dataset.fileName === fileName && c.dataset.folderPath === folderPath) card = c;
+                });
+                if (!card) {
+                    if (++tries < 10) setTimeout(findAndFlash, 120);
+                    return;
+                }
+                card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                // After the scroll settles, so the pulse is seen where the
+                // card comes to rest rather than as it flies past.
+                setTimeout(() => {
+                    card.classList.add('file-card-flash');
+                    setTimeout(() => card.classList.remove('file-card-flash'), 2800);
+                }, 320);
+            };
+            setTimeout(findAndFlash, 160);
         };
     });
 }
@@ -13884,7 +14398,7 @@ function showPinVerifyModal(title, callback) {
     // rendered but hidden underneath that full-screen layer.
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(23,10,40,0.88);z-index:100000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px;touch-action:manipulation;';
     overlay.innerHTML = `
-        <div style="background:#1d1033;border:1px solid rgba(255,255,255,0.15);border-radius:24px;padding:28px 24px;width:100%;max-width:320px;box-shadow:0 24px 60px rgba(0,0,0,0.7);text-align:center;">
+        <div style="background:#1d1033;border:1px solid var(--float-border);border-radius:24px;padding:28px 24px;width:100%;max-width:320px;box-shadow:0 24px 60px rgba(0,0,0,0.7);text-align:center;">
             <div style="width:48px;height:48px;background:linear-gradient(135deg,#ff6b4a,#e91e8c);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.2rem;color:#fff;"><i class="fas fa-lock"></i></div>
             <p style="color:#e2e8f0;font-size:0.95rem;font-weight:700;margin:0 0 6px;font-family:Inter,sans-serif;">${title}</p>
             <p id="pinVerifySubtitle" style="color:#94a3b8;font-size:0.78rem;margin:0 0 20px;font-family:Inter,sans-serif;">Enter your 4-digit PIN to confirm</p>
@@ -14178,7 +14692,7 @@ function exportBackupData() {
     overlay.id = 'backupEncChoiceModal';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
     overlay.innerHTML = `
-        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(255,107,74,0.35);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+        <div style="position:relative;background:#1a1a1a;border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="encChoiceCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:#ffffff;font-size:0.98rem;font-weight:700;margin:0 0 6px;margin-right:26px;font-family:Inter,sans-serif;">Secure Your Backup</p>
             <p style="color:#94a3b8;font-size:0.82rem;margin:0 0 18px;font-family:Inter,sans-serif;line-height:1.5;">Your backup is encrypted so only you can restore it. Choose how:</p>
@@ -14229,7 +14743,7 @@ function showRecoveryKeyRevealModal(formattedKey, onContinue) {
     overlay.id = 'recoveryKeyModal';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(8px);padding:20px;padding-top:10vh;overflow-y:auto;';
     overlay.innerHTML = `
-        <div style="background:#1a1a1a;border:1px solid rgba(167,139,250,0.4);border-radius:20px;padding:28px 24px;width:100%;max-width:380px;box-shadow:0 24px 60px rgba(0,0,0,0.7);">
+        <div style="background:#1a1a1a;border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:380px;box-shadow:0 24px 60px rgba(0,0,0,0.7);">
             <p style="color:#ffffff;font-size:0.98rem;font-weight:700;margin:0 0 6px;font-family:Inter,sans-serif;"><i class="fas fa-key" style="color:#a78bfa;margin-right:6px;"></i>Your Recovery Key</p>
             <p style="color:#94a3b8;font-size:0.82rem;margin:0 0 16px;font-family:Inter,sans-serif;line-height:1.5;">This is shown only once. Save this securely — <b style="color:#f87171;">it cannot be recovered if lost</b>, and without it this backup can never be restored.</p>
             <div id="recoveryKeyText" style="background:rgba(255,255,255,0.06);border:1px solid rgba(167,139,250,0.3);border-radius:12px;padding:16px;font-family:'IBM Plex Mono',monospace;font-size:1rem;letter-spacing:0.03em;color:#e2e8f0;text-align:center;word-break:break-all;margin-bottom:14px;">${formattedKey}</div>
@@ -14277,31 +14791,82 @@ function showRecoveryKeyRevealModal(formattedKey, onContinue) {
 // stays up and updates its own message for the entire export, and is only
 // ever dismissed by hideBusyOverlay() once the flow actually ends
 // (success or failure) -- never a timeout.
-function showBusyOverlay(message) {
+// The spinner it used to show said only "something is happening". A file
+// coming off a cloud drive can take a minute, and a ring going round carries
+// no news at all over that minute. The circle fills instead, like a glass
+// filling up: the level IS the progress, so the same glance that asks "is it
+// moving?" answers "and how far". Until a size is known the water just
+// breathes near the bottom, which still reads as working without pretending
+// to a number nobody has.
+function showBusyOverlay(message, icon) {
     let overlay = document.getElementById('busyOverlay');
     if (overlay) {
         overlay.querySelector('#busyOverlayText').textContent = message;
+        if (icon) {
+            const i = overlay.querySelector('.busy-ico i');
+            if (i) i.className = 'fas ' + icon;
+        }
         return;
     }
+    // A card being built from scratch is a new job: the glass starts empty
+    // and whole, whatever the last one left behind.
+    setBusyFillRange(0, 100);
+    busyCloudStageRan = false;
     overlay = document.createElement('div');
     overlay.id = 'busyOverlay';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);';
     overlay.innerHTML = `
-        <div style="background:var(--card-bg);border:1px solid var(--glass-border);border-radius:20px;padding:32px 28px;max-width:280px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
-            <div style="width:44px;height:44px;margin:0 auto 18px;border-radius:50%;border:3px solid var(--glass-border);border-top-color:#8b5cf6;animation:busySpin 0.8s linear infinite;"></div>
+        <div style="background:var(--card-bg);border:1px solid var(--float-border);border-radius:20px;padding:30px 28px;max-width:280px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <div class="busy-ring busy-ring-idle" id="busyRing">
+                <div class="busy-fill" id="busyFill">
+                    <div class="busy-surf"><svg viewBox="0 0 120 18" preserveAspectRatio="none"><path d="M0,9 Q15,1 30,9 T60,9 T90,9 T120,9 V18 H0 Z"/></svg></div>
+                </div>
+                <div class="busy-ico"><i class="fas ${icon || 'fa-file-lines'}"></i></div>
+                <div class="busy-pct" id="busyPct"></div>
+            </div>
             <div id="busyOverlayText" style="color:var(--text-primary);font-weight:600;font-size:0.92rem;font-family:Inter,sans-serif;">${escapeHtml(message)}</div>
             <div id="busySubText" style="color:var(--text-secondary);font-size:0.75rem;margin-top:6px;font-family:Inter,sans-serif;">Please don't close the app</div>
-        </div>
-        <style>@keyframes busySpin { to { transform: rotate(360deg); } }</style>`;
+        </div>`;
     document.body.appendChild(overlay);
+}
+
+// Getting a file in has two stages that each count 0-100 of their own work:
+// the cloud provider copying it onto the phone, then DOCMAN writing it into
+// its own storage. Shown raw, the water filled to the top and dropped back to
+// nothing, which reads as the whole thing starting over. The two are mapped
+// onto one glass instead -- the fetch fills the first three quarters, the
+// write the last -- so the level only ever rises. A local file has no fetch
+// stage, so its write gets the whole glass.
+let busyFillFrom = 0;
+let busyFillTo = 100;
+let busyCloudStageRan = false;
+function setBusyFillRange(from, to) { busyFillFrom = from; busyFillTo = to; }
+
+// Drives the water level. A null percentage means the provider never reported
+// a size, so the idle breathing stays rather than a bogus level being drawn.
+function setBusyFill(pct) {
+    const ring = document.getElementById('busyRing');
+    const fill = document.getElementById('busyFill');
+    const label = document.getElementById('busyPct');
+    if (!ring || !fill) return;
+    if (pct === null || pct === undefined || isNaN(pct)) {
+        ring.classList.add('busy-ring-idle');
+        fill.style.height = '';
+        if (label) label.textContent = '';
+        return;
+    }
+    const own = Math.max(0, Math.min(100, pct));
+    const p = Math.round(busyFillFrom + (busyFillTo - busyFillFrom) * own / 100);
+    ring.classList.remove('busy-ring-idle');
+    fill.style.height = p + '%';
+    if (label) label.textContent = p + '%';
 }
 // Shows how far a chunked save has got. Real bytes, not an estimate.
 function reportSaveProgress(written, total) {
     const sub = document.getElementById('busySubText');
     if (!sub || !total) return;
     const pct = Math.min(100, Math.round((written / total) * 100));
-    sub.textContent = 'Saving  ·  ' + formatBytes(written) + ' of ' + formatBytes(total)
-        + '  ·  ' + pct + '%';
+    sub.textContent = 'Saving  ·  ' + formatBytes(written) + ' of ' + formatBytes(total);
     setCopyBar(pct);
     forceOverlayRepaint();
 }
@@ -14312,6 +14877,9 @@ function updateBusyOverlay(message) {
 }
 function hideBusyOverlay() {
     document.getElementById('busyOverlay')?.remove();
+    // The next thing to use the card starts with a full, empty glass.
+    setBusyFillRange(0, 100);
+    busyCloudStageRan = false;
 }
 
 // Everything except file bytes, from the CURRENT in-memory state. Shared by
@@ -15988,6 +16556,11 @@ function attachPressEffects() {
         '.stat-icon-btn',   // Recent / Sort / Dashboard / Recycle Bin
         '.subtab-btn',      // Opened / Added / Modified inside Recent
         '.card-note-btn', '.card-tag-btn',
+        // The row's own menu button. Without it here the press started at the
+        // dots and bubbled up to the .card handler, so tapping the menu sank
+        // the WHOLE row. Bound here it is the target, pressHandler's
+        // stopPropagation keeps the card out of it, and only the dots move.
+        '.row-menu',
         '#closeImageViewer', '#closeDocViewer', '#shareDocViewerBtn',
         '#closeSheetViewer', '#shareSheetViewerBtn', '.doc-viewer-sheet-tab'
     ];
@@ -16051,33 +16624,14 @@ function armTapHaptic(el, startEvent) {
     el.addEventListener('touchcancel', done, { passive: true });
 }
 
-// Lean a row toward the thumb while it is pressed, so the card reacts to
-// WHERE it was touched rather than just shrinking. File, folder and note rows
-// only -- departments keep their flat press. This rides the existing press
-// path, which already waits for a confirmed tap: no new touch handlers, since
-// binding on touchstart is what caused the scroll-vibration bug.
-// A press with no coordinates (keyboard, a synthetic click) just leaves the
-// angles unset and the card scales as before.
-function setPressTilt(element, event) {
-    if (!element.classList.contains('card') || element.classList.contains('dept-oval')) return;
-    const point = (event && event.touches && event.touches[0]) || event;
-    if (!point || typeof point.clientX !== 'number') return;
-    const box = element.getBoundingClientRect();
-    if (!box.width || !box.height) return;
-    const px = (point.clientX - box.left) / box.width - 0.5;    // -0.5 .. 0.5
-    const py = (point.clientY - box.top) / box.height - 0.5;
-    // px/py only ever reach +/-0.5 (the edge of the card), so these
-    // multipliers are halved in practice: 28 and 20 give about 10 and 7
-    // degrees at the very edge. Measured 4 degrees first and it was as
-    // invisible on the phone as the 10px rise was.
-    element.style.setProperty('--rx', (-py * 20).toFixed(2) + 'deg');
-    element.style.setProperty('--ry', (px * 28).toFixed(2) + 'deg');
-}
 
+// A press shrinks the row slightly and fires a haptic. It used to also tip
+// the card toward the finger (setPressTilt wrote --rx/--ry from the touch
+// point); that tilt is gone -- it read as the row wobbling rather than
+// responding.
 function addDepthEffect(element, event, withHaptic = true) {
     if (!element || element.hasAttribute('data-press-animating')) return;
     element.setAttribute('data-press-animating', 'true');
-    setPressTilt(element, event);
     // This class was only ever REMOVED here and had no CSS at all, so the press
     // animation never actually ran -- the haptic was the whole effect. Adding
     // it (and the rule in style.css) is animation 1.
@@ -16085,8 +16639,6 @@ function addDepthEffect(element, event, withHaptic = true) {
     if (withHaptic) haptic.press();
     setTimeout(() => {
         element.classList.remove('press-depth-3d');
-        element.style.removeProperty('--rx');
-        element.style.removeProperty('--ry');
         element.removeAttribute('data-press-animating');
     }, 150);
 }
@@ -16143,6 +16695,8 @@ async function handleFiles(files) {
     showBusyOverlay(`Uploading 1 of ${total}…`);
     // The copy phase left its own numbers on the card; they are about a
     // different operation and reading "100%" while this runs is misleading.
+    // The water carries on from where the fetch left it instead of emptying.
+    setBusyFillRange(busyCloudStageRan ? 75 : 0, 100);
     stopCloudWaitTicker();
     removeCopyBar();
     const sub0 = document.getElementById('busySubText');
@@ -16271,6 +16825,11 @@ function initAndroidBackButton() {
         // overlay.click() lands on the overlay itself, which is exactly what
         // its "tap outside to close" listener tests for.
         const dismissableModals = [
+            // The reminder note, before the panel it sits on. null = backdrop
+            // dismiss, which puts the note away WITHOUT marking the reminder
+            // seen -- backing out of an alert is not the same as reading it,
+            // so the bar on the main screen survives the press.
+            ['reminderStickyNote', null],
             ['customDateModal', '#dateModalCancel'],
             ['customFileDetailModal', '#fileDetailCloseX'],
             ['customNoteViewModal', '#noteViewCloseX'],
@@ -16464,7 +17023,7 @@ function applyCopyProgress(d) {
     const sub = document.getElementById('busySubText');
     if (sub) {
         sub.textContent = formatBytes(d.copied)
-            + (d.total > 0 ? ' of ' + formatBytes(d.total) + '  ·  ' + pct + '%' : ' downloaded')
+            + (d.total > 0 ? ' of ' + formatBytes(d.total) : ' downloaded')
             + of;
     }
     setCopyBar(pct);
@@ -16516,7 +17075,7 @@ function startCloudWaitTicker(total, of) {
             const est = total * frac;
             const pct = Math.min(99, Math.round(frac * 100));
             sub.textContent = '~' + formatBytes(est) + ' of ' + formatBytes(total)
-                + '  ·  ' + pct + '%   (estimated · ' + mm + ':' + ss + ')' + of;
+                + '   (estimated · ' + mm + ':' + ss + ')' + of;
             setCopyBar(pct);
         } else {
             sub.textContent = 'waiting for your cloud  ·  ' + mm + ':' + ss + of;
@@ -16593,8 +17152,12 @@ function setCopyBar(pct) {
     }
     const fill = document.getElementById('copyBarFill');
     if (!fill) return;
-    if (pct === null) return;   // no size reported: leave the bar empty rather than faking motion
+    if (pct === null) { setBusyFill(null); return; }   // no size reported: leave the bar empty rather than faking motion
+    // Remember that a cloud fetch actually happened, so the write stage that
+    // follows knows to continue the glass rather than restart it.
+    if (pendingFilePick) busyCloudStageRan = true;
     fill.style.width = pct + '%';
+    setBusyFill(pct);
 }
 
 function removeCopyBar() {
@@ -17765,3 +18328,39 @@ function animateRowOut(row, opts = {}) {
         } catch (_) { finish(); }
     });
 }
+
+// The DOCMAN panel and the folder bar are both frozen and stacked, so the bar
+// has to sit exactly at the panel's bottom edge. The panel is taller inside a
+// folder than on the home screen (it gains the Home + FILES/NOTES row), so the
+// height is measured rather than guessed.
+(function trackFrozenTopHeight() {
+    const panel = document.querySelector('.top-panel');
+    if (!panel) return;
+    const apply = () => document.documentElement.style.setProperty('--top-panel-h', panel.offsetHeight + 'px');
+    apply();
+    if (window.ResizeObserver) new ResizeObserver(apply).observe(panel);
+    window.addEventListener('orientationchange', () => setTimeout(apply, 150));
+})();
+
+// The WebView does not resize when the soft keyboard opens (no
+// windowSoftInputMode, and the window is edge-to-edge), so 100dvh stays the
+// full screen and a dialog's footer ends up behind the keyboard. visualViewport
+// does report the real visible box, so publish its height and let the CSS size
+// dialogs from that instead.
+(function trackVisualViewport() {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    // Only on resize, and only when the height really moved. The scroll
+    // event fires constantly while typing, and re-setting --vvh on each one
+    // resized the open dialog mid-keystroke; the relayout took focus off the
+    // field and Android closed the keyboard with it.
+    let last = 0;
+    const apply = () => {
+        const h = Math.round(vv.height);
+        if (Math.abs(h - last) < 8) return;
+        last = h;
+        document.documentElement.style.setProperty('--vvh', h + 'px');
+    };
+    vv.addEventListener('resize', apply);
+    apply();
+})();

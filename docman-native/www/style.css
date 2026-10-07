@@ -58,6 +58,10 @@ box-sizing: border-box;
 
 :root {
 --safe-bottom: env(safe-area-inset-bottom, 0px);
+--safe-top: env(safe-area-inset-top, 0px);
+--frozen-bar: linear-gradient(180deg, #2b1020 0%, #1b0a14 100%);
+--cf-path-bg: rgba(255, 255, 255, 0.05);
+--cf-path-border: rgba(255, 255, 255, 0.14);
 /* One height for the Search field and the Upload / New Note buttons, so the
    top row lines up instead of the buttons standing taller than the field. */
 --action-h: 40px;
@@ -109,12 +113,19 @@ box-sizing: border-box;
 
 body.light-mode {
 --bg-deep: #F6E4D3;
+--frozen-bar: linear-gradient(180deg, #FBF3E7 0%, #F3DFCB 100%);
+--cf-path-bg: rgba(120, 95, 65, 0.08);
+--cf-path-border: rgba(120, 95, 65, 0.28);
 --app-wallpaper: linear-gradient(160deg, #FBF3E7 0%, #F6E4D3 100%);
 --glass-bg: rgba(255, 255, 255, 0.82);
 --panel-bg: linear-gradient(160deg, #fffdfa 0%, #fdf3e8 100%);
 --glass-bg-hover: rgba(255, 255, 255, 0.94);
 --glass-border: rgba(120, 95, 65, 0.55);
 --glass-border-hover: rgba(120, 95, 65, 0.65);
+/* The dark theme's floating edge is white; on cream paper white is nothing
+   at all, so the same hairline is drawn in the warm dark instead. Without
+   this every popup in light mode had an edge it could not show. */
+--float-border: rgba(120, 95, 65, 0.60);
 --toolbar-bg-header: linear-gradient(90deg, #ffffff 0%, #fdf6ee 100%);
 --toolbar-bg-topbar: linear-gradient(90deg, #fffdfa 0%, #fdf3e8 100%);
 --toolbar-bg-stats: linear-gradient(90deg, #ffffff 0%, #fdf6ee 100%);
@@ -234,7 +245,7 @@ animation: childReveal 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both;
 
     margin-bottom: 0;
 
-    padding: 2px 18px;
+    padding: 1px 18px;
 
     background: none;
 
@@ -2003,7 +2014,7 @@ padding-top: 12px;
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
 
-    border: 1px solid rgba(59,130,246,0.7);
+    border: 1px solid var(--float-border);   /* was a blue edge; every floating dialog now shares one hairline */
 
     border-radius: var(--radius-lg);
     width: 100%;
@@ -2968,7 +2979,7 @@ filter: none !important;
 will-change: transform; 
 backface-visibility: hidden; 
 -webkit-backface-visibility: hidden; 
-overflow-x: hidden; 
+overflow-x: clip; 
 }
 
 
@@ -3622,7 +3633,7 @@ overflow: hidden;
 
 .app { 
 max-width: 100%; 
-overflow-x: hidden; 
+overflow-x: clip; 
 }
 
 body { 
@@ -4911,7 +4922,7 @@ body.light-mode .card-folder-count {
     max-height: calc(100vh - 16px - var(--safe-bottom));
     overflow-y: auto;
     background: var(--panel-bg);
-border: 1px solid rgba(140,100,255,0.7); 
+border: 1px solid var(--float-border);  /* was purple; same hairline as every other popup */ 
     border-radius: 16px;
     padding: 6px 0;
         box-shadow: 0 0 6px rgba(130,90,255,0.6), 0 8px 32px rgba(0,0,0,0.55);
@@ -5779,12 +5790,17 @@ body.light-mode .ft-icon-label { color: #3a3226 !important; }
 .top-panel {
     background:
         radial-gradient(ellipse 160px 140px at 100% 0%, rgba(255, 90, 40, 0.38) 0%, rgba(255, 80, 30, 0.14) 35%, transparent 60%),
-        #191835;
+        /* Slate navy, from the reference the user supplied on 2026-10-04 -- the
+           old #191835 indigo read as washed out behind the wordmark. */
+        #0F172A;
     border: none !important;
     box-shadow:
         0 0 0 0.6px rgba(255, 130, 20, 0.65),
         0 20px 44px rgba(0, 0, 0, 0.55) !important;
-    padding: 14px 18px 16px !important;
+    /* Top padding dropped to 0 on 2026-10-04: the gap above the header was
+       4mm; the user settled on 3mm. Part of what sits above the icons is the
+       slack of centring them in the header row, about 8px. */
+    padding: 9px 18px 16px !important;
     margin-left: -12px !important;
     margin-right: -10px !important;
     overflow: hidden !important;
@@ -5827,8 +5843,15 @@ body.light-mode .ft-icon-label { color: #3a3226 !important; }
     background: none !important;
     border: none !important;
     box-shadow: none !important;
-    margin-top: -7px !important;
-    margin-left: -14px !important;
+    /* The tray reads 7px high because its art carries the glow below the
+       box, so flex centring puts the drawing above the line. Nudged with a
+       transform, not a margin: a margin grows the header, which pushes the
+       centred gear and dot grid down with it, so half of every correction
+       was chasing itself. */
+    margin-top: 0 !important;
+    transform: translateY(7px) !important;
+    /* Pushed further out to the left edge, matching the reference header. */
+    margin-left: -22px !important;
 }
 .logo-tray-icon {
     width: 100% !important;
@@ -5902,15 +5925,21 @@ body.light-mode .doc-tag {
     padding: 0 !important;
     margin: 0 !important;
     position: absolute !important;
-    top: 3px !important;
-    right: 3px !important;
+    /* Centred the same way the dot grid is (top:50% + translateY), so the two
+       always share one centre line. Pinned to top:3px it could only match at
+       one header height, and it was sitting above the dots. */
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    /* Sits closer to the right edge, matching the reference header. */
+    right: -5px !important;
 }
 .header-dots {
     position: absolute;
-    right: 48px;
+    /* Two more columns of dots (10px apart), and shifted out with the gear. */
+    right: 40px;
     top: 50%;
     transform: translateY(-50%);
-    width: 60px;
+    width: 80px;
     height: 60px;
     background-image: radial-gradient(rgba(255, 150, 50, 0.35) 1px, transparent 1.5px);
     background-size: 10px 10px;
@@ -7817,7 +7846,7 @@ body.in-folder .top-bar {
 }
 
 /* The pill is 38px but its wrapper was padded out to 82px. */
-body.in-folder .top-bar > .type-selector {
+body.in-folder.tabs-visible .top-bar > .type-selector {
     padding: 0 !important;
     margin: 0 !important;
     min-height: 0 !important;
@@ -9093,18 +9122,38 @@ body.reduce-motion .dash-bar2-draw > span { animation: none; }
 
 
 /* ============================================================
-   ROWS LEAN TOWARD THE THUMB
-   setPressTilt() writes --rx/--ry from where the row was touched, so the card
-   tips toward the finger for the 150ms of the press instead of only shrinking.
-   Rows only: .dept-oval keeps the flat scale it has always had.
+   PRESSED ROWS
+   A pressed row shrinks a little. It used to tip toward the finger as well
+   (a 3D rotate driven from the touch point), which read as the card wobbling
+   rather than answering the tap, so the rotation is gone.
    ============================================================ */
 .card.press-depth-3d {
-    transform: perspective(600px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) scale(0.96);
+    transform: scale(0.96);
+    /* Reads as the card being pushed INTO the surface rather than just
+       getting smaller: the light that normally sits on its top edge becomes a
+       shadow, and the whole card dims a touch. */
+    box-shadow: inset 0 3px 7px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.35) !important;
+    filter: brightness(0.93);
+}
+body.light-mode .card.press-depth-3d {
+    box-shadow: inset 0 3px 7px rgba(120, 95, 65, 0.3), 0 1px 2px rgba(120, 95, 65, 0.18) !important;
+    filter: brightness(0.97);
 }
 
-body.reduce-motion .card.press-depth-3d { transform: scale(0.96); }
-@media (prefers-reduced-motion: reduce) {
-    .card.press-depth-3d { transform: scale(0.96); }
+/* The menu button sinks on its own, a bit deeper than the row does -- it is
+   small, so the same 4% would barely register. */
+.row-menu.press-depth-3d {
+    transform: scale(0.88);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.6) !important;
+    filter: brightness(0.85);
+}
+body.light-mode .row-menu.press-depth-3d {
+    box-shadow: inset 0 2px 5px rgba(120, 95, 65, 0.35) !important;
+    filter: brightness(0.93);
+}
+.card.press-depth-3d,
+.row-menu.press-depth-3d {
+    transition: transform 0.09s ease-out, box-shadow 0.09s ease-out, filter 0.09s ease-out;
 }
 
 
@@ -9156,6 +9205,10 @@ body.docman-pro .header-title h1 {
     overflow: visible !important;
     text-overflow: clip !important;
 }
+/* The h1 alone was not enough: .header-title above it still carries
+   overflow:hidden, so the badge was clipped by the parent and the wordmark
+   read "DOCMANP". Both have to let it through. */
+body.docman-pro .header-title { overflow: visible !important; }
 @media (max-width: 380px) {
     body.docman-pro .header-title h1 {
         font-size: clamp(0.95rem, 6.2vw, 1.7rem) !important;
@@ -9217,40 +9270,149 @@ body.docman-pro .header-dots {
 
 
 /* ============================================================
-   REMINDER CARD FROM A NOTIFICATION
-   The card reuses the expiry modal's shell; only its own text needs sizing.
-   .reminder-flash marks the row the card led to, so the eye lands on it
-   after the list scrolls.
+   REMINDER STICKY NOTE FROM A NOTIFICATION
+   Tapping the alert opens the Reminders page and pops the reminder on its
+   own row as a paper note -- the same object class as the file quick note
+   (.qnote-bubble above), so the two read as one idea. No dimmed backdrop:
+   the list behind it is the point. The catcher is an invisible full-screen
+   layer purely so a tap anywhere else closes the note.
    ============================================================ */
-.rem-modal-h {
-    margin: 10px 0 2px;
-    font-size: 1.02rem;
-    font-weight: 700;
-    font-family: Inter, sans-serif;
+.rnote-catcher {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;        /* over the reminders panel, which sits at 9999 */
+    background: transparent;
 }
-.rem-modal-title {
-    margin: 0 0 4px;
-    font-size: 0.92rem;
-    font-weight: 600;
-    font-family: Inter, sans-serif;
+.rnote-sticky {
+    position: fixed;
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    width: 262px;
+    max-height: 46vh;
+    background: #fdf6d3;
+    border: 1px solid #d9c98a;
+    border-radius: 6px;
+    padding: 9px 8px 9px 11px;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.55);
+    animation: rnotePop 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.rem-modal-when {
-    margin: 0 0 14px;
-    font-size: 0.78rem;
-    opacity: 0.7;
-    font-family: Inter, sans-serif;
+/* Grows out of the row it belongs to -- transform-origin is set in JS to the
+   row's centre, so it opens from the reminder rather than from nowhere. */
+@keyframes rnotePop {
+    from { opacity: 0; transform: scale(0.86); }
+    to   { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .rnote-sticky { animation: none; } }
+body.reduce-motion .rnote-sticky { animation: none; }
+
+.rnote-arrow {
+    position: absolute;
+    top: -6px;
+    width: 11px; height: 11px;
+    background: #fdf6d3;
+    border-left: 1px solid #d9c98a;
+    border-top: 1px solid #d9c98a;
+    transform: rotate(45deg);
+}
+/* Flipped above the row when there is no space below it. */
+.rnote-sticky.rnote-above .rnote-arrow {
+    top: auto;
+    bottom: -6px;
+    border-left: none; border-top: none;
+    border-right: 1px solid #d9c98a;
+    border-bottom: 1px solid #d9c98a;
 }
 
-.reminder-flash {
-    animation: reminderFlash 0.7s ease-in-out 0s 4;
+.rnote-main { flex: 1; min-width: 0; overflow-y: auto; }
+.rnote-label {
+    display: flex; align-items: center; gap: 4px;
+    color: #6b5b12;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-family: Inter, sans-serif;
+    margin-bottom: 3px;
 }
-@keyframes reminderFlash {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); }
-    50%      { box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.65); }
+.rnote-label i { font-size: 0.6rem; }
+.rnote-title {
+    color: #2f2a12;
+    font-size: 0.88rem;
+    font-weight: 700;
+    line-height: 1.35;
+    font-family: Inter, sans-serif;
+    word-break: break-word;
 }
-body.reduce-motion .reminder-flash { animation: none; box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.65); }
-@media (prefers-reduced-motion: reduce) {
-    .reminder-flash { animation: none; box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.65); }
+.rnote-when {
+    color: #7a5c0a;
+    font-size: 0.73rem;
+    font-weight: 600;
+    font-family: Inter, sans-serif;
+    margin-top: 3px;
+}
+.rnote-place {
+    display: flex; align-items: center; gap: 4px;
+    color: #6b5b12;
+    font-size: 0.71rem;
+    font-family: Inter, sans-serif;
+    margin-top: 3px;
+    opacity: 0.9;
+}
+.rnote-place i { font-size: 0.62rem; }
+
+/* Close sits on its own rail, clear of the text. Nothing destructive is on
+   the note: delete stayed on the row, where it cannot be hit by someone
+   reaching to dismiss what just popped up. */
+.rnote-side {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    flex-shrink: 0;
+    padding-left: 8px;
+    border-left: 1px solid rgba(0, 0, 0, 0.12);
+}
+.rnote-side-btn {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    background: rgba(0, 0, 0, 0.04);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+    font-family: Inter, sans-serif;
+}
+.rnote-close { color: #8a7c3f; font-size: 0.72rem; line-height: 1; }
+
+/* The row the note came from stays marked after it is closed: a steady amber
+   banner with its own edge bar, never a blink. It also outranks the due
+   row's pulse, so the one reminder that was alerted stops moving while the
+   note is on screen and after. :not(.tear-away) leaves the delete
+   animation free to run. */
+.reminder-row.reminder-banner:not(.tear-away) {
+    animation: none !important;
+    position: relative;
+    padding-left: 20px !important;
+    border-color: rgba(249, 115, 22, 0.85) !important;
+    box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.3), 0 6px 18px rgba(249, 115, 22, 0.16);
+}
+/* A reminder that has been read carries only the trash -- the row the alert
+   led to, and every row whose time has passed and been acknowledged. Edit is
+   a thing you go looking for (the long press still opens it); once a reminder
+   has done its job, the useful answer is "deal with it", not "change it". */
+/* !important because the button carries its own display:flex inline, from the
+   panel's inline-styled markup -- an inline declaration outranks a plain rule
+   here, so the first attempt at this hid nothing at all. */
+.reminder-row.reminder-banner .reminder-edit,
+.reminder-row.reminder-seen .reminder-edit { display: none !important; }
+.reminder-row.reminder-banner:not(.tear-away)::before {
+    content: '';
+    position: absolute;
+    left: 6px; top: 8px; bottom: 8px;
+    width: 3px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #f97316, #ec4899);
 }
 
 
@@ -9284,3 +9446,929 @@ body.reduce-motion .reminder-flash { animation: none; box-shadow: 0 0 0 3px rgba
 /* No word at all. The padlock says it on its own, and a small label in that
    circle was the part that read as faint. */
 .dept-pill-icon-locked .dept-count-label { display: none !important; }
+
+
+/* ============================================================
+   BY DEPARTMENT, AS A BAR GRAPH
+   The track was a hairline under the name; it is the measurement, so it now
+   carries the weight. Departments holding nothing collapse to a single line:
+   a run of "Empty" rows breaks the very comparison the bars exist to make.
+   Columns were considered and rejected -- a phone's width is fixed while its
+   height scrolls, so columns get worse as departments are added, not better.
+   ============================================================ */
+.dash-dep-track {
+    height: 9px !important;
+    border-radius: 99px !important;
+    background: rgba(255, 255, 255, 0.09) !important;
+    overflow: hidden;
+}
+.dash-dep-fill {
+    height: 100% !important;
+    border-radius: 99px !important;
+    min-width: 4px;
+}
+.dash-dep-bare {
+    padding: 11px 16px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-family: Inter, sans-serif;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+
+/* ============================================================
+   DASHBOARD CARDS NEED AN EDGE
+   On the plum wallpaper each card sat at almost the same value as the ground
+   behind it, so the sections ran together. A hairline is enough to separate
+   them without turning the page into a grid of boxes.
+   ============================================================ */
+.dash-depts,
+.dash-doc,
+.dash-backup,
+.dash-exp,
+.dash-expiry,
+.dash-hero2 {
+    border: 1px solid rgba(255, 255, 255, 0.28) !important;
+}
+/* ============================================================
+   BUSY OVERLAY — THE FILLING GLASS
+   A ring that only spins says "something is happening"; over the minute a
+   large cloud file can take, that is no news at all. The circle fills with
+   water instead, so the level is the progress. One colour and one surface:
+   an earlier version stacked two translucent ellipses and the overlap read
+   as a second, false water line. Before a size is known the water rests
+   near the bottom (.busy-ring-idle) rather than drawing a number nobody
+   has. Driven by setBusyFill() in app.js.
+   ============================================================ */
+.busy-ring {
+    position: relative;
+    width: 104px; height: 104px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    overflow: hidden;
+    /* Near-black in both themes: the empty part of the glass should read as
+       empty, not as a tinted panel. */
+    background: #05060a;
+    border: 2px solid #4ea3ff;
+}
+.busy-fill {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 0;
+    background: #2b8cf0;
+    transition: height 0.25s linear;
+}
+/* The surface. The SVG holds two full wave periods across its viewBox and is
+   drawn at twice the ring's width, so sliding it by half its width lands on
+   an identical phase -- the loop has no seam. */
+.busy-surf {
+    position: absolute;
+    left: 0; top: -9px;
+    width: 200%; height: 18px;
+    animation: busyWaveSlide 2.6s linear infinite;
+}
+.busy-surf svg { display: block; width: 100%; height: 100%; }
+.busy-surf path { fill: #2b8cf0; }
+@keyframes busyWaveSlide {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+}
+.busy-ring-idle .busy-fill { animation: busyIdle 2.8s ease-in-out infinite; }
+@keyframes busyIdle {
+    0%, 100% { height: 12%; }
+    50%      { height: 18%; }
+}
+.busy-ico {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2rem;
+    color: #fff;
+}
+.busy-pct {
+    position: absolute;
+    left: 0; right: 0; bottom: 9px;
+    font-size: 0.76rem;
+    font-weight: 800;
+    font-family: Inter, sans-serif;
+    color: #fff;
+}
+.busy-pct:empty { display: none; }
+body.reduce-motion .busy-surf,
+body.reduce-motion .busy-ring-idle .busy-fill { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+    .busy-surf, .busy-ring-idle .busy-fill { animation: none; }
+}
+
+
+/* ============================================================
+   THE CARD AN EXPIRY ROW LED TO
+   Tapping a document in the dashboard's Expiring soon list opens its
+   folder, not the document, because everything you would want to do
+   about an expiry lives on the card's own menu. Three slow pulses in
+   the expiry badge's amber are enough to find it; then it stops, so
+   it marks the card without nagging.
+   ============================================================ */
+.file-card.file-card-flash {
+    /* outline, not box-shadow: a shadow was invisible here, and outline is a
+       property nothing else in this file touches, so nothing can outrank it.
+       It also sits outside the border box and is not clipped by the grid. */
+    animation: fileCardFlash 0.8s ease-in-out 3 !important;
+    outline-offset: 2px;
+    position: relative;
+    z-index: 5;
+}
+@keyframes fileCardFlash {
+    0%, 100% { outline: 3px solid rgba(245, 158, 11, 0); transform: scale(1); }
+    50%      { outline: 3px solid rgba(245, 158, 11, 0.95); transform: scale(1.04); }
+}
+body.reduce-motion .file-card.file-card-flash {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.9);
+}
+@media (prefers-reduced-motion: reduce) {
+    .file-card.file-card-flash {
+        animation: none;
+        box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.9);
+    }
+}
+
+/* A note that has a reminder waiting on it gets the same small flag treatment
+   as favourite and lock -- enough to spot in a list, not enough to crowd the
+   title. Amber, matching the reminder language used on rows and the sticky
+   note, rather than the yellow reserved for favourites. */
+.card-remind-indicator {
+    font-size: 0.68rem;
+    color: #f59e0b;
+    flex-shrink: 0;
+    margin-left: 6px;
+}
+
+/* The way back from a note's reminder to the note itself. Sits in the sticky
+   note's body under the due line, styled as paper-coloured ink rather than a
+   filled button: the note is a piece of paper, not a dialog. */
+.rnote-open-note {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-top: 8px;
+    padding: 5px 11px;
+    border-radius: 40px;
+    border: 1px solid rgba(138, 124, 63, 0.45);
+    background: rgba(255, 255, 255, 0.35);
+    color: #6b5b12;
+    font-family: Inter, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.rnote-open-note i { font-size: 0.66rem; }
+.rnote-open-note:active { background: rgba(255, 255, 255, 0.6); }
+
+/* ============================================================
+   FROZEN TOP -- everything above the list stays put and only the files
+   scroll, the way a spreadsheet freezes its header rows. The DOCMAN panel
+   and the folder bar are two separate elements, so they are stacked stickies:
+   the panel sits at the safe-area inset and the folder bar sits directly
+   below it, at a height measured in JS (--top-panel-h) because the panel is
+   taller inside a folder than on the home screen.
+   ============================================================ */
+#folderChrome:not(:empty) {
+    position: sticky;
+    top: var(--safe-top, 0px);
+    z-index: 40;
+    background: var(--frozen-bar);
+    /* Full-bleed to the screen edges while the content box keeps its width,
+       so nothing inside shifts: the negative margin and padding cancel out.
+       .app clips the overhang. */
+    margin-left: -40px;
+    margin-right: -40px;
+    padding: 4px 40px 8px;
+    box-shadow: 0 12px 20px -10px rgba(0, 0, 0, 0.8);
+}
+/* The WebView draws under the status bar, so without this cards would slide
+   through the strip above the frozen panel. Uses ::after, not ::before --
+   body::before is already the app wallpaper (a fixed, full-screen layer), and
+   redefining it shrank the wallpaper to this strip and left the rest black. */
+body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--safe-top, 0px);
+    background: var(--frozen-bar);
+    z-index: 50;
+    pointer-events: none;
+}
+
+/* The folder header was a picture card with the folder art and a big name on
+   it. Frozen in place it ate too much of the screen for what it says, so it
+   is just its text now -- the path on one line, the folder name under it. */
+.current-folder-card {
+    background: none !important;
+    background-image: none !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 2px 0 0 !important;
+    margin: 4px 0 2px !important;
+    overflow: visible !important;
+}
+.current-folder-card::before,
+.current-folder-card::after { display: none !important; }
+.current-folder-card .cf-bottom-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+.current-folder-card .cf-folder-name {
+    font-size: 1.02rem !important;
+    font-weight: 700 !important;
+    line-height: 1.25 !important;
+}
+.current-folder-card .cf-folder-icon {
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    background: none !important;
+    box-shadow: none !important;
+}
+
+/* The big white folder name repeated what the path line already ends with,
+   and frozen in place it was just height. Dropped -- but not the star beside
+   it: the toolbar's Favourite button opens the favourites LIST, so this is
+   still the only way to favourite the folder you are standing in. It moves to
+   the end of the path line rather than keeping a row to itself. */
+.current-folder-card .cf-folder-name { display: none !important; }
+.current-folder-card .cf-bottom-row {
+    position: absolute !important;
+    right: 0 !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    margin: 0 !important;
+    gap: 0 !important;
+}
+.current-folder-card .cf-path-row { padding-right: 34px !important; }
+.current-folder-card { padding-bottom: 2px !important; }
+
+/* Stacked stickies only move as one if nothing sits between them in flow.
+   The panel's 4px margin and the empty breadcrumb/search slots left a gap
+   that closed as you scrolled, so the two bars looked elastic before they
+   locked together. Zero it inside a folder; the breathing room moves inside
+   the frozen bar's own padding, where it travels with it. */
+body.in-folder .top-panel { margin-bottom: 0 !important; }
+body.in-folder #breadcrumb,
+body.in-folder #departmentsSection,
+body.in-folder #searchInfo {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+body.in-folder #breadcrumb:empty,
+body.in-folder #departmentsSection:empty { display: none !important; }
+
+
+
+/* The path line is built as the same kind of container as the Back toolbar
+   right above it -- same width and bleed, same navy fill, same thin orange
+   edge drawn with the gradient-mask trick (a real border cannot hold a
+   gradient), same light-mode white. Two bars of the same family, stacked. */
+.current-folder-card { margin: 4px 0 0 !important; padding: 0 !important; }
+.current-folder-card .cf-path-row {
+    width: calc(100% + 26px) !important;
+    box-sizing: border-box !important;
+    margin: 0 -13px !important;
+    padding: 8px 40px 8px 12px !important;
+    border-radius: 12px !important;
+    border: none !important;
+    background: linear-gradient(180deg, #172040 0%, #10182e 40%, #0b1120 100%) !important;
+    box-shadow: 0 12px 26px rgba(0,0,0,0.6), 0 2px 0 rgba(255,255,255,0.1) inset, 0 -3px 6px rgba(0,0,0,0.5) inset, 0 1px 0 rgba(255,255,255,0.06) !important;
+    position: relative !important;
+    overflow: visible !important;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.current-folder-card .cf-path-row::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 0.6px;
+    background: linear-gradient(135deg, #ffb347, #ff8f1f, #ffa337, #ffb347);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 0;
+}
+.current-folder-card .cf-path-row > * { position: relative; z-index: 1; }
+body.light-mode .current-folder-card .cf-path-row {
+    background: #ffffff !important;
+    box-shadow: 0 2px 8px rgba(150, 110, 60, 0.10) !important;
+}
+.current-folder-card .cf-bottom-row { right: 2px !important; z-index: 2 !important; }
+
+/* The FILES/NOTES row reserved 82px of height while the toggle inside a
+   folder is only 43.4px tall, so roughly 39px sat empty between the
+   "Document Manager" line and the row -- the widest blank band in the panel,
+   and wasted height now that the whole panel is frozen on screen. Give the
+   row just enough for the tallest thing in it (the 45.4px home button). */
+body.in-folder .type-selector { min-height: 48px !important; }
+/* The panel stacks its rows with a 4px gap; inside a folder every pixel of
+   panel height is a pixel the frozen list does not get, so close it. */
+body.in-folder .top-panel { gap: 0 !important; }
+/* The tray art is nudged 7px down by a transform, so it already overhangs
+   the header box -- the row below can start that much higher without the
+   home button ever touching it. */
+body.in-folder .header { padding-top: 0 !important; padding-bottom: 0 !important; }
+
+/* Recent / Sort / Dashboard / Recycle Bin box: 1mm of air above and below the
+   icons instead of the old 8px. 1mm = 5.4 CSS px on this screen, the same
+   conversion the home-button sizing above already uses. */
+.stats-bar {
+    padding-top: 5.4px !important;
+    padding-bottom: 5.4px !important;
+}
+
+/* Closing the panel's row gap to 0 inside a folder also closed the one gap
+   that was doing useful work -- the Recent/Sort box ended up flush against
+   the search row. Give that one seam 0.8mm back (0.8 x 5.4 = 4.3 CSS px).
+   The other seams stay closed. */
+body.in-folder .stats-bar {
+    margin-top: 5.4px !important;
+}
+
+/* Home button and FILES/NOTES pill nudged 1mm down (5.4 CSS px), putting a
+   little air between them and the tray logo above. Offset with relative
+   positioning, not margin: .top-bar is a wrapping flex row, and a margin
+   there re-flowed it badly enough to throw the toggle and Upload out of
+   place. Relative shifts where they paint and where taps land without
+   touching the layout, and there is ~28px of clearance to the search row
+   below, so nothing collides. */
+body.in-folder.tabs-visible .top-bar > #homeBtn,
+body.in-folder.tabs-visible .top-bar > .type-selector {
+    margin-top: 5.4px !important;
+}
+
+/* ============================================================
+   SMALLER FILE ROWS
+   The file-type badge was 34px, which with the card's 4px padding made every
+   row 42px tall. At 28px the row is 36px -- about two more files on screen in
+   a folder -- and it still sits comfortably above the 26px note/folder icon.
+   Everything drawn inside the badge is scaled by the same 0.82 so the sheet
+   fold, the glyph and the "PDF" label keep their proportions.
+   ============================================================ */
+.file-icon-badge {
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 7px !important;
+}
+.file-icon-badge-fold {
+    border-width: 0 9px 9px 0 !important;
+}
+.file-icon-badge svg {
+    width: 12.5px !important;
+    height: 12.5px !important;
+}
+.file-icon-badge-label {
+    font-size: 0.36rem !important;
+}
+/* The photo placeholder's mountains and sun are absolutely placed, so they
+   need the same reduction or they overflow the smaller tile. */
+.photo-sun { top: 4px !important; right: 6px !important; width: 6px !important; height: 6px !important; }
+.photo-mtn1 { border-width: 0 10px 13px 10px !important; }
+.photo-mtn2 { border-width: 0 11px 10px 11px !important; }
+
+
+/* File rows 1mm shorter (5.4 CSS px): 44px -> 38.6px. The height was never
+   the icon or the padding -- .file-card carried a min-height of 44px, which
+   clamped the row no matter what was trimmed inside it. Note and folder rows
+   already sit at 36px, so this also brings the three closer together instead
+   of leaving files standing taller than everything else. */
+.file-card { min-height: 38.6px !important; }
+
+/* The home button alone sits 1mm lower than the FILES/NOTES pill beside it
+   (5.4px on top of the 5.4px the whole row already carries). */
+body.in-folder.tabs-visible .top-bar > #homeBtn {
+    margin-top: 10.8px !important;
+}
+
+/* The first file card was tucked right against the frozen bar, so the bar's
+   drop shadow fell across the card's top border and cut it off. Push the list
+   clear of the bar and pull the shadow in so it lands on the gap, not on the
+   card. */
+body.in-folder #content {
+    padding-top: 7px !important;
+}
+#folderChrome:not(:empty) {
+    box-shadow: 0 6px 10px -8px rgba(0, 0, 0, 0.7) !important;
+}
+
+/* Home button 1mm lower again (10.8 -> 16.2px). */
+body.in-folder.tabs-visible .top-bar > #homeBtn {
+    margin-top: 16.2px !important;
+}
+
+/* File row edge down to a true hairline. It was a 0.6px line carrying a 2px
+   glow around it, and the glow is what gave it weight -- at a glance the edge
+   read two or three pixels thick. The glow goes, the line thins, and the
+   light-mode edge is thinned to match so the two themes stay siblings. */
+body:not(.light-mode) .card.file-card {
+    border: 0.4px solid rgba(190, 215, 255, 0.5) !important;
+    box-shadow: none !important;
+}
+body.light-mode .card.file-card {
+    border: 0.4px solid rgba(120, 95, 65, 0.35) !important;
+    box-shadow: none !important;
+}
+
+/* File rows wear the same neon rim as the ... button on them -- the same
+   blue-to-magenta gradient, drawn the same way (a masked ring, because a real
+   border cannot hold a gradient) -- but at 0.5px instead of the button's
+   1.4px, so it reads as a hairline rather than a tube. The glow is kept very
+   faint: at 2px of blur it tints the edge without spilling onto the row. */
+body:not(.light-mode) .card.file-card {
+    border: none !important;
+    box-shadow: none !important;
+}
+body:not(.light-mode) .file-card::after {
+    display: block !important;
+    padding: 0.5px !important;
+    background: linear-gradient(100deg,
+        #3b82f6 0%, #6366f1 32%, #8b5cf6 62%, #c026d3 100%) !important;
+    box-shadow: 0 0 2px rgba(99, 102, 241, 0.45) !important;
+}
+body.light-mode .card.file-card {
+    border: none !important;
+    box-shadow: none !important;
+}
+body.light-mode .file-card::after {
+    display: block !important;
+    padding: 0.5px !important;
+    background: linear-gradient(100deg,
+        #2563eb 0%, #4f46e5 32%, #7c3aed 62%, #a21caf 100%) !important;
+    box-shadow: none !important;
+}
+
+/* The hairline rim was there but too faint to read at arm's length. Still a
+   hairline -- 0.7px, half the ... button's 1.4px -- but with brighter stops
+   and a little more glow behind it so the colour actually registers. */
+body:not(.light-mode) .file-card::after {
+    padding: 0.7px !important;
+    background: linear-gradient(100deg,
+        #60a5fa 0%, #818cf8 32%, #a78bfa 62%, #e879f9 100%) !important;
+    box-shadow: 0 0 4px rgba(129, 140, 248, 0.65) !important;
+}
+body.light-mode .file-card::after {
+    padding: 0.7px !important;
+    background: linear-gradient(100deg,
+        #1d4ed8 0%, #4338ca 32%, #6d28d9 62%, #a21caf 100%) !important;
+}
+
+/* The ... button was landing next to the phone's own Back control on the
+   last rows of a list. Moving it LEFT was the wrong way round -- Back sits
+   left of it, so left is toward the problem. The row now stretches further
+   RIGHT (a negative margin past the app's own padding, with the inner padding
+   pulled in to match) and the button rides out with it, away from Back. The
+   list also gets clearance at the bottom so the final row never finishes
+   underneath the navigation bar. */
+.card {
+    padding-right: 8px !important;
+    margin-right: -10px !important;
+}
+body.in-folder #content {
+    /* The WebView itself now stops above the navigation bar (MainActivity
+       pads it by the bottom inset), so this only needs to be a comfortable
+       end-of-list margin, not a nav-bar dodge. */
+    padding-bottom: 12px !important;
+}
+
+/* ============================================================
+   BREADCRUMB AS PILLS
+   Each step is its own rounded chip with an orange rim and its own icon,
+   chevrons sitting bare between them. The outer container goes transparent so
+   the chips are the only shapes -- it was a single bar before, which made the
+   three steps read as one block of text.
+   ============================================================ */
+.current-folder-card .cf-path-row {
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 2px 34px 2px 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none;
+}
+.current-folder-card .cf-path-row::-webkit-scrollbar { display: none; }
+.current-folder-card .cf-path-row::before { display: none !important; }
+
+.current-folder-card .cf-home,
+.current-folder-card .cf-part {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex: 0 0 auto !important;
+    padding: 6px 13px !important;
+    border-radius: 999px !important;
+    background: linear-gradient(180deg, #172040 0%, #0b1120 100%) !important;
+    border: 1px solid #f59e0b !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+    font-size: 0.8rem !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+    max-width: 46vw;
+    overflow: hidden;
+}
+.current-folder-card .cf-home > span,
+.current-folder-card .cf-part > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.current-folder-card .cf-home { color: #f59e0b !important; }
+.current-folder-card .cf-home i { color: #f59e0b !important; }
+.current-folder-card .cf-part-nav { color: #dbe4f5 !important; }
+.current-folder-card .cf-part-nav i { color: #fbbf24 !important; }
+.current-folder-card .cf-part-current { color: #f59e0b !important; }
+.current-folder-card .cf-part-current i { color: #fbbf24 !important; }
+.current-folder-card .cf-home i,
+.current-folder-card .cf-part i { font-size: 0.82rem !important; }
+
+/* The chevrons are just punctuation -- no chip, no colour of their own. */
+.current-folder-card .cf-sep {
+    flex: 0 0 auto !important;
+    padding: 0 !important;
+    background: none !important;
+    border: none !important;
+    color: #7a8699 !important;
+    font-size: 0.62rem !important;
+}
+
+body.light-mode .current-folder-card .cf-home,
+body.light-mode .current-folder-card .cf-part {
+    background: #ffffff !important;
+    border-color: #e09b2d !important;
+    box-shadow: 0 2px 6px rgba(150, 110, 60, 0.12) !important;
+}
+body.light-mode .current-folder-card .cf-part-nav { color: #4a3b2a !important; }
+body.light-mode .current-folder-card .cf-home,
+body.light-mode .current-folder-card .cf-part-current { color: #c2710c !important; }
+
+/* The crumbs a size down and sitting closer together. */
+.current-folder-card .cf-home,
+.current-folder-card .cf-part {
+    padding: 4px 10px !important;
+    font-size: 0.72rem !important;
+    gap: 5px !important;
+}
+.current-folder-card .cf-home i,
+.current-folder-card .cf-part i { font-size: 0.72rem !important; }
+.current-folder-card .cf-path-row { gap: 2px !important; }
+.current-folder-card .cf-sep { font-size: 0.55rem !important; }
+
+/* The crumbs were wrapping onto a second line once the path got long enough.
+   The row already scrolls sideways; it just needed to be told not to wrap,
+   and the chips not to be squeezed. One line, swipe to see the rest. */
+.current-folder-card .cf-path-row {
+    flex-wrap: nowrap !important;
+}
+.current-folder-card .cf-home,
+.current-folder-card .cf-part,
+.current-folder-card .cf-sep {
+    flex-shrink: 0 !important;
+}
+.current-folder-card .cf-part-current { max-width: none !important; }
+
+/* ============================================================
+   NOTE EDITOR
+   Head (icon + heading + close), fields that carry their own icon and
+   character count, a six-colour picker, and a footer whose Save button leads
+   with the chosen colour. The colour is a real field on the note -- the body
+   here tints to it and so does the note's row in the list.
+   ============================================================ */
+.note-modal-card {
+    /* The old blue halo was left behind when every dialog moved to the shared
+       hairline; it is the only one still glowing blue. */
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65) !important;
+    max-width: 440px !important;
+}
+.note-modal-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 18px 18px 4px;
+}
+.note-modal-icon {
+    width: 42px; height: 42px;
+    flex: 0 0 42px;
+    border-radius: 13px;
+    background: linear-gradient(135deg, #a855f7, #6366f1);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 1rem;
+    box-shadow: 0 6px 16px rgba(124, 58, 237, 0.45);
+}
+.note-modal-titles { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.note-modal-h { font-size: 1.22rem; font-weight: 800; color: #f8fafc; line-height: 1.15; }
+.note-modal-sub { font-size: 0.82rem; color: #a5b4fc; }
+.note-modal-x {
+    flex: 0 0 34px;
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.09);
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+.note-modal-x:active { background: rgba(255, 255, 255, 0.18); }
+
+.modal-body-note { padding: 14px 18px 4px !important; display: flex; flex-direction: column; gap: 12px; }
+
+.note-field {
+    position: relative;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 12px 14px 12px 42px;
+}
+.note-field-ico {
+    position: absolute;
+    left: 14px; top: 15px;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.85rem;
+}
+.note-field-body { padding-bottom: 26px; }
+.note-count {
+    position: absolute;
+    right: 12px; bottom: 7px;
+    font-size: 0.68rem;
+    color: rgba(255, 255, 255, 0.65);
+    pointer-events: none;
+}
+.note-field-title .note-count { bottom: 50%; transform: translateY(50%); }
+
+.note-title-input,
+.note-content-input {
+    width: 100%;
+    background: none !important;
+    border: none !important;
+    outline: none !important;
+    color: #ffffff !important;
+    font-family: Inter, sans-serif;
+    padding: 0 !important;
+    resize: none;
+}
+.note-title-input { font-size: 1.02rem; font-weight: 700; padding-right: 48px !important; }
+.note-content-input { font-size: 0.92rem; min-height: 160px; line-height: 1.45; }
+.note-title-input::placeholder,
+.note-content-input::placeholder { color: rgba(255, 255, 255, 0.55); }
+
+.note-colors { display: flex; gap: 10px; padding: 2px 0 6px; }
+.note-color-dot {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+.note-color-dot-on {
+    border-color: #ffffff;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18), 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+
+.note-modal-foot { padding: 6px 18px 18px !important; display: flex; gap: 12px; }
+.note-modal-foot button {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 13px 0 !important;
+    border-radius: 999px !important;
+    font-family: Inter, sans-serif;
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+.note-modal-foot button:first-child {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    color: #e2e8f0 !important;
+}
+.note-modal-foot #saveNoteBtn {
+    background: linear-gradient(100deg, #8b5cf6, #3b82f6) !important;
+    border: none !important;
+    color: #ffffff !important;
+    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4) !important;
+}
+
+body.light-mode .note-modal-h { color: #1e293b; }
+body.light-mode .note-modal-sub { color: #6d28d9; }
+body.light-mode .note-field { border-color: rgba(120, 95, 65, 0.3); background: rgba(120, 95, 65, 0.05); }
+body.light-mode .note-field-ico { color: #6b5b45; }
+body.light-mode .note-title-input,
+body.light-mode .note-content-input { color: #1e293b !important; }
+body.light-mode .note-title-input::placeholder,
+body.light-mode .note-content-input::placeholder { color: rgba(60, 50, 40, 0.5); }
+body.light-mode .note-field-body .note-title-input,
+body.light-mode .note-field-body .note-content-input { color: #ffffff !important; }
+body.light-mode .note-modal-x { background: rgba(120, 95, 65, 0.12); color: #4a3b2a; }
+body.light-mode .note-modal-foot button:first-child {
+    background: #ffffff !important;
+    border-color: rgba(120, 95, 65, 0.3) !important;
+    color: #4a3b2a !important;
+}
+
+/* The colour a note was saved with shows as a stripe down its row, so the
+   picker means something once the dialog is closed. */
+.note-card { position: relative; }
+.note-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 14%; bottom: 14%;
+    width: 4px;
+    border-radius: 0 3px 3px 0;
+    background: var(--note-stripe, transparent);
+    /* .card::before already draws a stripe here but keeps it at opacity 0 --
+       without this the colour is set and never seen. */
+    opacity: 1;
+}
+
+/* Keyboard-safe note editor.
+   1. The card was one scrolling box with a max-height of 80vh, so once the
+      keyboard opened, Save and Cancel were simply below the fold. It is a
+      flex column now: head and footer are fixed children, only the middle
+      scrolls, and the cap follows the VISIBLE viewport (dvh), which shrinks
+      with the keyboard.
+   2. The first letter was clipped on its left. The icon is absolutely placed
+      and the text began exactly at the padding edge, so a glyph with any left
+      bearing (a capital H) lost a sliver. A few more pixels of room fixes it. */
+.note-modal-card {
+    display: flex !important;
+    flex-direction: column !important;
+    max-height: calc(100vh - 24px) !important;
+    max-height: calc(100dvh - 24px) !important;
+    overflow: hidden !important;
+}
+.note-modal-head,
+.note-modal-foot { flex: 0 0 auto !important; }
+.modal-body-note {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+}
+.note-field { padding-left: 48px !important; }
+.note-title-input,
+.note-content-input { padding-left: 2px !important; }
+.note-content-input { min-height: 120px; }
+/* The overlay must not park the card under the status bar either. */
+#noteModal.modal {
+    align-items: center !important;
+    padding: max(12px, env(safe-area-inset-top)) 14px 12px !important;
+}
+
+/* Size the note editor from the VISIBLE viewport, not the window: with the
+   keyboard up those differ by its whole height, which is why Save and Cancel
+   were off screen. --vvh is published from visualViewport in app.js. */
+#noteModal.modal {
+    top: 0 !important;
+    bottom: auto !important;
+    height: var(--vvh, 100dvh) !important;
+}
+.note-modal-card {
+    max-height: calc(var(--vvh, 100dvh) - 24px) !important;
+}
+
+/* Compact note editor. Everything was sized for a tablet: a 160px writing
+   box, 42px head icon, 36px swatches and 13px-tall buttons added up to a card
+   that filled the screen before a word was typed. */
+.note-modal-head { padding: 13px 14px 2px !important; gap: 10px !important; }
+.note-modal-icon {
+    width: 32px !important; height: 32px !important; flex: 0 0 32px !important;
+    border-radius: 10px !important; font-size: 0.8rem !important;
+}
+.note-modal-h { font-size: 1rem !important; }
+.note-modal-sub { font-size: 0.72rem !important; }
+.note-modal-x { width: 28px !important; height: 28px !important; flex: 0 0 28px !important; font-size: 0.78rem !important; }
+
+.modal-body-note { padding: 10px 14px 2px !important; gap: 9px !important; }
+.note-field { padding: 9px 12px 9px 40px !important; border-radius: 13px !important; }
+.note-field-ico { left: 12px !important; top: 11px !important; font-size: 0.78rem !important; }
+.note-field-body { padding-bottom: 20px !important; }
+.note-title-input { font-size: 0.92rem !important; }
+.note-content-input { font-size: 0.86rem !important; min-height: 92px !important; }
+.note-count { font-size: 0.62rem !important; right: 10px !important; bottom: 5px !important; }
+
+.note-colors { gap: 8px !important; padding: 0 0 2px !important; }
+.note-color-dot { width: 27px !important; height: 27px !important; }
+
+.note-modal-foot { padding: 4px 14px 12px !important; gap: 10px !important; }
+.note-modal-foot button {
+    padding: 9px 0 !important;
+    font-size: 0.85rem !important;
+    gap: 6px !important;
+}
+
+/* The clip was inside the input, not the field: the text box began 2px from
+   its own edge, and a glyph like G or H leans a little left of where its line
+   starts, so that sliver fell outside and was cut. Give the text its own
+   breathing room and take the same amount off the field so nothing shifts. */
+.note-field { padding-left: 34px !important; }
+.note-title-input,
+.note-content-input { padding-left: 7px !important; }
+
+/* The title bar is one line of text; it does not need the same vertical room
+   as the writing box below it. */
+.note-field-title { padding-top: 6px !important; padding-bottom: 6px !important; }
+.note-field-title .note-field-ico { top: 50% !important; transform: translateY(-50%) !important; }
+
+/* Cancel and Save sized to their words, sitting together on the right, rather
+   than each stretching across half the card. */
+.note-modal-foot { justify-content: flex-end !important; }
+.note-modal-foot button {
+    flex: 0 0 auto !important;
+    padding: 9px 20px !important;
+}
+
+/* Footer buttons down to a normal dialog size: smaller type, a tighter pill,
+   and the tick/cross at the size of the words rather than beside them. */
+.note-modal-foot { padding: 2px 14px 10px !important; gap: 8px !important; }
+.note-modal-foot button {
+    padding: 7px 16px !important;
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    gap: 5px !important;
+}
+.note-modal-foot button i { font-size: 0.72rem !important; }
+.note-modal-foot #saveNoteBtn { box-shadow: 0 4px 12px rgba(99, 102, 241, 0.32) !important; }
+
+/* Outline icons and lit edges, matching the reference: a magenta-to-blue rim
+   around the card (drawn as a masked ring, since a border cannot hold a
+   gradient) and a bright hairline around the writing box so it reads as lit
+   rather than just filled. */
+.note-modal-card { position: relative; border: none !important; }
+.note-modal-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.4px;
+    background: linear-gradient(145deg, #d946ef 0%, #8b5cf6 40%, #3b82f6 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 2;
+}
+.note-field-body {
+    border: 1.5px solid rgba(255, 255, 255, 0.62) !important;
+    box-shadow: 0 0 14px rgba(139, 92, 246, 0.35);
+}
+.note-field-title { border-color: rgba(167, 139, 250, 0.45) !important; }
+.note-field-ico { opacity: 0.95; }
+
+/* A little more room to write in. */
+.note-content-input { min-height: 132px !important; }
+
+/* Title row: one line of text, no counter, no divider above the footer.
+   The 100-character cap still applies -- maxlength does the work; the readout
+   was only noise on a field that holds a few words. */
+#noteTitleCount { display: none !important; }
+.note-field-title {
+    padding-top: 3px !important;
+    padding-bottom: 3px !important;
+    padding-right: 12px !important;
+}
+.note-title-input { font-size: 0.88rem !important; line-height: 1.5 !important; }
+.note-modal-foot { border-top: none !important; }
+
+/* Cancel reads as a button, not as text: a visible rim of its own. */
+.note-modal-foot button:first-child {
+    border: 1px solid rgba(255, 255, 255, 0.5) !important;
+}
+body.light-mode .note-modal-foot button:first-child {
+    border-color: rgba(120, 95, 65, 0.55) !important;
+}
+
+/* The title row's rim was barely there next to the lit writing box below it. */
+.note-field-title {
+    border: 1px solid rgba(167, 139, 250, 0.75) !important;
+    box-shadow: 0 0 8px rgba(139, 92, 246, 0.2);
+}
+body.light-mode .note-field-title {
+    border-color: rgba(109, 40, 217, 0.45) !important;
+    box-shadow: none;
+}
+
+/* The reminder bell sat right against the "..." button, so a thumb aiming for
+   the menu kept landing on the gap between them. Both indicators now keep
+   clear of it. The bell is only a marker -- nothing to tap -- so the space
+   belongs to the button. */
+.card-remind-indicator { margin-left: 8px !important; margin-right: 6px !important; }
+.card-fav-indicator { margin-right: 4px !important; }
+.card .row-menu { margin-left: 10px !important; }

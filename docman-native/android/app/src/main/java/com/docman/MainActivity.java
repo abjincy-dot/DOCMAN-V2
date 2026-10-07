@@ -73,11 +73,25 @@ public class MainActivity extends BridgeActivity {
             float density = getResources().getDisplayMetrics().density;
             navBottomCssPx = Math.round(bars.bottom / density);
             pushNavBottom(webView);
+            // Keep the page out from under the navigation bar. Edge-to-edge
+            // let file rows scroll beneath it, and a tap in that strip is
+            // taken by Android -- so a row's "..." button sitting there fired
+            // Back instead of opening the menu. Padding the WebView shrinks
+            // what it draws and what it can be touched on, so nothing of the
+            // page ever reaches that strip.
+            v.setPadding(0, 0, 0, bars.bottom);
             // A listener REPLACES the WebView's own inset handling, which is
             // what feeds env(safe-area-inset-*) to the page. Returning the
             // insets untouched (as v6/1.0.3 did) zeroed those values and slid
             // the header up under the status bar -- so hand them on as well.
-            return ViewCompat.onApplyWindowInsets(v, insets);
+            // The BOTTOM inset is zeroed on the way through: the padding above
+            // has already accounted for it, and leaving it set would have the
+            // page subtract the same strip a second time.
+            WindowInsetsCompat forPage = new WindowInsetsCompat.Builder(insets)
+                .setInsets(WindowInsetsCompat.Type.systemBars(),
+                           Insets.of(bars.left, bars.top, bars.right, 0))
+                .build();
+            return ViewCompat.onApplyWindowInsets(v, forPage);
         });
         getBridge().addWebViewListener(new WebViewListener() {
             @Override

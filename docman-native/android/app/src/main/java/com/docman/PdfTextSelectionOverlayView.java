@@ -733,11 +733,24 @@ public class PdfTextSelectionOverlayView extends View {
         // has happened, no more movement is passed on until every finger is up.
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_POINTER_DOWN:
+                // A second finger means a pinch, and a pinch is never a
+                // selection. The long-press timer the FIRST finger started was
+                // left running, so any zoom lasting longer than the timeout --
+                // which is every zoom -- fired it mid-gesture and began
+                // selecting the text under the fingers. Cancelling it here is
+                // the fix; the rest hands the gesture to the viewer cleanly.
                 pinchInProgress = true;
-                break;
+                removeCallbacks(longPressRunnable);
+                draggingStartHandle = false;
+                draggingEndHandle = false;
+                // PDFView's scale detector needs this very event to start
+                // zooming, and it was being swallowed here.
+                forwardToPdfView(event);
+                return true;
             case MotionEvent.ACTION_POINTER_UP:
                 if (pinchInProgress) suppressDragUntilUp = true;
-                break;
+                forwardToPdfView(event);
+                return true;
         }
 
         switch (event.getActionMasked()) {
@@ -766,6 +779,9 @@ public class PdfTextSelectionOverlayView extends View {
 
             case MotionEvent.ACTION_MOVE: {
                 if (suppressDragUntilUp) return true;   // tail of a pinch
+                // While two fingers are down the viewer owns the gesture, even
+                // if a selection was already running when the pinch started.
+                if (pinchInProgress) { forwardToPdfView(event); return true; }
                 if (draggingStartHandle || draggingEndHandle || longPressFired) {
                     updateMovingHandle(event.getX(), event.getY());
                     return true;
