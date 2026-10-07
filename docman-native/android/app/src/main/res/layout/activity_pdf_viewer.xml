@@ -374,6 +374,12 @@
          Screen mode, and while placing a signature or marking a redact
          area (its own screen region would otherwise steal touches from
          whatever's underneath it during those modes). -->
+    <!-- Bottom tool strip. The nine labels inside are sized in dp, not sp,
+         on purpose: at 320dp with the system font at 130% they wrapped
+         mid-word ("Searc / h", "Fill / form") and the bar came apart. The
+         icons carry the meaning and the labels only name them, so they are
+         held at one size, the same call as the WebView's pinned text zoom in
+         MainActivity. maxLines keeps any future long label on one line. -->
     <LinearLayout
         android:id="@+id/pdfBottomToolStrip"
         android:layout_width="match_parent"
@@ -409,7 +415,8 @@
                 android:layout_marginTop="3dp"
                 android:text="Search"
                 android:textColor="#B8BEDB"
-                android:textSize="9sp" />
+                android:maxLines="1"
+                android:textSize="9dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -436,7 +443,8 @@
                 android:layout_marginTop="3dp"
                 android:text="Pages"
                 android:textColor="#B8BEDB"
-                android:textSize="9sp" />
+                android:maxLines="1"
+                android:textSize="9dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -463,7 +471,8 @@
                 android:layout_marginTop="3dp"
                 android:text="Sign"
                 android:textColor="#B8BEDB"
-                android:textSize="9sp" />
+                android:maxLines="1"
+                android:textSize="9dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -490,7 +499,8 @@
                 android:layout_marginTop="3dp"
                 android:text="Fill form"
                 android:textColor="#B8BEDB"
-                android:textSize="9sp" />
+                android:maxLines="1"
+                android:textSize="9dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -517,7 +527,8 @@
                 android:layout_marginTop="3dp"
                 android:text="Erase"
                 android:textColor="#B8BEDB"
-                android:textSize="9sp" />
+                android:maxLines="1"
+                android:textSize="9dp" />
         </LinearLayout>
 
 
@@ -546,7 +557,8 @@
                 android:layout_marginTop="3dp"
                 android:text="Mark"
                 android:textColor="#B8BEDB"
-                android:textSize="9sp" />
+                android:maxLines="1"
+                android:textSize="9dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -574,7 +586,8 @@
                 android:layout_marginTop="3dp"
                 android:text="Star"
                 android:textColor="#B8BEDB"
-                android:textSize="9sp" />
+                android:maxLines="1"
+                android:textSize="9dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -602,7 +615,8 @@
                 android:layout_marginTop="3dp"
                 android:text="Rotate"
                 android:textColor="#B8BEDB"
-                android:textSize="9sp" />
+                android:maxLines="1"
+                android:textSize="9dp" />
         </LinearLayout>
         <LinearLayout
             android:id="@+id/pdfToolMore"
@@ -628,7 +642,8 @@
                 android:layout_marginTop="3dp"
                 android:text="More"
                 android:textColor="#B8BEDB"
-                android:textSize="9sp" />
+                android:maxLines="1"
+                android:textSize="9dp" />
         </LinearLayout>
 
     </LinearLayout>

@@ -1526,7 +1526,11 @@ width: 100%;
 .dept-add-fab {
     position: fixed;
     right: 4px;
-    bottom: calc(24px + env(safe-area-inset-bottom));
+    /* Lifted 5 mm (27 CSS px) off the navigation bar on 2026-10-07: at 24px the
+       button's glow sat right on the nav-bar line and read as crowded. 3 mm only
+       just cleared it (9px of air), so it still read as stuck to the bar; 5 mm
+       leaves a gap you can actually see. */
+    bottom: calc(51px + env(safe-area-inset-bottom));
     z-index: 40;
     height: 78px;
     width: 78px;
@@ -3593,7 +3597,12 @@ overflow: visible;
 overflow: hidden; 
 }
 
-@media (max-width: 480px) { 
+/* Was max-width:480px. The rules inside are the phone presentation of the
+   department cluster -- pill width, hub size, label size. Above 480px none of
+   them applied, so a foldable got the OTHER geometry (.dept-oval flex:1, a
+   134px hub) and the two disagreed about where the pill ends. The column is
+   capped at 460px now, so this is simply the one geometry the app has. */
+@media (max-width: 1400px) { 
 .search-container { min-width: 90px; }
 .departments-grid { padding-left: 0; gap: 7px; }
 .departments-wrapper { padding: 4px 0; }
@@ -3629,6 +3638,26 @@ overflow: hidden;
 }
 
 }
+
+/* Narrow phones, in two steps. 360dp is the commonest Android width there
+   is, and at the shared 11px type "HEALTH & MEDICAL" ran off the end of its
+   pill; 320dp panels need a further step down for "FINANCE & BILLS" too.
+   Nothing moves -- the type comes down and the pill takes a little more of
+   the row, which is all the two longest names need. The 340 block must stay
+   AFTER the 380 one: same specificity, so the later rule is the one that
+   wins on a 320dp screen. */
+@media (max-width: 380px) {
+.dept-pill-name { font-size: 10px; letter-spacing: 0.1px; padding-right: 4px; }
+.dept-oval { flex: 0 1 calc(70% - 9px); }
+}
+@media (max-width: 340px) {
+.dept-pill-name { font-size: 9px; letter-spacing: 0; padding-right: 4px; }
+.dept-pill-icon { width: 42px; height: 42px; margin-left: -21px; }
+.dept-pill-icon .dept-count { font-size: 11px; }
+.dept-pill-icon .dept-count-label { font-size: 5px; }
+.dept-oval { flex: 0 1 calc(73% - 9px); }
+}
+
 
 
 .app { 
@@ -10372,3 +10401,351 @@ body.light-mode .note-field-title {
 .card-remind-indicator { margin-left: 8px !important; margin-right: 6px !important; }
 .card-fav-indicator { margin-right: 4px !important; }
 .card .row-menu { margin-left: 10px !important; }
+
+
+/* ============================================================
+   --- Statistics panel, rebuilt 2026-10-07 ---
+   Every selector here is scoped to .st-* and used only inside
+   #settingsPanel-statistics, so none of it can reach the other
+   settings panels that share .settings-header / .settings-card.
+   ============================================================ */
+
+/* The band has to reach the screen edges, but .settings-page-inner already
+   pads the panel by 20px/16px -- so the header is pulled back out by that
+   much and pays it back as padding, which keeps the title exactly where it
+   sat before while the colour runs edge to edge. overflow:hidden then clips
+   the bloom to this box instead of letting it wash over the first card. */
+#settingsPanel-statistics .st-head {
+    position: relative;
+    overflow: hidden;
+    margin: -20px -16px 10px;
+    padding: 46px 18px 22px;
+    border-radius: 0 0 26px 26px;
+}
+/* Behind the title: a soft magenta/violet bloom and two thin waves. Both are
+   decoration only -- pointer-events:none so the Back button keeps its whole
+   hit area, which a full-width overlay would otherwise steal. */
+#settingsPanel-statistics .st-head-aurora {
+    position: absolute;
+    inset: -30% -10% auto -10%;
+    height: 260px;
+    pointer-events: none;
+    background:
+        radial-gradient(60% 60% at 78% 58%, rgba(236,72,153,0.45) 0%, rgba(236,72,153,0) 70%),
+        radial-gradient(55% 55% at 28% 42%, rgba(147,51,234,0.34) 0%, rgba(147,51,234,0) 72%);
+    filter: blur(6px);
+}
+#settingsPanel-statistics .st-head-wave {
+    position: absolute;
+    left: -10%; right: -10%; top: 42px;
+    height: 110px;
+    opacity: 0.5;
+    pointer-events: none;
+}
+#settingsPanel-statistics .st-head-art {
+    position: absolute;
+    right: 8px; top: 28px;
+    width: 104px; height: 104px;
+    opacity: 0.9;
+    pointer-events: none;
+}
+#settingsPanel-statistics .st-head .settings-back-btn,
+#settingsPanel-statistics .st-head .settings-header-title { position: relative; z-index: 1; }
+/* The art sits top-right, so the subtitle must stop before it or the two
+   overlap on a narrow phone. */
+#settingsPanel-statistics .st-head .settings-header-title { padding-right: 92px; }
+
+.st-card {
+    /* 16px let the three cards drift apart; 10px keeps them reading as one
+       stack. */
+    margin: 0 0 7px;
+    padding: 13px 13px 14px;
+    border-radius: 22px;
+    background: linear-gradient(165deg, rgba(72,30,86,0.52) 0%, rgba(40,14,52,0.60) 55%, rgba(26,8,34,0.66) 100%);
+    border: 1px solid rgba(255,255,255,0.11);
+    box-shadow: 0 16px 34px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.07);
+}
+.st-card-head { display: flex; align-items: center; gap: 9px; margin-bottom: 13px; }
+.st-card-ico { font-size: 1rem; width: 22px; text-align: center; flex: 0 0 22px; }
+.st-ico-ov { color: #818cf8; }
+.st-ico-big { color: #e879f9; }
+.st-ico-store { color: #38bdf8; }
+.st-card-title {
+    font-size: 0.84rem; font-weight: 800; letter-spacing: 1.5px;
+    flex: 1; min-width: 0; color: var(--text-primary);
+    font-family: Inter, sans-serif;
+}
+/* The chip is a label wrapping a real <select>: Android then draws its own
+   picker, which behaves correctly with the keyboard and back button -- a
+   hand-rolled popup here would have to re-solve all of that. */
+.st-chip, .st-link {
+    position: relative;
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 12px; border-radius: 999px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.14);
+    font-size: 0.74rem; font-weight: 600; color: rgba(255,255,255,0.88);
+    font-family: Inter, sans-serif; white-space: nowrap; cursor: pointer;
+}
+.st-chip i, .st-link i { font-size: 0.6rem; opacity: 0.8; }
+.st-chip-select {
+    position: absolute; inset: 0;
+    opacity: 0; width: 100%; height: 100%;
+    border: none; background: none; cursor: pointer;
+}
+
+/* ---------- overview ---------- */
+.st-ov { display: flex; align-items: center; gap: 11px; }
+.st-ring { position: relative; width: 126px; height: 126px; flex: 0 0 126px; }
+.st-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.st-ring-track { fill: none; stroke: rgba(255,255,255,0.07); stroke-width: 13; }
+.st-ring-arc {
+    fill: none; stroke: url(#statRingGrad); stroke-width: 13; stroke-linecap: round;
+    transition: stroke-dasharray 0.6s cubic-bezier(0.22,1,0.36,1);
+}
+.st-ring-val {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.st-ring-num {
+    font-size: 2rem; font-weight: 800; letter-spacing: -1px; line-height: 1;
+    color: var(--text-primary); font-family: Inter, sans-serif;
+}
+.st-ring-lbl {
+    font-size: 0.57rem; letter-spacing: 1.2px; font-weight: 700; margin-top: 5px;
+    color: rgba(255,255,255,0.55); font-family: Inter, sans-serif;
+}
+.st-tiles {
+    flex: 1; min-width: 0;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 16px; overflow: hidden;
+}
+.st-tile { background: rgba(26,9,34,0.72); padding: 9px 8px 10px; min-width: 0; }
+.st-tile-ico {
+    width: 29px; height: 29px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.78rem; color: #fff; margin-bottom: 7px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+}
+.st-ic-files   { background: linear-gradient(140deg, #f43f5e, #be123c); }
+.st-ic-folders { background: linear-gradient(140deg, #10b981, #047857); }
+.st-ic-notes   { background: linear-gradient(140deg, #f59e0b, #d97706); }
+.st-ic-depts   { background: linear-gradient(140deg, #8b5cf6, #6d28d9); }
+.st-tile-num {
+    font-size: 1.35rem; font-weight: 800; letter-spacing: -0.5px; line-height: 1;
+    color: var(--text-primary); font-family: Inter, sans-serif;
+}
+/* DEPARTMENTS is the longest label and overflowed its half of the grid at
+   0.6rem; it is allowed to shrink rather than be clipped. */
+.st-tile-lbl {
+    font-size: 0.53rem; letter-spacing: 0.3px; font-weight: 700; margin-top: 4px;
+    color: rgba(255,255,255,0.52); font-family: Inter, sans-serif;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ---------- largest items ---------- */
+.st-row {
+    display: flex; align-items: center; gap: 11px;
+    padding: 10px 9px; border-radius: 16px;
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.07);
+    margin-bottom: 9px; cursor: pointer;
+}
+.st-row:last-child { margin-bottom: 0; }
+.st-row:active { background: rgba(255,255,255,0.075); }
+.st-row-ico {
+    width: 44px; height: 44px; flex: 0 0 44px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.15rem; color: #fff; box-shadow: 0 6px 14px rgba(0,0,0,0.38);
+}
+.st-ic-file-lg   { background: linear-gradient(140deg, #f43f5e, #be123c); }
+.st-ic-folder-lg { background: linear-gradient(140deg, #8b5cf6, #4f46e5); }
+.st-row-txt { flex: 1; min-width: 0; }
+.st-row-t {
+    font-size: 0.93rem; font-weight: 700;
+    color: var(--text-primary); font-family: Inter, sans-serif;
+}
+.st-row-s {
+    font-size: 0.76rem; color: rgba(255,255,255,0.58); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-family: Inter, sans-serif;
+}
+.st-pill {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 7px;
+    padding: 4px 10px; border-radius: 999px;
+    font-size: 0.7rem; font-weight: 700; font-family: Inter, sans-serif;
+}
+.st-pill i { font-size: 0.58rem; }
+.st-pill-size  { background: rgba(244,63,94,0.18);  color: #fb7185; border: 1px solid rgba(244,63,94,0.3); }
+.st-pill-count { background: rgba(139,92,246,0.18); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.3); }
+.st-row-arrow { font-size: 0.78rem; color: rgba(255,255,255,0.4); flex: 0 0 auto; }
+
+/* ---------- storage ---------- */
+.st-store-top { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 15px; }
+.st-store-num {
+    font-size: 2.2rem; font-weight: 800; letter-spacing: -1.5px; line-height: 1;
+    color: var(--text-primary); font-family: Inter, sans-serif;
+}
+.st-store-lbl {
+    font-size: 0.78rem; color: rgba(255,255,255,0.55); font-weight: 600; margin-top: 3px;
+    font-family: Inter, sans-serif;
+}
+.st-store-side {
+    flex: 1; min-width: 0;
+    display: flex; align-items: center; gap: 9px;
+    padding: 10px 11px; border-radius: 14px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+}
+.st-store-side-ico {
+    width: 34px; height: 34px; flex: 0 0 34px; border-radius: 11px;
+    background: linear-gradient(140deg, #38bdf8, #0284c7);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.9rem; color: #fff;
+}
+.st-store-side-v {
+    font-size: 0.88rem; font-weight: 700; color: var(--text-primary);
+    font-family: Inter, sans-serif; white-space: nowrap;
+}
+.st-store-side-l {
+    font-size: 0.68rem; color: rgba(255,255,255,0.52); margin-top: 1px;
+    font-family: Inter, sans-serif;
+}
+.st-bar {
+    height: 13px; border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden; display: flex;
+}
+.st-bar > div { transition: width 0.6s cubic-bezier(0.22,1,0.36,1); }
+.st-bar-pdf, .st-dot-pdf { background: linear-gradient(90deg, #22d3ee, #6366f1); }
+.st-bar-img, .st-dot-img { background: linear-gradient(90deg, #8b5cf6, #d946ef); }
+.st-bar-oth, .st-dot-oth { background: linear-gradient(90deg, #ec4899, #f43f5e); }
+.st-legend { display: flex; gap: 13px; margin-top: 11px; flex-wrap: wrap; }
+.st-legend > span {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.7rem; color: rgba(255,255,255,0.62); font-weight: 600;
+    font-family: Inter, sans-serif;
+}
+.st-dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; flex: 0 0 9px; }
+.st-bar-foot {
+    display: flex; justify-content: space-between; gap: 10px; margin-top: 10px;
+    font-size: 0.76rem; color: rgba(255,255,255,0.6); font-weight: 600;
+    font-family: Inter, sans-serif;
+}
+
+/* The light theme keeps the same shapes; only the surfaces and text flip, so
+   the cards stay readable instead of staying dark on a pale page. */
+body.light-mode .st-card {
+    background: linear-gradient(165deg, rgba(255,255,255,0.95) 0%, rgba(248,244,252,0.95) 100%);
+    border-color: rgba(0,0,0,0.08);
+    box-shadow: 0 10px 26px rgba(80,20,80,0.10);
+}
+body.light-mode .st-card-title,
+body.light-mode .st-ring-num,
+body.light-mode .st-tile-num,
+body.light-mode .st-row-t,
+body.light-mode .st-store-num,
+body.light-mode .st-store-side-v { color: #1e1b2e; }
+body.light-mode .st-tile { background: rgba(255,255,255,0.9); }
+body.light-mode .st-tiles { background: rgba(0,0,0,0.08); border-color: rgba(0,0,0,0.08); }
+body.light-mode .st-ring-track { stroke: rgba(0,0,0,0.07); }
+body.light-mode .st-ring-lbl,
+body.light-mode .st-tile-lbl,
+body.light-mode .st-row-s,
+body.light-mode .st-store-lbl,
+body.light-mode .st-store-side-l,
+body.light-mode .st-legend > span,
+body.light-mode .st-bar-foot { color: #5b5370; }
+body.light-mode .st-chip,
+body.light-mode .st-link,
+body.light-mode .st-row,
+body.light-mode .st-store-side {
+    background: rgba(0,0,0,0.04);
+    border-color: rgba(0,0,0,0.09);
+    color: #3a3350;
+}
+body.light-mode .st-bar { background: rgba(0,0,0,0.08); }
+
+/* ============================================================
+   Date + time card on a short screen (2026-10-08)
+
+   On a 640dp-tall phone -- the old 16:9 shape, 1080x1920 at 480dpi, still
+   common on budget Android -- the card did not fit: "+ Add end time" and the
+   whole Repeat row (Never / Every month / Every year) fell below the fold.
+   The card does scroll, but nothing says so, so a repeating reminder was
+   effectively unreachable on those phones.
+
+   Everything below only takes height out: smaller day circles, a tighter
+   grid, a shorter time wheel. Nothing moves or is hidden. !important is
+   needed because showDateModal() writes these as inline styles.
+   ============================================================ */
+@media (max-height: 700px) {
+    #customDateModal .cal-day {
+        width: 22px !important;
+        height: 22px !important;
+        font-size: 0.68rem !important;
+    }
+    #customDateModal #calDays { gap: 1px !important; }
+    #customDateModal #calWeekdays {
+        gap: 1px !important;
+        margin-bottom: 2px !important;
+    }
+    #customDateModal #calMonthLabel { font-size: 0.92rem !important; }
+    #customDateModal #dateModalSelectedLabel { margin: -6px 0 5px !important; }
+    /* The wheel's centre highlight is a fixed 42px band, so the inner padding
+       has to stay (height - 42) / 2 or the selected row stops lining up. */
+    #customDateModal .time-wheel-col,
+    #customDateModal .ampm-col { height: 84px !important; }
+    #customDateModal .time-wheel-inner,
+    #customDateModal .ampm-inner { padding: 21px 0 !important; }
+    /* Smaller chips and buttons buy the last few pixels the Repeat row needs,
+       and keep the three chips on one line instead of wrapping onto two. */
+    #customDateModal .date-repeat-chip {
+        padding: 5px 12px !important;
+        font-size: 0.74rem !important;
+    }
+    #customDateModal #dateModalCancel,
+    #customDateModal #dateModalSave,
+    #customDateModal #dateModalClear { padding: 7px 18px !important; }
+}
+
+/* ============================================================
+   Statistics tile + card labels on a narrow phone (2026-10-08)
+
+   Found by sweeping 300dp to 640dp and asking the page itself which text no
+   longer fits (scrollWidth > clientWidth), not by looking at screenshots --
+   by eye this was invisible. "DEPARTMENTS" overflowed its tile all the way up
+   to 360dp, which is the commonest Android width there is, and "OVERVIEW"
+   overflowed below 320dp.
+
+   Both are all-caps labels carrying wide letter-spacing, so the spacing is
+   what goes first; the type follows only as far as it has to.
+   ============================================================ */
+/* 370px, not 400: DEPARTMENTS only overflowed at 360dp and below, so a
+   384dp phone (the S23 this was designed on) keeps the full-size donut it
+   had. Shrinking it there would have been a change nothing asked for. */
+@media (max-width: 370px) {
+    .st-tile-lbl { font-size: 0.5rem; letter-spacing: 0.1px; }
+    .st-card-title { letter-spacing: 1px; }
+    /* Shrinking the type alone was not enough for DEPARTMENTS. The donut is
+       a fixed 126px beside the tiles, so taking a little off it hands the
+       whole difference to the labels, which is where it is needed. */
+    .st-ring { width: 104px; height: 104px; flex: 0 0 104px; }
+    .st-ring-num { font-size: 1.7rem; }
+}
+/* 300-320dp is what a small phone turns into once Display size is set to
+   its largest step, so it is worth clearing rather than calling it out of
+   range. */
+@media (max-width: 340px) {
+    /* The WebView clamps font-size to a floor of 8px, so 0.43rem renders as
+       8px just like 0.5rem does -- shrinking the type further buys nothing.
+       The room has to come from the tile instead. */
+    .st-tile-lbl { font-size: 0.5rem; letter-spacing: 0; }
+    .st-tile { padding: 8px 4px 9px; }
+    .st-card-title { font-size: 0.72rem; letter-spacing: 0.2px; }
+    .st-ring-lbl { font-size: 0.5rem; letter-spacing: 0.4px; }
+    .st-ring { width: 90px; height: 90px; flex: 0 0 90px; }
+    .st-ring-num { font-size: 1.4rem; }
+}

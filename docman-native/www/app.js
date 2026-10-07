@@ -15938,43 +15938,242 @@ function renderFavoritesPanel() {
     `).join('');
 }
 
-function renderStatisticsPanel() {
-    let fileCount = 0,
-        noteCount = 0,
-        folderCount = 0;
-    let largestFile = { name: '—', size: 0 };
-    let largestFolder = { name: '—', count: 0 };
+// Statistics panel. Rebuilt 2026-10-07 from four flat tiles into the ring +
+// tiles + largest-items + storage layout. Every number below is counted from
+// the same in-memory stores the rest of the app reads (fileSystem, allFiles,
+// allNotes), so it can never disagree with what a folder actually shows.
 
-    function countFolders(obj) {
-        for (const k in obj) if (typeof obj[k] === 'object') { folderCount++;
-            countFolders(obj[k]); }
+// Which department the panel is scoped to. '' means all of them.
+let statsDeptFilter = '';
+// 'size' bars the three file groups by bytes, 'count' by number of files.
+let statsStoreMode = 'size';
+
+// A folder path belongs to the filter when it IS the department or sits
+// under it. Comparing the first segment rather than a prefix string stops
+// "Work" from also matching a department called "Workshop".
+function statsPathInFilter(path) {
+    if (!statsDeptFilter) return true;
+    return path === statsDeptFilter || path.startsWith(statsDeptFilter + '/');
+}
+
+function statsFileGroup(f) {
+    const name = (f.name || '').toLowerCase();
+    if (f.type === 'application/pdf' || name.endsWith('.pdf')) return 'pdf';
+    if ((f.type || '').startsWith('image/') ||
+        /\.(jpe?g|png|gif|webp|bmp|heic|heif|tiff?)$/.test(name)) return 'img';
+    return 'oth';
+}
+
+function collectStatistics() {
+    const s = {
+        files: 0, notes: 0, folders: 0, depts: 0,
+        allFilesTotal: 0,
+        bytes: 0,
+        group: { pdf: { bytes: 0, count: 0 }, img: { bytes: 0, count: 0 }, oth: { bytes: 0, count: 0 } },
+        largestFile: { name: '', bytes: 0, folderPath: '', file: null },
+        largestFolder: { name: '', path: '', count: 0 }
+    };
+
+    const deptKeys = Object.keys(fileSystem);
+    s.depts = statsDeptFilter ? 1 : deptKeys.length;
+
+    // Subfolders only -- the department itself is counted on the
+    // DEPARTMENTS tile, so counting it here too would double it.
+    function countFolders(obj, path) {
+        for (const k in obj) {
+            if (typeof obj[k] !== 'object' || obj[k] === null) continue;
+            const child = path ? path + "/" + k : k;
+            if (statsPathInFilter(child)) s.folders++;
+            countFolders(obj[k], child);
+        }
     }
-    countFolders(fileSystem);
+    countFolders(fileSystem, '');
+    // countFolders counted the departments themselves at the top level; the
+    // FOLDERS tile is about folders inside them.
+    s.folders -= statsDeptFilter ? 1 : deptKeys.length;
+    if (s.folders < 0) s.folders = 0;
 
     for (const path in allFiles) {
-        if (!allFiles[path]) continue;
-        fileCount += allFiles[path].length;
-        const folderTotal = allFiles[path].length;
-        if (folderTotal > largestFolder.count) {
-            largestFolder = { name: path.split('/').pop() || path, count: folderTotal };
+        const arr = allFiles[path];
+        if (!arr || !arr.length) continue;
+        s.allFilesTotal += arr.length;
+        if (!statsPathInFilter(path)) continue;
+        s.files += arr.length;
+        if (arr.length > s.largestFolder.count) {
+            s.largestFolder = { name: path.split('/').pop() || path, path, count: arr.length };
         }
-        allFiles[path].forEach(f => {
-            const size = f.size || 0;
-            if (size > largestFile.size) largestFile = { name: f.name, size };
-        });
+        for (const f of arr) {
+            const bytes = (typeof getFileBytes === 'function' ? getFileBytes(f) : (f.size || 0)) || 0;
+            s.bytes += bytes;
+            const g = s.group[statsFileGroup(f)];
+            g.bytes += bytes;
+            g.count++;
+            if (bytes > s.largestFile.bytes) {
+                s.largestFile = { name: f.name, bytes, folderPath: path, file: f };
+            }
+        }
     }
-    for (const path in allNotes) if (allNotes[path]) noteCount += allNotes[path].length;
 
-    document.getElementById('statTotalFiles').textContent = fileCount;
-    document.getElementById('statTotalNotes').textContent = noteCount;
-    document.getElementById('statTotalFolders').textContent = folderCount;
-    document.getElementById('statTotalDepts').textContent = Object.keys(fileSystem).length;
-    document.getElementById('statLargestFile').textContent = largestFile.size > 0 ?
-        `${largestFile.name} (${(largestFile.size / (1024 * 1024)).toFixed(2)} MB)` :
-        '—';
-    document.getElementById('statLargestFolder').textContent = largestFolder.count > 0 ?
-        `${largestFolder.name} (${largestFolder.count} files)` :
-        '—';
+    for (const path in allNotes) {
+        if (!allNotes[path] || !statsPathInFilter(path)) continue;
+        s.notes += allNotes[path].length;
+    }
+    return s;
+}
+
+function renderStatisticsPanel() {
+    const s = collectStatistics();
+    const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+
+    set("statTotalFiles", s.files);
+    set("statTileFiles", s.files);
+    set("statTotalFolders", s.folders);
+    set("statTotalNotes", s.notes);
+    set("statTotalDepts", s.depts);
+
+    // The ring shows how much of the whole library this view covers, so it
+    // is full on "All Departments" and a slice once one is picked.
+    const arc = document.getElementById("statRingArc");
+    if (arc) {
+        const C = 2 * Math.PI * 48;
+        const frac = s.allFilesTotal > 0 ? Math.min(1, s.files / s.allFilesTotal) : 0;
+        // A hair under the full circle, so a 100% ring still reads as a ring
+        // rather than closing into a plain band at the join.
+        const len = frac >= 0.999 ? C - 0.6 : C * frac;
+        arc.setAttribute("stroke-dasharray", len.toFixed(1) + " " + C.toFixed(1));
+    }
+
+    const fileRow = document.getElementById("statLargestFileRow");
+    const folderRow = document.getElementById("statLargestFolderRow");
+    const pill = (id, text) => {
+        const el = document.getElementById(id);
+        if (el && el.lastElementChild) el.lastElementChild.textContent = text;
+    };
+
+    if (s.largestFile.bytes > 0) {
+        set("statLargestFile", s.largestFile.name);
+        pill("statLargestFilePill", formatBytes(s.largestFile.bytes));
+        if (fileRow) {
+            fileRow.style.display = "";
+            fileRow.onclick = () => {
+                openFolderPathInApp(s.largestFile.folderPath);
+            };
+        }
+    } else {
+        set("statLargestFile", "No files yet");
+        pill("statLargestFilePill", "—");
+        if (fileRow) fileRow.onclick = null;
+    }
+
+    if (s.largestFolder.count > 0) {
+        set("statLargestFolder", s.largestFolder.name);
+        pill("statLargestFolderPill", s.largestFolder.count + (s.largestFolder.count === 1 ? " file" : " files"));
+        if (folderRow) {
+            folderRow.onclick = () => {
+                openFolderPathInApp(s.largestFolder.path);
+            };
+        }
+    } else {
+        set("statLargestFolder", "No folders yet");
+        pill("statLargestFolderPill", "—");
+        if (folderRow) folderRow.onclick = null;
+    }
+
+    // ---- storage ----------------------------------------------------
+    const byCount = statsStoreMode === "count";
+    const g = s.group;
+    const total = byCount ? (g.pdf.count + g.img.count + g.oth.count) : s.bytes;
+    const val = (x) => byCount ? x.count : x.bytes;
+    const show = (x) => byCount ? String(val(x)) : formatBytes(val(x));
+
+    set("statStoreTotal", byCount ? String(s.files) : formatBytes(s.bytes));
+    set("statStoreTotalLbl", byCount ? "Total Files" : "Total Storage");
+    set("statStoreSideVal", s.largestFile.bytes > 0 ? formatBytes(s.largestFile.bytes) : "—");
+
+    const pct = (x) => total > 0 ? (val(x) / total * 100) : 0;
+    const bar = (id, x) => { const el = document.getElementById(id); if (el) el.style.width = pct(x).toFixed(2) + "%"; };
+    bar("statBarPdf", g.pdf);
+    bar("statBarImg", g.img);
+    bar("statBarOth", g.oth);
+
+    set("statLegPdf", "PDFs " + show(g.pdf));
+    set("statLegImg", "Images " + show(g.img));
+    set("statLegOth", "Other " + show(g.oth));
+
+    set("statFootLeft", byCount ? ("Files: " + s.files) : ("Used: " + formatBytes(s.bytes)));
+    // This used to read "Available", from navigator.storage.estimate(). On the
+    // device that returned a flat 10.00 GB -- the WebView's own quota, not the
+    // free space on the phone -- so it was a number that looked precise and
+    // meant nothing. What DOCMAN can actually count goes here instead.
+    const docLbl = s.files + (s.files === 1 ? " file" : " files");
+    const noteLbl = s.notes + (s.notes === 1 ? " note" : " notes");
+    set("statFootRight", docLbl + " \u00b7 " + noteLbl);
+}
+
+// Opens a folder path from inside Settings: closes the settings page, then
+// walks the app to that folder the same way a tap on the home screen would.
+function openFolderPathInApp(path) {
+    if (!path) return;
+    const parts = path.split('/').filter(Boolean);
+    if (!parts.length) return;
+    closeSettingsPage();
+    // The same lock check every other way into a folder runs, so a locked
+    // folder still asks for the PIN when it is reached from Statistics.
+    guardFolderEntry(parts, () => {
+        currentPath = parts;
+        render();
+    });
+}
+
+function initStatisticsControls() {
+    const deptSel = document.getElementById("statDeptFilter");
+    if (deptSel && !deptSel.dataset.wired) {
+        deptSel.dataset.wired = "1";
+        deptSel.onchange = () => {
+            statsDeptFilter = deptSel.value;
+            const lbl = document.getElementById("statDeptChipLabel");
+            if (lbl) lbl.textContent = deptSel.value || "All Departments";
+            renderStatisticsPanel();
+        };
+    }
+    if (deptSel) {
+        // Rebuilt every time the panel opens, because a department may have
+        // been added or renamed since it was last looked at.
+        const opts = ["<option value=\"\">All Departments</option>"];
+        for (const d of Object.keys(fileSystem)) {
+            opts.push("<option value=\"" + escapeHtml(d) + "\">" + escapeHtml(d) + "</option>");
+        }
+        deptSel.innerHTML = opts.join("");
+        if (!Object.keys(fileSystem).includes(statsDeptFilter)) statsDeptFilter = "";
+        deptSel.value = statsDeptFilter;
+        const lbl = document.getElementById("statDeptChipLabel");
+        if (lbl) lbl.textContent = statsDeptFilter || "All Departments";
+    }
+
+    const modeSel = document.getElementById("statStoreMode");
+    if (modeSel && !modeSel.dataset.wired) {
+        modeSel.dataset.wired = "1";
+        modeSel.onchange = () => {
+            statsStoreMode = modeSel.value;
+            const lbl = document.getElementById("statStoreModeLabel");
+            if (lbl) lbl.textContent = modeSel.value === "count" ? "File Count" : "Total Size";
+            renderStatisticsPanel();
+        };
+    }
+
+    const seeAll = document.getElementById("statSeeAllBtn");
+    if (seeAll && !seeAll.dataset.wired) {
+        seeAll.dataset.wired = "1";
+        seeAll.onclick = () => {
+            showSettingsScreen("settingsPanel-storageDetail");
+            renderStorageDetailPanel();
+        };
+    }
+}
+
+function openStatisticsPanel() {
+    initStatisticsControls();
+    renderStatisticsPanel();
 }
 
 // The same gradients the home-screen department pills use (mirrored from
@@ -16104,7 +16303,7 @@ const settingsPanelRenderers = {
     storage: renderStoragePanel,
     appearance: applyThemePickUI,
     favorites: renderFavoritesPanel,
-    statistics: renderStatisticsPanel,
+    statistics: openStatisticsPanel,
     departments: renderDepartmentsManagePanel,
     security: updatePinStatusUI
 };

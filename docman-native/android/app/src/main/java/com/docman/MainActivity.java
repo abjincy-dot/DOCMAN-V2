@@ -39,6 +39,13 @@ public class MainActivity extends BridgeActivity {
         // it does not touch cookies, localStorage, or IndexedDB, so none of
         // the user's saved files/departments/notes are affected.
         getBridge().getWebView().clearCache(true);
+        // Android's Display > Font size feeds straight into a WebView as a
+        // text zoom, so a phone set to 115% or 130% grew DOCMAN's type while
+        // the containers it sits in stayed put: department names, row labels
+        // and button captions were cut off. The web layer has its own type
+        // scale and is sized for readability already, so the zoom is pinned
+        // and the app renders identically whatever the phone is set to.
+        getBridge().getWebView().getSettings().setTextZoom(100);
         // Enables chrome://inspect remote debugging of this app's WebView.
         // Debug builds only -- a release build on the Play Store must not
         // ship with this on, regardless of how narrow the actual exposure

@@ -590,14 +590,28 @@ public class PdfViewerActivity extends AppCompatActivity {
         // page-indicator bar down by the same amount so it stays right below
         // the now-taller toolbar instead of overlapping it.
         final int baseToolbarPaddingTop = dp(4);
+        // Read out of the layout once. The listener below runs again on every
+        // rotation, so reading these inside it would add the inset on top of
+        // the previous result each time and the bars would creep inwards.
+        final int baseToolbarPaddingLeft = toolbar.getPaddingLeft();
+        final int baseToolbarPaddingRight = toolbar.getPaddingRight();
+        final int baseStripPaddingLeft = bottomToolStrip != null ? bottomToolStrip.getPaddingLeft() : 0;
+        final int baseStripPaddingRight = bottomToolStrip != null ? bottomToolStrip.getPaddingRight() : 0;
         final int baseSecondaryBarMarginTop = dp(52);
         final int baseSignatureBarMarginBottom = dp(32);
         ViewCompat.setOnApplyWindowInsetsListener(toolbar, new androidx.core.view.OnApplyWindowInsetsListener() {
             @Override
             public WindowInsetsCompat onApplyWindowInsets(View v, WindowInsetsCompat insets) {
                 Insets statusBar = insets.getInsets(WindowInsetsCompat.Type.statusBars());
-                v.setPadding(v.getPaddingLeft(), baseToolbarPaddingTop + statusBar.top,
-                        v.getPaddingRight(), v.getPaddingBottom());
+                // Landscape is a supported way to read a wide drawing, and
+                // there the nav bar is a vertical strip down one side rather
+                // than a band along the bottom. Without the horizontal insets
+                // it sat over the Back arrow or the filename.
+                Insets sysBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+                v.setPadding(baseToolbarPaddingLeft + sysBars.left,
+                        baseToolbarPaddingTop + statusBar.top,
+                        baseToolbarPaddingRight + sysBars.right,
+                        v.getPaddingBottom());
                 if (secondaryBar != null && secondaryBar.getLayoutParams() instanceof FrameLayout.LayoutParams) {
                     FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) secondaryBar.getLayoutParams();
                     lp.topMargin = baseSecondaryBarMarginTop + statusBar.top;
@@ -625,8 +639,15 @@ public class PdfViewerActivity extends AppCompatActivity {
                 // themselves clear of it.
                 if (bottomToolStrip != null) {
                     Insets navBar = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
-                    bottomToolStrip.setPadding(bottomToolStrip.getPaddingLeft(), bottomToolStrip.getPaddingTop(),
-                            bottomToolStrip.getPaddingRight(), dp(6) + navBar.bottom);
+                    // Same reason as the top bar: in landscape the side nav
+                    // bar covered the last tool (More), so a tap there went to
+                    // the system instead of opening the menu. The strip's
+                    // background still runs edge to edge; only its contents
+                    // move in.
+                    bottomToolStrip.setPadding(baseStripPaddingLeft + navBar.left,
+                            bottomToolStrip.getPaddingTop(),
+                            baseStripPaddingRight + navBar.right,
+                            dp(6) + navBar.bottom);
                 }
                 return insets;
             }

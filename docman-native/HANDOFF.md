@@ -1,4 +1,101 @@
-# DOCMAN handoff (2026-10-07)
+# DOCMAN handoff (updated 2026-10-07, night)
+
+## NEXT TASK — finish the screen-size sweep, then rebuild the AAB
+
+The user stopped here to sleep. Pick up from this list.
+
+### Done today, already installed in DOCMAN dev (`style.css?v=588`, `app.js?v=522`)
+
+1. **The "i" guide** — the Notes row now covers note colours and "Remind me";
+   the Reminders row covers Never / Every month / Every year and the pencil
+   button. Feature additions only, per the guide rule.
+
+2. **Add Department FAB lifted 5 mm.** `style.css` `.dept-add-fab`, bottom
+   `24px` -> `51px`. Measured on device: it used to reach 36px into the
+   navigation bar, it now stops 40px above it.
+
+3. **Statistics panel rebuilt** to the reference design the user sent:
+   full-bleed header band, gradient donut, four tiles, Largest Items with
+   pills, Storage Usage with a PDFs / Images / Other bar. It is wired, not
+   decorative — a real department filter (a native `<select>` inside the
+   chip), a Total Size / File Count toggle, "See all" -> Storage Details, and
+   the Largest File / Largest Folder rows open that folder through
+   `guardFolderEntry`, so a locked folder still asks for the PIN.
+   - "Available: X GB" was dropped on purpose. `navigator.storage.estimate()`
+     returned a flat 10.00 GB on the device — the WebView's quota, not the
+     phone's free space. It shows "N files · N notes" instead.
+
+4. **The responsive fix — this was the real bug.** The department cluster had
+   TWO geometries. `@media (max-width: 480px)` held the phone one; above 480dp
+   the base rules took over (`.dept-oval { flex: 1 }`, a 134px hub circle in a
+   95px box), so on a foldable or tablet the hub circle landed on top of the
+   pill names. That breakpoint is now **`max-width: 1400px`**, so the app has
+   one geometry at every width. Two narrow tiers were added after it (order
+   matters — same specificity, later wins): `<=380px` (type 10px, pill 70%)
+   and `<=340px` (type 9px, pill 73%, smaller count bubble).
+   Verified on device at 320, 360, 384, 393, 412, 430, 480 and 600 dp.
+
+5. **System font size pinned.** `MainActivity.java`:
+   `getBridge().getWebView().getSettings().setTextZoom(100);`
+   Android's Display > Font size fed straight into the WebView: at 115% and
+   130% department names were cut off. Verified that 100% and 130% now render
+   identically. The user chose this over a capped zoom.
+
+### Still to do — the user picked these four
+
+Sweep the rest of the app the same way. `adb shell wm size WxH` with density
+left at 450; CSS width = physical width / 2.8125.
+
+- [ ] Folder view (file rows, toolbar, the ⋯ menu)
+- [ ] PDF viewer and its bottom tool bar
+- [ ] Settings and every modal (date picker, note editor, move picker, backup)
+- [ ] Landscape — never tested at all
+
+Then **rebuild the release AAB**. The one in
+`DOCMAN Play Store Assets/release/DOCMAN-1.0.0-versioncode54.aab` predates
+everything above, so it is stale. Ask the user for the version code and name
+before building it (rule 10).
+
+### Device state
+
+Everything changed during testing was restored: `wm size reset`,
+`wm density reset`, `font_scale 1.0`, `svc power stayon false`. If you change
+them again, restore them again.
+
+A size sweep needs the phone **unlocked**. It locked twice during testing and
+the only way through is the user's PIN — never type it, ask them.
+
+### Open question, no answer yet
+
+A new department appears at the top because Sort is set to **Date (Newest
+First)** and the eight built-in departments carry no `createdAt`, so they sort
+as 0 and anything new ranks above them. Not a bug. The user was shown the Sort
+options and has not said whether to change it.
+
+### Uncommitted
+
+`www/app.js`, `www/index.html`, `www/style.css` and
+`android/app/src/main/java/com/docman/MainActivity.java`. Nothing has been
+committed since `122b463` — ask before committing.
+
+### Store listing and privacy policy (written today, nothing uploaded)
+
+- `DOCMAN Play Store Assets/store_listing_play_console_1.0.0.txt` — paste-ready,
+  with the new repeating-reminder and note wording. Full description 3,812 of
+  4,000 characters. App name still undecided: `DOCMAN: PDF Document Manager`
+  (recommended, 28 chars) or `DOCMAN - Document Manager` (25).
+- `DOCMAN Play Store Assets/privacy-policy-change-2026-10-07.md` — three exact
+  find/replace edits. **Not required** for 1.0.0: no new data, no new
+  permission, Data safety form unchanged. The policy lives in the separate repo
+  `github.com/abjincy-dot/docman-privacy`, not in this folder — the copy here is
+  a mirror and editing it changes nothing users see.
+- Before the listing goes public, confirm whether
+  `final-8-2026-10-02/08-electrical-drawing.jpg` is the user's own private
+  drawing. Asked, not answered.
+
+---
+
+# DOCMAN handoff — earlier notes
 
 Read this first, then `CLAUDE.md` in this folder and the memory file
 `project_docman_current_state.md` ("START HERE").
@@ -7,7 +104,7 @@ Read this first, then `CLAUDE.md` in this folder and the memory file
 1. Edit **`www/` only**. `android/app/src/main/assets/public/` is generated, never edit it.
 2. On every `www/app.js` or `www/style.css` change, bump the `?v=` number in `www/index.html`.
    After bumping, check it with `grep -o "app.js?v=[0-9]*\|style.css?v=[0-9]*" www/index.html`.
-   Current values: `style.css?v=564`, `app.js?v=510`.
+   Current values: `style.css?v=588`, `app.js?v=522`.
 3. Deploy: `npx cap copy android`, then from `android/`:
    `JAVA_HOME="C:/Program Files/Android/Android Studio/jbr" ./gradlew assembleDebug`
    then `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
@@ -188,28 +285,3 @@ lives in its own repo (`abjincy-dot/docman-privacy`), with a mirror under
 - A long-standing launch error, unrelated to today:
   `Uncaught TypeError: Cannot read properties of null (reading 'style')`, twice per launch,
   reported as "Line 1". Never traced; nothing visibly broken.
-
-## NEXT TASK — the reminder notification should open a sticky note (asked 2026-10-02)
-
-What happens now: tapping a reminder notification opens `showReminderDueModal()` (a centred card),
-and "View in Reminders" opens the panel and flashes the row. The user does not want that shape.
-
-What they asked for, in their words:
-1. Tapping the notification should pop the reminder up **like a sticky note**, on the Reminders page
-   itself — the same feel as the Quick note bubble on a file row (`.qnote-bubble` in `www/style.css`,
-   `showNoteViewModal()` in `www/app.js`), not a centred dialog.
-2. Closing the note leaves the reminder **sitting in the list as a banner** — no blinking.
-   The current `.reminder-flash` pulse was explicitly called out as unwanted.
-3. **Edit is not needed** on it. Keep **delete**, as a button **on the side**.
-
-Where the pieces are:
-- `showReminderDueModal()` and `openRemindersAndHighlight()` in `www/app.js` (added 2026-10-01) —
-  the card and the flash both come from here; both are what the user is replacing.
-- `.reminder-flash` keyframes in `www/style.css` — remove with the flash.
-- The reminder rows are built in `showExpiringDocumentsPanel()`; each is
-  `.reminder-row[data-id]` with `.reminder-edit` and `.reminder-delete` buttons.
-- The Quick note bubble is the model to copy: anchored to the row, pointer pointing at it,
-  `qnotePop` scale/fade, `transform-origin` set from the anchor's centre, flips above when short
-  of room, clamps 8px from the screen edges.
-
-Build it on the dev app and show a screenshot before shipping, as always.

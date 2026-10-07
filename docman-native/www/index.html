@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/sacramento/sacramento.css">
-<link rel="stylesheet" href="style.css?v=578">
+<link rel="stylesheet" href="style.css?v=598">
 
 </head>
 <body>
@@ -1124,45 +1124,135 @@ border: 1px solid rgba(255,255,255,0.2);
 
 <!-- Statistics Panel -->
 <div id="settingsPanel-statistics" class="settings-screen">
-  <div class="settings-header">
+  <div class="settings-header st-head">
+    <div class="st-head-aurora" aria-hidden="true"></div>
+    <svg class="st-head-wave" viewBox="0 0 400 120" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0,70 C70,20 130,96 200,62 C270,28 330,86 400,44" fill="none" stroke="rgba(236,72,153,0.55)" stroke-width="2"/>
+      <path d="M0,88 C80,44 140,110 210,76 C280,42 340,98 400,60" fill="none" stroke="rgba(168,85,247,0.40)" stroke-width="2"/>
+    </svg>
+    <svg class="st-head-art" viewBox="0 0 120 120" aria-hidden="true">
+      <defs><linearGradient id="statHeadGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#f0abfc" stop-opacity="0.95"/>
+        <stop offset="1" stop-color="#a855f7" stop-opacity="0.5"/></linearGradient></defs>
+      <g fill="none" stroke="url(#statHeadGrad)" stroke-width="2.5" stroke-linejoin="round">
+        <path d="M30 26 h30 l16 16 v50 h-46 z" fill="rgba(236,72,153,0.12)"/>
+        <path d="M44 18 h30 l16 16 v50 h-46 z" fill="rgba(217,70,239,0.16)"/>
+        <path d="M58 10 h30 l16 16 v50 h-46 z" fill="rgba(240,171,252,0.22)"/>
+      </g>
+      <g stroke="rgba(255,255,255,0.75)" stroke-width="2.5" stroke-linecap="round">
+        <path d="M68 32 h22"/><path d="M68 42 h26"/><path d="M68 52 h18"/><path d="M68 62 h24"/>
+      </g>
+    </svg>
     <button class="settings-back-btn settings-panel-back" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
     <div class="settings-header-title"><h2>Statistics</h2><span>Your DOCMAN at a glance</span></div>
   </div>
   <div class="settings-panel-body">
-    <div class="settings-group-title">Overview</div>
-    <div class="stats-grid-card">
-      <div class="stats-grid-item">
-        <div class="stats-grid-icon stats-icon-files"><i class="fas fa-file"></i></div>
-        <div class="stats-grid-val" id="statTotalFiles">—</div>
-        <div class="stats-grid-label">Total Files</div>
+
+    <div class="st-card">
+      <div class="st-card-head">
+        <span class="st-card-ico st-ico-ov"><i class="fas fa-chart-simple"></i></span>
+        <span class="st-card-title">OVERVIEW</span>
+        <span class="st-chip"><span id="statDeptChipLabel">All Departments</span><i class="fas fa-chevron-down"></i>
+          <select id="statDeptFilter" class="st-chip-select" aria-label="Filter statistics by department"></select></span>
       </div>
-      <div class="stats-grid-item">
-        <div class="stats-grid-icon stats-icon-notes"><i class="fas fa-sticky-note"></i></div>
-        <div class="stats-grid-val" id="statTotalNotes">—</div>
-        <div class="stats-grid-label">Total Notes</div>
-      </div>
-      <div class="stats-grid-item">
-        <div class="stats-grid-icon stats-icon-folders"><i class="fas fa-folder"></i></div>
-        <div class="stats-grid-val" id="statTotalFolders">—</div>
-        <div class="stats-grid-label">Total Folders</div>
-      </div>
-      <div class="stats-grid-item">
-        <div class="stats-grid-icon stats-icon-depts"><i class="fas fa-industry"></i></div>
-        <div class="stats-grid-val" id="statTotalDepts">—</div>
-        <div class="stats-grid-label">Departments</div>
+      <div class="st-ov">
+        <div class="st-ring">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <defs><linearGradient id="statRingGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#38bdf8"/><stop offset="0.45" stop-color="#a855f7"/>
+              <stop offset="0.75" stop-color="#ec4899"/><stop offset="1" stop-color="#f97316"/>
+            </linearGradient></defs>
+            <circle class="st-ring-track" cx="60" cy="60" r="48"/>
+            <circle class="st-ring-arc" id="statRingArc" cx="60" cy="60" r="48" stroke-dasharray="0 302"/>
+          </svg>
+          <div class="st-ring-val">
+            <div class="st-ring-num" id="statTotalFiles">—</div>
+            <div class="st-ring-lbl">TOTAL FILES</div>
+          </div>
+        </div>
+        <div class="st-tiles">
+          <div class="st-tile">
+            <div class="st-tile-ico st-ic-files"><i class="fas fa-file-lines"></i></div>
+            <div class="st-tile-num" id="statTileFiles">—</div><div class="st-tile-lbl">FILES</div>
+          </div>
+          <div class="st-tile">
+            <div class="st-tile-ico st-ic-folders"><i class="fas fa-folder"></i></div>
+            <div class="st-tile-num" id="statTotalFolders">—</div><div class="st-tile-lbl">FOLDERS</div>
+          </div>
+          <div class="st-tile">
+            <div class="st-tile-ico st-ic-notes"><i class="fas fa-note-sticky"></i></div>
+            <div class="st-tile-num" id="statTotalNotes">—</div><div class="st-tile-lbl">NOTES</div>
+          </div>
+          <div class="st-tile">
+            <div class="st-tile-ico st-ic-depts"><i class="fas fa-building"></i></div>
+            <div class="st-tile-num" id="statTotalDepts">—</div><div class="st-tile-lbl">DEPARTMENTS</div>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="settings-group-title">Largest Items</div>
-    <div class="settings-card">
-      <div class="settings-stat-detail-row">
-        <div class="settings-item-icon settings-icon-pdf settings-icon-sm"><i class="fas fa-file-alt"></i></div>
-        <div class="settings-item-text"><span class="settings-item-title">Largest File</span><span class="settings-item-sub" id="statLargestFile">—</span></div>
+
+    <div class="st-card">
+      <div class="st-card-head">
+        <span class="st-card-ico st-ico-big"><i class="fas fa-star"></i></span>
+        <span class="st-card-title">LARGEST ITEMS</span>
+        <button class="st-link" id="statSeeAllBtn">See all <i class="fas fa-chevron-right"></i></button>
       </div>
-      <div class="settings-stat-detail-row settings-row-no-border">
-        <div class="settings-item-icon settings-icon-departments settings-icon-sm"><i class="fas fa-folder-open"></i></div>
-        <div class="settings-item-text"><span class="settings-item-title">Largest Folder</span><span class="settings-item-sub" id="statLargestFolder">—</span></div>
+      <div class="st-row" id="statLargestFileRow">
+        <div class="st-row-ico st-ic-file-lg"><i class="fas fa-file-lines"></i></div>
+        <div class="st-row-txt">
+          <div class="st-row-t">Largest File</div>
+          <div class="st-row-s" id="statLargestFile">—</div>
+          <span class="st-pill st-pill-size" id="statLargestFilePill"><i class="fas fa-database"></i><span>—</span></span>
+        </div>
+        <i class="fas fa-chevron-right st-row-arrow"></i>
+      </div>
+      <div class="st-row" id="statLargestFolderRow">
+        <div class="st-row-ico st-ic-folder-lg"><i class="fas fa-folder-open"></i></div>
+        <div class="st-row-txt">
+          <div class="st-row-t">Largest Folder</div>
+          <div class="st-row-s" id="statLargestFolder">—</div>
+          <span class="st-pill st-pill-count" id="statLargestFolderPill"><i class="fas fa-folder"></i><span>—</span></span>
+        </div>
+        <i class="fas fa-chevron-right st-row-arrow"></i>
       </div>
     </div>
+
+    <div class="st-card">
+      <div class="st-card-head">
+        <span class="st-card-ico st-ico-store"><i class="fas fa-database"></i></span>
+        <span class="st-card-title">STORAGE USAGE</span>
+        <span class="st-chip"><span id="statStoreModeLabel">Total Size</span><i class="fas fa-chevron-down"></i>
+          <select id="statStoreMode" class="st-chip-select" aria-label="Show storage by">
+            <option value="size">Total Size</option>
+            <option value="count">File Count</option>
+          </select></span>
+      </div>
+      <div class="st-store-top">
+        <div>
+          <div class="st-store-num" id="statStoreTotal">—</div>
+          <div class="st-store-lbl" id="statStoreTotalLbl">Total Storage</div>
+        </div>
+        <div class="st-store-side">
+          <div class="st-store-side-ico"><i class="fas fa-file-lines"></i></div>
+          <div>
+            <div class="st-store-side-v" id="statStoreSideVal">—</div>
+            <div class="st-store-side-l">Largest File</div>
+          </div>
+        </div>
+      </div>
+      <div class="st-bar">
+        <div class="st-bar-pdf" id="statBarPdf"></div>
+        <div class="st-bar-img" id="statBarImg"></div>
+        <div class="st-bar-oth" id="statBarOth"></div>
+      </div>
+      <div class="st-legend">
+        <span><i class="st-dot st-dot-pdf"></i><span id="statLegPdf">PDFs —</span></span>
+        <span><i class="st-dot st-dot-img"></i><span id="statLegImg">Images —</span></span>
+        <span><i class="st-dot st-dot-oth"></i><span id="statLegOth">Other —</span></span>
+      </div>
+      <div class="st-bar-foot"><span id="statFootLeft">—</span><span id="statFootRight">—</span></div>
+    </div>
+
   </div>
 </div>
 
@@ -1446,7 +1536,7 @@ border: 1px solid rgba(255,255,255,0.2);
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">📝</div>
-    <div class="dept-info-help-text"><b>Notes</b> — Switch to the Notes tab to write and save quick text notes inside any folder, alongside your files.</div>
+    <div class="dept-info-help-text"><b>Notes</b> &mdash; Switch to the Notes tab to write and save quick text notes inside any folder, alongside your files. Give a note one of six <b>colours</b> from the dots under the text box and its row carries that colour, so you can pick it out at a glance. Need to come back to it? Tap <b>&#8943;</b> on the note and choose <b>Remind me</b>; the row then shows a bell, and tapping that reminder opens the note itself. The same menu says <b>Remove reminder</b> once it has one.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1461,7 +1551,7 @@ border: 1px solid rgba(255,255,255,0.2);
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">⏰</div>
-    <div class="dept-info-help-text"><b>Reminders</b> &mdash; Tap the DOCMAN logo at the top for <b>Expiring</b> and <b>Reminders</b>. Add one with a title, due date and time. When it falls due your phone alerts you with sound and vibration, and keeps reminding you <b>every 30 minutes for 3 hours</b> until you tap <b>Got it</b> &mdash; so a missed notification isn&rsquo;t the end of it. <b>Expiring</b>, <b>Reminders</b> and <b>+ Add reminder</b> sit together on one row at the top. The month calendar is above the list &mdash; tap any day to see just that day&rsquo;s reminders, and dated days carry a dot &mdash; and anything overdue pulses, including the <b>Reminders</b> tab itself, so you can see it from the Expiring side. When something needs you, DOCMAN opens <b>one</b> popup at start-up covering expiring documents and due reminders together, and <b>View</b> takes you straight to the list. Once you&rsquo;ve seen it, DOCMAN stops raising that reminder at start-up; the reminder itself stays until you delete it, and a newly added one still announces itself.</div>
+    <div class="dept-info-help-text"><b>Reminders</b> &mdash; Tap the DOCMAN logo at the top for <b>Expiring</b> and <b>Reminders</b>. Add one with a title, due date and time. When it falls due your phone alerts you with sound and vibration, and keeps reminding you <b>every 30 minutes for 3 hours</b> until you tap <b>Got it</b> &mdash; so a missed notification isn&rsquo;t the end of it. Set it to repeat and you only ever enter it once: below the time, under <b>Repeat</b>, pick <b>Never</b>, <b>Every month</b> or <b>Every year</b> &mdash; rent and bills monthly, a birthday or an annual renewal yearly. The moment you tap <b>Got it</b> the reminder moves itself on to the next month or year by itself, so a monthly bill never needs entering twice. A repeating one shows its cycle beside the date in the list, and the pencil button on its row can change the repeat or turn it off. <b>Expiring</b>, <b>Reminders</b> and <b>+ Add reminder</b> sit together on one row at the top. The month calendar is above the list &mdash; tap any day to see just that day&rsquo;s reminders, and dated days carry a dot &mdash; and anything overdue pulses, including the <b>Reminders</b> tab itself, so you can see it from the Expiring side. When something needs you, DOCMAN opens <b>one</b> popup at start-up covering expiring documents and due reminders together, and <b>View</b> takes you straight to the list. Once you&rsquo;ve seen it, DOCMAN stops raising that reminder at start-up; the reminder itself stays until you delete it, and a newly added one still announces itself.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1604,7 +1694,7 @@ border: 1px solid rgba(255,255,255,0.2);
     '</div>';
 })();
 </script>
-<script src="app.js?v=520"></script>
+<script src="app.js?v=522"></script>
 
 
 <script>
