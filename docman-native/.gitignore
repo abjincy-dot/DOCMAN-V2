@@ -1,1 +1,8 @@
 _preview/
+
+# Working backups. Never inside www/ -- Capacitor copies that whole
+# directory into the APK, and two of these shipped in versionCode 56.
+*.bak
+*.bak[0-9]
+*.old
+*.orig

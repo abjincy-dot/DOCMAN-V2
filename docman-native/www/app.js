@@ -3274,19 +3274,19 @@ async function imgScheduleExpiryNotification(folderPath, fileName, dateStr, opts
 
     const dayAtAlertHour = expiryAtHour(dateStr, EXPIRY_ALERT_HOUR);
     add(imgNotificationIdFor(folderPath, fileName, 7), 'Document expiring soon',
-        `${fileName} expires in 7 days`, new Date(dayAtAlertHour.getTime() - 7 * 86400000));
+        'A document expires in 7 days. Open DOCMAN to see which.', new Date(dayAtAlertHour.getTime() - 7 * 86400000));
     add(imgNotificationIdFor(folderPath, fileName, 3), 'Document expiring soon',
-        `${fileName} expires in 3 days`, new Date(dayAtAlertHour.getTime() - 3 * 86400000));
+        'A document expires in 3 days. Open DOCMAN to see which.', new Date(dayAtAlertHour.getTime() - 3 * 86400000));
 
     for (let i = 0; i < expiryRepeatCount(); i++) {
         const minutes = EXPIRY_DAY_START_HOUR * 60 + i * EXPIRY_REPEAT_MINUTES;
         add(imgNotificationIdFor(folderPath, fileName, 1000 + i), 'Document expires today',
-            `${fileName} expires today`, expiryAtHour(dateStr, Math.floor(minutes / 60), minutes % 60), true);
+            'A document expires today. Open DOCMAN to see which.', expiryAtHour(dateStr, Math.floor(minutes / 60), minutes % 60), true);
     }
 
     for (let d = 1; d <= EXPIRY_OVERDUE_DAYS; d++) {
         add(imgNotificationIdFor(folderPath, fileName, 2000 + d), 'Document expired',
-            `${fileName} expired ${d} day${d > 1 ? 's' : ''} ago`, new Date(dayAtAlertHour.getTime() + d * 86400000), true);
+            `A document expired ${d} day${d > 1 ? 's' : ''} ago. Open DOCMAN to see which.`, new Date(dayAtAlertHour.getTime() + d * 86400000), true);
     }
 
     if (!notifications.length) return;
@@ -3824,7 +3824,7 @@ async function scheduleReminderNotification(reminder) {
             notifications.push({
                 id: reminderNotificationIdFor(reminder.id, i),
                 title: i === 0 ? 'Reminder' : 'Reminder still due',
-                body: reminder.title,
+                body: 'You have a reminder due. Open DOCMAN to see it.',
                 schedule: { at: at_i, allowWhileIdle: true },
                 channelId: ALERT_CHANNEL_ID,
                 visibility: 1, // PUBLIC -- readable on the lock screen
