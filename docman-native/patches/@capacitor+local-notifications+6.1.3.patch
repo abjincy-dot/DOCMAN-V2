@@ -1,0 +1,47 @@
+diff --git a/node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/LocalNotificationManager.java b/node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/LocalNotificationManager.java
+index a1c896f..c84d4b7 100644
+--- a/node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/LocalNotificationManager.java
++++ b/node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/LocalNotificationManager.java
+@@ -211,7 +211,7 @@ public class LocalNotificationManager {
+             }
+         }
+ 
+-        mBuilder.setVisibility(NotificationCompat.VISIBILITY_PRIVATE);
++        mBuilder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC); // DOCMAN: plugin hard-codes PRIVATE; see HANDOFF notes
+         mBuilder.setOnlyAlertOnce(true);
+ 
+         mBuilder.setSmallIcon(localNotification.getSmallIcon(context, getDefaultSmallIcon(context)));
+diff --git a/node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.java b/node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.java
+index 0a5c0ad..0066ea0 100644
+--- a/node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.java
++++ b/node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.java
+@@ -47,6 +47,29 @@ public class TimedNotificationPublisher extends BroadcastReceiver {
+         JSObject notificationJson = storage.getSavedNotificationAsJSObject(Integer.toString(id));
+         LocalNotificationsPlugin.fireReceived(notificationJson);
+         notificationManager.notify(id, notification);
++        // DOCMAN: an expiry alert repeats every 30 minutes and each repeat is a
++        // separate scheduled id, so the tray filled up with dozens of copies of
++        // the same document. They all share one group, so the id posted for a
++        // group is remembered and the previous one is cancelled on the next
++        // repeat -- one alert per document, refreshed each time.
++        // getActiveNotifications() was tried first and is no use here: inside
++        // this receiver it returns only the notification just posted, never the
++        // earlier ones, so there was nothing to cancel. Plugin file: restore
++        // from TimedNotificationPublisher.java.docman-backup, and reapply after
++        // any npm install.
++        String docmanGroup = notification.getGroup();
++        if (docmanGroup != null) {
++            try {
++                android.content.SharedPreferences prefs = context.getSharedPreferences("docman_notif_groups", Context.MODE_PRIVATE);
++                int previous = prefs.getInt(docmanGroup, Integer.MIN_VALUE);
++                if (previous != Integer.MIN_VALUE && previous != id) {
++                    notificationManager.cancel(previous);
++                }
++                prefs.edit().putInt(docmanGroup, id).apply();
++            } catch (Exception e) {
++                Logger.error(Logger.tags("LN"), "DOCMAN group cleanup failed", e);
++            }
++        }
+         if (!rescheduleNotificationIfNeeded(context, intent, id)) {
+             storage.deleteNotification(Integer.toString(id));
+         }

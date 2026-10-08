@@ -118,10 +118,24 @@ Read this first, then `CLAUDE.md` in this folder and the memory file
 8. Always say whether the user needs to test anything.
 9. Verify from **inside** the built APK/AAB, never from the build log.
 
-## READ THIS BEFORE ANY npm install
-`node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/`
-holds **two DOCMAN patches that git does not track** (node_modules is gitignored).
-`npm install` wipes both. A `.docman-backup` sits beside each original.
+## Two patches to @capacitor/local-notifications
+`patches/@capacitor+local-notifications+6.1.3.patch` carries both, and
+`"postinstall": "patch-package"` reapplies them after every `npm install`.
+**They no longer need protecting by hand.**
+
+Until 2026-10-08 they lived only in node_modules, which git does not track, so
+any `npm install` silently reverted both: alerts would stop being readable on
+the lock screen and repeating reminders would stack up again, with nothing in
+the build to show it had happened. Verified by restoring the stock files and
+running `npx patch-package`, which put both back.
+
+To change either one: edit the file in node_modules as before, then run
+`npx patch-package @capacitor/local-notifications` to rewrite the patch, and
+commit it. Delete `node_modules/@capacitor/local-notifications/android/build`
+first -- Gradle leaves output in there and it ends up in the diff otherwise
+(the first attempt produced a 366 KB patch of build artifacts). If the run
+fails partway, `git config core.autocrlf false` for the duration; the diff is
+taken through git and the line-ending rewrite breaks it.
 
 1. `LocalNotificationManager.java` ~line 214 — `VISIBILITY_PUBLIC` (the plugin hard-codes PRIVATE,
    so alerts were unreadable on the lock screen).
