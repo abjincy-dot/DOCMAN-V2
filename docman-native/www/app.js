@@ -1294,6 +1294,22 @@ function showConfirmModal(message, callback, opts = {}) {
     showModal({ type: 'confirm', message, callback, okLabel: opts.okLabel, okColor: opts.okColor, cancelLabel: opts.cancelLabel, countdown: opts.countdown || 0, title: opts.title, bannerIcon: opts.bannerIcon, item: opts.item });
 }
 
+// Today's date as the calendar means it -- the one on the wall, in the phone's
+// own timezone.
+//
+// toISOString() is UTC, so east of Greenwich it names yesterday for the first
+// hours after midnight: at 01:24 on 8 October in Asia/Muscat (GMT+4) it still
+// says 2026-10-07. Every 'is this day in the past' test in this file compares
+// against calendar cells built from local y/m/d, so for those four hours the
+// app let a reminder be set for yesterday, and skipped the past-time check on
+// the real today because the two strings never matched. Reported from a phone
+// in Muscat at 1am; it would do the same anywhere with a positive UTC offset.
+function localTodayIso() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
 // Date-picker modal for Expiry Date/Reminders -- callback receives an ISO
 // date string ('YYYY-MM-DD'), or null if cleared/cancelled. Separate from
 // showModal since that one only supports a plain text input.
@@ -1304,7 +1320,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
     const existing = document.getElementById('customDateModal');
     if (existing) existing.remove();
 
-    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayIso = localTodayIso();
     const pad2 = (n) => String(n).padStart(2, '0');
     const isoFor = (y, m, d) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
 
@@ -1682,12 +1698,12 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
         const WHEEL_REPEATS = 5;              // as built in setupWheel
         const WHEEL_HOME_COPY = Math.floor(WHEEL_REPEATS / 2);
 
-        const scrollWheelToValue = (colId, values, value) => {
+        const scrollWheelToValue = (colId, values, value, behavior = 'smooth') => {
             const col = overlay.querySelector(colId);
             if (!col) return;
             const i = values.indexOf(value);
             if (i < 0) return;
-            col.scrollTo({ top: (WHEEL_HOME_COPY * values.length + i) * WHEEL_ITEM_H, behavior: 'smooth' });
+            col.scrollTo({ top: (WHEEL_HOME_COPY * values.length + i) * WHEEL_ITEM_H, behavior });
         };
 
         const currentPickedMinutes = () => {
@@ -1697,35 +1713,55 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
         };
 
         let clampTimer = null;
-        const clampTimeToFuture = () => {
+        // A reminder being written now almost always means 'shortly', so the
+        // moment today is the chosen day the wheels go to the next minute
+        // rather than to the 09:00 they default to -- which was a stale
+        // breakfast time to scroll away from every single time. That snap is
+        // the 'force' pass, used when today is picked and nothing is stored.
+        // The plain pass, which scrolling uses, only steps in when the wheels
+        // have come to rest somewhere already gone, so a time chosen by hand
+        // is left exactly where the finger put it.
+        const clampTimeToFuture = (instant = false, force = false) => {
+            const behavior = instant ? 'auto' : 'smooth';
             if (!opts.disallowPast || selectedIso !== todayIso) return;
             const now = new Date();
             const nowMinutes = now.getHours() * 60 + now.getMinutes();
-            if (currentPickedMinutes() > nowMinutes) return;
+            if (!force && currentPickedMinutes() > nowMinutes) return;
             // The next whole minute, never past the end of the day.
             const target = Math.min(nowMinutes + 1, 23 * 60 + 59);
             const h24 = Math.floor(target / 60);
             let h12 = h24 % 12;
             if (h12 === 0) h12 = 12;
-            scrollWheelToValue('#wheelHour', hourValues, h12);
-            scrollWheelToValue('#wheelMinute', minuteValues, target % 60);
+            scrollWheelToValue('#wheelHour', hourValues, h12, behavior);
+            scrollWheelToValue('#wheelMinute', minuteValues, target % 60, behavior);
             const col = overlay.querySelector('#wheelAmPm');
-            if (col) col.scrollTo({ top: (h24 >= 12 ? 1 : 0) * WHEEL_ITEM_H, behavior: 'smooth' });
+            if (col) col.scrollTo({ top: (h24 >= 12 ? 1 : 0) * WHEEL_ITEM_H, behavior });
         };
 
         // Debounced: run once the wheel has come to rest, not on every frame
         // of the flick, or it would fight the finger mid-scroll.
-        const scheduleClamp = () => {
+        const scheduleClamp = (force = false) => {
             if (clampTimer) clearTimeout(clampTimer);
-            clampTimer = setTimeout(clampTimeToFuture, 420);
+            clampTimer = setTimeout(() => clampTimeToFuture(false, force), 420);
         };
         ['#wheelHour', '#wheelMinute', '#wheelAmPm'].forEach((id) => {
             const col = overlay.querySelector(id);
-            if (col) col.addEventListener('scroll', scheduleClamp);
+            if (col) col.addEventListener('scroll', () => scheduleClamp(false));
         });
         // Picking today while the wheels sit on a morning hour has to correct
         // itself too, not only scrolling does.
-        window.__docmanClampPickerTime = scheduleClamp;
+        // Picking a day re-runs this; it forces the snap only when the
+        // reminder has no time of its own to respect.
+        window.__docmanClampPickerTime = () => scheduleClamp(!opts.defaultTime);
+
+        // The wheels could also OPEN on a time already gone. Editing a reminder
+        // due today, or adding one from a date that is already today, starts
+        // the wheels at the stored time (09:00 when nothing is stored), which
+        // is history by lunchtime. The clamp only ever ran once a wheel moved,
+        // so the picker sat on a time Save would then refuse with 'Pick a time
+        // later than now' -- the modal disagreeing with itself. Roll it forward
+        // on open as well, instantly, so the wrong value is never shown.
+        clampTimeToFuture(true, !opts.defaultTime);
 
         // End time -- optional, so its wheels are only actually built (and
         // scrolled into position) the first time the section is revealed.
@@ -1745,8 +1781,17 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
                 if (endTimeBuilt) return;
                 endTimeBuilt = true;
                 let [defEH, defEM] = (opts.defaultEndTime || opts.defaultTime || '10:00').split(':').map(Number);
-                if (!opts.defaultEndTime) { defEM = defM;
-                    defEH = (defH + 1) % 24; } // an hour after start time, as a plain sensible default
+                if (!opts.defaultEndTime) {
+                    // 'An hour after the start time' has to mean the start time
+                    // actually standing on the wheels, not the one the modal
+                    // opened with. Those two part company the moment the start
+                    // clamps forward for today, and the end would otherwise
+                    // open in the morning while the start sits in the evening.
+                    let sh = hourValues[readHourIdx()] % 12;
+                    if (ampmValues[readAmPmIdx()] === 'PM') sh += 12;
+                    defEM = minuteValues[readMinuteIdx()];
+                    defEH = (sh + 1) % 24;
+                }
                 let defEHour12 = defEH % 12;
                 if (defEHour12 === 0) defEHour12 = 12;
                 const defEAmPm = defEH >= 12 ? 'PM' : 'AM';
@@ -3798,12 +3843,35 @@ async function scheduleReminderNotification(reminder) {
     }
 }
 
+// Takes this reminder's alert out of the status bar WITHOUT touching anything
+// still queued, so a repeating reminder keeps its future alarms.
+//
+// cancel() only ever drops notifications that have not fired yet. One that has
+// already arrived lives in a separate 'delivered' list, and nothing here was
+// clearing it -- so the app could show the alert and mark it read while the
+// phone still carried the same alert in the shade, waiting to be swiped away.
+//
+// Matched against the plugin's own delivered list rather than rebuilt from the
+// ids, because Android identifies a posted notification by tag as well as id,
+// and handing its objects straight back keeps whatever tag it used.
+async function removeReminderFromTray(reminderId) {
+    const plugin = window.Capacitor?.Plugins?.LocalNotifications;
+    if (!plugin || !isNativePlatform()) return;
+    try {
+        const ids = reminderNotificationIds(reminderId);
+        const delivered = await plugin.getDeliveredNotifications();
+        const mine = (delivered && delivered.notifications || []).filter(n => ids.includes(n.id));
+        if (mine.length) await plugin.removeDeliveredNotifications({ notifications: mine });
+    } catch (e) { /* nothing delivered -- fine */ }
+}
+
 async function cancelReminderNotification(reminderId) {
     const plugin = window.Capacitor?.Plugins?.LocalNotifications;
     if (!plugin) return;
     try {
         await plugin.cancel({ notifications: reminderNotificationIds(reminderId).map(id => ({ id })) });
     } catch (e) { /* nothing scheduled -- fine */ }
+    await removeReminderFromTray(reminderId);
 }
 
 // "Today" / "Tomorrow" / "3d overdue" / "in 5d" / "Sep 12" -- mirrors
@@ -4008,6 +4076,12 @@ function checkLaunchAlertsOnLoad(onDone) {
         const word = anyPast ? 'due' : 'today';
         parts.push(`⏰ ${due.length} reminder${due.length > 1 ? 's' : ''} ${word}`);
     }
+
+    // Saying it on this screen is saying it. Whatever is named in this box has
+    // now been read, so its alert comes out of the status bar -- only the tray
+    // copy, not the schedule, because the reminder itself is still unseen until
+    // it is actually opened and a repeat must keep its later alarms.
+    due.forEach(r => { removeReminderFromTray(r.id); });
 
     const lines = parts.map(t =>
         `<span style="display:block;color:#eef2f9;font-size:0.92rem;font-weight:700;line-height:1.5;">${t}</span>`
@@ -5311,7 +5385,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     let titleHtml, summaryHtml, bodyHtml;
 
     if (activeTab === 'reminders') {
-        const todayIso = new Date().toISOString().slice(0, 10);
+        const todayIso = localTodayIso();
         const pad2 = (n) => String(n).padStart(2, '0');
         const isoFor = (y, m, d) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
         if (remindersCalYear === null) {
@@ -5526,7 +5600,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
         // still browsable there (to see what was due then), yet the date
         // modal's own disallowPast check would refuse to save it anyway, so
         // preset that in would just make Save mysteriously fail.
-        const todayIsoNow = new Date().toISOString().slice(0, 10);
+        const todayIsoNow = localTodayIso();
         const preset = remindersCalSelectedIso && remindersCalSelectedIso >= todayIsoNow ? remindersCalSelectedIso : undefined;
         addReminderFlow(preset);
     });
@@ -6156,7 +6230,9 @@ const IMG_ADJUST_PROPS = [
     { prop: 'contrast',   elId: 'imgSliderContrast',   default: 0, toFilter: d => `contrast(${100 + d}%)` },
     { prop: 'exposure',   elId: 'imgSliderExposure',   default: 0, toFilter: d => `brightness(${100 + d}%)` },
     { prop: 'saturation', elId: 'imgSliderSaturation', default: 0, toFilter: d => `saturate(${100 + d}%)` },
-    { prop: 'hue',        elId: 'imgSliderHue',        default: 0, toFilter: d => `hue-rotate(${d}deg)` },
+    // 0..100 on the dial like every other tool. The whole colour wheel is
+    // still reachable; 100 is one complete turn.
+    { prop: 'hue',        elId: 'imgSliderHue',        default: 0, toFilter: d => `hue-rotate(${d * 3.6}deg)` },
     // blur/sepia/invert are one-directional CSS filters -- there's no
     // negative blur/sepia/invert to "undo" an already-baked amount, so
     // once committed, these can only be increased further, never
@@ -6166,7 +6242,11 @@ const IMG_ADJUST_PROPS = [
     // thumb's visual position, since a range input renders its thumb
     // at (value-min)/(max-min), and setting min===value always puts
     // the thumb at the very left regardless of the real number).
-    { prop: 'blur',       elId: 'imgSliderBlur',       default: 0, toFilter: d => `blur(${Math.max(0, d)}px)`, floorOnly: true },
+    // Also 0..100. The dial used to stop at 20 because 20 is the number of
+    // pixels handed to the filter, which left one tool counting in a scale of
+    // its own beside nine that read 0..100. The pixel figure is derived here
+    // instead, so 100 is the same strongest blur it has always been.
+    { prop: 'blur',       elId: 'imgSliderBlur',       default: 0, toFilter: d => `blur(${Math.max(0, d) * 0.2}px)`, floorOnly: true },
     { prop: 'sepia',      elId: 'imgSliderSepia',      default: 0, toFilter: d => `sepia(${Math.max(0, d)}%)`, floorOnly: true },
     { prop: 'opacity',    elId: 'imgSliderOpacity',    default: 100, toFilter: d => `opacity(${100 + d}%)` },
     { prop: 'invert',     elId: 'imgSliderInvert',     default: 0, toFilter: d => `invert(${Math.max(0, d)}%)`, floorOnly: true },
@@ -6265,6 +6345,10 @@ function imgEditorZeroAdjustSliders() {
     IMG_ADJUST_PROPS.forEach(p => {
         imgEditor[p.prop] = p.default;
         imgEditor.adjustBase[p.prop] = p.default;
+        // Any ceiling a previous session may have raised goes back to what the
+        // markup declared, so a fresh image always starts from the real range.
+        const el = document.getElementById(p.elId);
+        if (el && el.dataset.maxBase !== undefined) { el.max = el.dataset.maxBase; delete el.dataset.maxBase; }
         imgSetSliderDisplay(p, p.default);
     });
 }
@@ -6664,9 +6748,35 @@ const IMG_ADJUST_HINT_KEY = 'docman_img_adjust_hints';
 const imgAdjust = { built: false, tab: 'adjust', prop: 'brightness', sessionIndex: 0, filter: null, strength: 100, hintTimer: null };
 
 function imgAdjustProp(prop) { return IMG_ADJUST_PROPS.find(p => p.prop === prop); }
+// A floorOnly tool (blur, sharpen, sepia, invert) cannot be dragged back below
+// what is already baked into the pixels: blurred pixels are gone, so there is
+// nothing to restore. The floor is correct. The problem was what the dial did
+// once the floor met the ceiling.
+//
+// Blur's slider is 0..20 and sharpen's 0..100. Taking either to the end and
+// leaving the Adjust panel bakes it, which sets the floor TO the ceiling --
+// min === max, the dial could not move, and the tool read as broken. Only
+// those two were reported because they are the ones people take all the way.
+//
+// A first attempt let the ceiling climb by one span on every bake so there was
+// always somewhere to drag. That removed the dead dial but was worse: the
+// number had no meaning any more and kept growing -- blur reached 700 and
+// sharpen 1000 on the test device, neither of which describes anything.
+//
+// So the ceiling stays where the markup put it. 20px of blur is the maximum
+// this tool offers, and once it is reached it is honestly spent; imgAdjustRefresh
+// says so on the dial rather than leaving it silently immovable.
 function imgAdjustRange(p) {
     const el = document.getElementById(p.elId);
     return { min: parseFloat(el.min), max: parseFloat(el.max) };
+}
+
+// True when a floorOnly tool has been baked all the way to its ceiling, so
+// there is genuinely nothing left to drag in either direction.
+function imgAdjustAtLimit(p) {
+    if (!p.floorOnly || !imgEditor.adjustBase) return false;
+    const { min, max } = imgAdjustRange(p);
+    return Math.max(min, imgEditor.adjustBase[p.prop] || 0) >= max;
 }
 
 function imgAdjustEnsureDom() {
@@ -6852,9 +6962,14 @@ function imgAdjustRefresh() {
     const p = imgAdjustProp(imgAdjust.prop);
     const { min, max } = imgAdjustRange(p);
     const v = imgEditor[p.prop];
-    nameEl.textContent = IMG_ADJUST_LABELS[p.prop];
+    // A floorOnly tool baked all the way to its ceiling has nothing left to
+    // give and nowhere to drag. Saying so is the whole fix: the dial being
+    // immovable in silence is what read as a broken button.
+    const spent = imgAdjustAtLimit(p);
+    nameEl.textContent = IMG_ADJUST_LABELS[p.prop] + (spent ? ' · max' : '');
     valEl.textContent = imgFormatSliderValue(p, v);
-    ruler.setAttribute('aria-label', IMG_ADJUST_LABELS[p.prop]);
+    ruler.style.opacity = spent ? '0.45' : '';
+    ruler.setAttribute('aria-label', IMG_ADJUST_LABELS[p.prop] + (spent ? ', at maximum' : ''));
     imgAdjustDrawRuler(min, max, v, p.default);
     document.querySelectorAll('.img-adjust-dial').forEach(b => {
         const q = imgAdjustProp(b.dataset.prop);
@@ -7863,6 +7978,13 @@ function imgEditorExportBlob() {
 }
 
 async function imgEditorSaveAsNew() {
+    // Nothing was changed, so there is nothing to write. Saving anyway made a
+    // second copy that differed from the original only by being re-encoded at
+    // quality 0.92 -- a slightly worse duplicate, and a spent Pro try.
+    if (!imgEditorHasEdits()) {
+        showToast('Nothing to save yet -- no edits have been made', true);
+        return;
+    }
     if (!requireProTool('imageedit')) return;
     const viewer = document.getElementById('imageViewer');
     const folderPath = viewer._currentFolder;
@@ -8839,6 +8961,13 @@ async function imgConvertSingleFileToPdf(folderPath, fileName) {
 }
 
 async function imgEditorReplaceOriginal() {
+    // Nothing was changed, so there is nothing to write. Saving anyway made a
+    // second copy that differed from the original only by being re-encoded at
+    // quality 0.92 -- a slightly worse duplicate, and a spent Pro try.
+    if (!imgEditorHasEdits()) {
+        showToast('Nothing to save yet -- no edits have been made', true);
+        return;
+    }
     if (!requireProTool('imageedit')) return;
     const viewer = document.getElementById('imageViewer');
     const folderPath = viewer._currentFolder;
@@ -9697,12 +9826,20 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onMove, onDelete, 
         const menuW = menu.offsetWidth || 200;
         const menuH = menu.offsetHeight || 180;
         const vw = window.innerWidth;
-        // Bottom bound excludes the safe-area inset (gesture nav bar) --
-        // window.innerHeight on a full-screen WebView includes that zone,
-        // so clamping to it alone still lets a tall menu's last item (e.g.
-        // Delete) land underneath the nav bar.
-        const safeBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom')) || 0;
-        const vh = window.innerHeight - safeBottom;
+        // Bottom bound excludes the navigation bar -- window.innerHeight on a
+        // full-screen WebView includes that zone, so clamping to it alone lets
+        // a tall menu's last item (Delete, as reported) land underneath the
+        // back and home keys.
+        //
+        // This read --safe-bottom alone and so did nothing: env(safe-area-
+        // inset-bottom) resolves to 0 in this WebView, because targetSdk 35+
+        // draws edge-to-edge without publishing the inset. --nav-bottom is the
+        // height MainActivity measures from the real window insets and writes
+        // onto the root; the larger of the two covers gesture bars too.
+        const cs = getComputedStyle(document.documentElement);
+        const safeBottom = parseFloat(cs.getPropertyValue('--safe-bottom')) || 0;
+        const navBottom = parseFloat(cs.getPropertyValue('--nav-bottom')) || 0;
+        const vh = window.innerHeight - Math.max(safeBottom, navBottom);
 
         let left = rect.right - menuW;
         let top = rect.top - menuH - 8;
@@ -17720,6 +17857,212 @@ function initElasticOverscroll() {
 
 
 // ============================================================
+
+// ============================================================
+// REMINDER DELIVERY SETUP
+// ============================================================
+// A reminder has to clear three separate Android settings before it can
+// arrive on time, and an app can grant none of them for itself:
+//
+//   Notifications        a real runtime permission -- the one dialog here
+//   Alarms & reminders   a Settings toggle. Denied by default from Android 14
+//                        for anything targeting SDK 34+, which DOCMAN does.
+//                        Without it the notification plugin quietly downgrades
+//                        every alarm to an inexact one and Doze holds it until
+//                        the phone is next woken -- which is usually when the
+//                        app is opened, so the alert appears to arrive then.
+//   Battery              several manufacturers freeze a sleeping app and sit
+//                        on its alarm regardless of the two above.
+//
+// Reported from a second phone where reminders only ever turned up on opening
+// the app, while the same build was fine on the phone where the toggle had
+// been granted. Nothing was wrong with the scheduling.
+//
+// So this does the only thing available: says what each one is for, shows
+// which are still missing, and puts each a single tap from its own screen.
+
+const ALERT_SETUP_SEEN_KEY = 'docmanAlertSetupSeen';
+
+// Manufacturers that add an "autostart"/"background start" gate of their own.
+// There is no API to read it, let alone request it, so the most that can be
+// done is name it and open the app's page.
+const AUTOSTART_OEMS = ['xiaomi', 'redmi', 'poco', 'oppo', 'vivo', 'realme',
+                        'oneplus', 'huawei', 'honor', 'tecno', 'infinix', 'itel'];
+
+async function readAlertSetupState() {
+    const ex = window.Capacitor?.Plugins?.ExactAlarm;
+    const ln = window.Capacitor?.Plugins?.LocalNotifications;
+    // Default every unknown to "granted": a tick that cannot be checked is
+    // better left alone than turned into a chore that cannot be completed.
+    const s = { notif: true, exact: true, battery: true, oem: '', sdk: 0 };
+    try { const p = await ln.checkPermissions(); s.notif = p.display === 'granted'; } catch (e) { /* keep default */ }
+    try { const r = await ex.canScheduleExact(); s.exact = !!(r && r.granted); } catch (e) { /* keep default */ }
+    try { const r = await ex.isBatteryUnrestricted(); s.battery = !!(r && r.granted); } catch (e) { /* keep default */ }
+    try {
+        const d = await ex.deviceInfo();
+        s.oem = String((d && d.manufacturer) || '').toLowerCase();
+        s.sdk = (d && d.sdk) || 0;
+    } catch (e) { /* keep default */ }
+    return s;
+}
+
+function renderAlertSetupRows(s) {
+    const rows = document.getElementById('alertSetupRows');
+    if (!rows) return;
+
+    const row = (key, name, desc, done, optional) => `
+        <div class="aset-row${done ? ' done' : ''}">
+            <div class="aset-tick ${done ? 'on' : 'off'}"><i class="fas fa-check"></i></div>
+            <div class="aset-txt">
+                <div class="aset-nm">${name}${optional && !done ? '<span class="aset-opt">optional</span>' : ''}</div>
+                <div class="aset-ds">${desc}</div>
+            </div>
+            ${done
+                ? '<div class="aset-done-lbl">On</div>'
+                : `<button class="aset-go" data-aset="${key}">Turn on</button>`}
+        </div>`;
+
+    // Alarms & reminders leads because it is the one that actually decides
+    // whether an alert arrives on time; it was off on the phone where
+    // reminders only appeared on opening the app.
+    let html = '';
+    html += row('exact', 'Alarms &amp; reminders',
+                'Without it the alert arrives late, or only when you next open the app', s.exact);
+    html += row('notif', 'Notifications',
+                'Lets DOCMAN show an alert at all', s.notif);
+    // Battery is last and marked optional on purpose. Reminders were verified
+    // firing on time on a Galaxy S23 with this still optimised, so demanding
+    // it would send most people hunting through Settings for no gain -- and
+    // the one-tap system dialog is not an option: that needs
+    // REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, which Play has pulled apps over.
+    // It stays on the list because the phones that do sleep an app, mostly
+    // Xiaomi and Oppo, need it.
+    html += row('battery', 'Battery: unrestricted',
+                'Only if reminders still arrive late. Tap <b>Battery</b>, then <b>Unrestricted</b>',
+                s.battery, true);
+
+    if (AUTOSTART_OEMS.some(m => s.oem.includes(m))) {
+        const brand = s.oem.charAt(0).toUpperCase() + s.oem.slice(1);
+        html += `<div class="aset-note">
+            <b>${escapeHtml(brand)} phones also have “Autostart”.</b> It is not something an app
+            can switch on — find DOCMAN under Settings › Apps and turn it on there.
+            <div style="margin-top:7px"><button class="aset-go muted" data-aset="app">Open app settings</button></div>
+        </div>`;
+    }
+    rows.innerHTML = html;
+
+    // Battery is not counted: the screen must be able to read as finished
+    // without it, or it becomes a chore nobody can complete.
+    const left = [s.notif, s.exact].filter(v => !v).length;
+    const sub = document.getElementById('alertSetupSub');
+    if (sub) {
+        sub.textContent = left === 0
+            ? 'Everything reminders need is already on. Nothing to do here.'
+            : 'Android holds alerts back until these are on. It takes about twenty seconds.';
+    }
+    // Two buttons that both mean 'later' is one button too many, which is
+    // what 'Later' beside 'Finish later' read as. The way out keeps one name,
+    // and once there is nothing left to do there is nothing to postpone, so
+    // only Done remains.
+    const done = document.getElementById('alertSetupDone');
+    const later = document.getElementById('alertSetupLater');
+    if (done) done.textContent = 'Done';
+    if (later) later.style.display = left === 0 ? 'none' : '';
+}
+
+async function refreshAlertSetup() {
+    renderAlertSetupRows(await readAlertSetupState());
+}
+
+// Each button leads to the one screen that setting lives on. Nothing is
+// granted from in here, so the screen re-reads its own state on return.
+async function runAlertSetupAction(key) {
+    const ex = window.Capacitor?.Plugins?.ExactAlarm;
+    const ln = window.Capacitor?.Plugins?.LocalNotifications;
+    haptic.press();
+    try {
+        if (key === 'notif') {
+            // The system dialog only ever appears once. After a refusal it
+            // returns 'denied' without showing anything, so the app's own page
+            // is the only way back -- otherwise this button does nothing at
+            // all and looks broken.
+            let res = null;
+            try { res = await ln.requestPermissions(); } catch (e) { /* fall through to settings */ }
+            if (!res || res.display !== 'granted') await ex.openAppSettings();
+        } else if (key === 'exact') {
+            await ex.openSettings();
+        } else if (key === 'battery') {
+            await ex.openBatterySettings();
+        } else if (key === 'app') {
+            await ex.openAppSettings();
+        }
+    } catch (e) {
+        showToast('Could not open that settings screen', true);
+    }
+    refreshAlertSetup();
+}
+
+function closeAlertSetup() {
+    const o = document.getElementById('alertSetupOverlay');
+    if (o) o.classList.add('hidden');
+    localStorage.setItem(ALERT_SETUP_SEEN_KEY, '1');
+}
+
+// opts.onlyIfNeeded: skip the screen entirely when all three are already on,
+// which is what the first-run and first-reminder calls want. Opening it from
+// Settings always shows it, so there is somewhere to confirm they are on.
+async function showAlertSetup(opts = {}) {
+    const o = document.getElementById('alertSetupOverlay');
+    if (!o || !isNativePlatform()) { if (opts.onDone) opts.onDone(); return; }
+    const s = await readAlertSetupState();
+    if (opts.onlyIfNeeded && s.notif && s.exact) {
+        if (opts.onDone) opts.onDone();
+        return;
+    }
+    renderAlertSetupRows(s);
+    o.classList.remove('hidden');
+    alertSetupOnDone = opts.onDone || null;
+}
+
+let alertSetupOnDone = null;
+
+function wireAlertSetup() {
+    const o = document.getElementById('alertSetupOverlay');
+    if (!o) return;
+    const finish = () => {
+        closeAlertSetup();
+        const cb = alertSetupOnDone;
+        alertSetupOnDone = null;
+        if (cb) cb();
+    };
+    const later = document.getElementById('alertSetupLater');
+    const done = document.getElementById('alertSetupDone');
+    if (later) later.onclick = () => { haptic.press(); finish(); };
+    if (done) done.onclick = () => { haptic.press(); finish(); };
+    o.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-aset]');
+        if (btn) runAlertSetupAction(btn.dataset.aset);
+    });
+    // These three are changed from outside the page -- by Android's own
+    // notification dialog, or on a Settings screen -- and nothing in here is
+    // told when it happens. Returning from Settings is the obvious moment,
+    // but not the only one: the notification dialog is answered while this
+    // screen is still in front, which left Notifications showing as missing
+    // seconds after it had been allowed.
+    //
+    // So it re-reads while it is open. Three plugin calls every second and a
+    // half, only for as long as the screen is actually up.
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && !o.classList.contains('hidden')) refreshAlertSetup();
+    });
+    window.addEventListener('focus', () => {
+        if (!o.classList.contains('hidden')) refreshAlertSetup();
+    });
+    setInterval(() => {
+        if (!o.classList.contains('hidden')) refreshAlertSetup();
+    }, 1500);
+}
+
 // FIRST-RUN INTRO
 // ============================================================
 // The department list is the app's one genuinely opinionated idea, and
@@ -17871,6 +18214,10 @@ function showIntro() {
 function closeIntro() {
     document.getElementById('introOverlay').classList.add('hidden');
     localStorage.setItem(INTRO_SEEN_KEY, '1');
+    // Straight on to the permissions reminders need, but only on the first
+    // run and only if something is actually missing. Replaying the tips from
+    // Settings must not drag this along behind them.
+    if (!localStorage.getItem(ALERT_SETUP_SEEN_KEY)) showAlertSetup({ onlyIfNeeded: true });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -17905,6 +18252,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderIntroCard();
     });
     document.getElementById('settingsShowTipsBtn').onclick = () => { closeSettingsPage(); showIntro(); };
+    wireAlertSetup();
+    const alertSetupBtn = document.getElementById('settingsAlertSetupBtn');
+    if (alertSetupBtn) alertSetupBtn.onclick = () => { closeSettingsPage(); showAlertSetup(); };
 
     // First launch only. Deliberately not re-shown after an update: an intro
     // that reappears reads as a bug to someone who has already read it.
@@ -18073,9 +18423,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Wire every Adjust-panel slider from the same config used for
     // has-pending/reset/filter-string, so brightness/contrast/exposure/
-    // saturation/hue/blur/sepia/opacity/invert are all handled
-    // identically: live preview on 'input', and each finished drag
-    // ('change', i.e. release) commits as its own single undo step.
+    // saturation/hue/blur/sepia/opacity/invert are all handled identically:
+    // live preview on 'input', and nothing baked until the Adjust panel is
+    // left (imgEditorSetTool), another discrete edit happens, or the image is
+    // saved.
+    //
+    // 'change' used to call imgEditorCommitPending, so every release of the
+    // finger baked the pixels. For the one-directional tools that was fatal:
+    // baking raises the floor they can never go back below, so dragging blur
+    // to 10 and letting go locked it at 10 or more, and reaching 20 left the
+    // dial with nowhere to travel at all. Reported as blur and sharpen not
+    // working, and measured on the device: floor 0 -> 10 -> 20 on three
+    // ordinary drags, each one refusing to come back down.
+    //
+    // It also contradicted imgEditorSetTool, which states it is the only
+    // place a pending adjustment is baked and that a whole Adjust visit is
+    // meant to be ONE undo step rather than one per slider.
     IMG_ADJUST_PROPS.forEach(p => {
         const el = document.getElementById(p.elId);
         if (!el) return;
@@ -18088,7 +18451,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             imgEditorRender();
             imgEditorUpdateHistoryButtons();
         });
-        el.addEventListener('change', imgEditorCommitPending);
     });
 
     document.querySelectorAll('.img-preset-btn').forEach(btn => {

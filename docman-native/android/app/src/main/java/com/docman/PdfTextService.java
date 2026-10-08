@@ -380,7 +380,14 @@ public class PdfTextService extends Service {
             int outW = Math.max(1, Math.round(pageW * scale));
             int outH = Math.max(1, Math.round(pageH * scale));
             bitmap = android.graphics.Bitmap.createBitmap(outW, outH, android.graphics.Bitmap.Config.ARGB_8888);
-            page.renderPageBitmap(bitmap, 0, 0, outW, outH, true, false);
+            // pdfiumandroid 1.0.32 added canvasColour and pageBackgroundColour
+            // to this call; Kotlin gives them defaults, Java has to pass them.
+            // Both are set white here rather than the library default grey
+            // canvas: this bitmap exists only to be read by ML Kit, and a grey
+            // margin around the page is one more edge for it to mistake for
+            // text.
+            final int WHITE = 0xFFFFFFFF;
+            page.renderPageBitmap(bitmap, 0, 0, outW, outH, true, false, WHITE, WHITE);
             com.google.mlkit.vision.common.InputImage image =
                     com.google.mlkit.vision.common.InputImage.fromBitmap(bitmap, 0);
             com.google.mlkit.vision.text.Text result =

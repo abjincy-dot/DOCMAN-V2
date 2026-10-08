@@ -187,7 +187,7 @@ max-width: 900px;
 min-height: 100vh;
 min-height: 100dvh;
 margin: 0 auto;
-padding: 24px 20px calc(40px + env(safe-area-inset-bottom));
+padding: 24px 20px calc(40px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
 
 opacity: 0;
 transform: translateY(24px) scale(0.98);
@@ -843,7 +843,7 @@ background: linear-gradient(175deg, #f59e0b 0%, #d97706 50%, #b45309 100%) !impo
     justify-content: center;
     padding: 20px;
     padding-top: max(20px, calc(env(safe-area-inset-top) + 10px));
-    padding-bottom: max(20px, calc(env(safe-area-inset-bottom) + 10px));
+    padding-bottom: max(20px, calc(max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)) + 10px));
     opacity: 0;
     transition: opacity 0.28s ease, background 0.28s ease, backdrop-filter 0.28s ease;
     pointer-events: none;
@@ -1529,8 +1529,14 @@ width: 100%;
     /* Lifted 5 mm (27 CSS px) off the navigation bar on 2026-10-07: at 24px the
        button's glow sat right on the nav-bar line and read as crowded. 3 mm only
        just cleared it (9px of air), so it still read as stuck to the bar; 5 mm
-       leaves a gap you can actually see. */
-    bottom: calc(51px + env(safe-area-inset-bottom));
+       leaves a gap you can actually see.
+
+       The 5 mm was being measured from the wrong place. This read
+       calc(51px + env(safe-area-inset-bottom)), and that inset is 0 here, so
+       the button sat 51px off the SCREEN edge -- 3px above a 48px navigation
+       bar, not 27px above it. Measured on the device: a 3px gap. The lift now
+       starts from the bar itself. */
+    bottom: calc(27px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
     z-index: 40;
     height: 78px;
     width: 78px;
@@ -2443,7 +2449,7 @@ overflow: auto;
     display: flex;
     gap: 8px;
     padding: 10px 12px;
-    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    padding-bottom: calc(10px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
     background: rgba(0,0,0,0.3);
 }
 .img-editor-save-btn {
@@ -2671,7 +2677,7 @@ transform: scale(0.95);
 flex: 1;
 overflow-y: auto;
 background: #ffffff;
-padding: 24px 20px calc(40px + env(safe-area-inset-bottom));
+padding: 24px 20px calc(40px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
 }
 
 /* mammoth.js outputs plain <p>/<h1-6>/<table>/<img> etc -- style it
@@ -2841,7 +2847,7 @@ border-bottom-color: rgba(0, 0, 0, 0.1);
 
 .toast {
 position: fixed;
-bottom: calc(20px + env(safe-area-inset-bottom));
+bottom: calc(20px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
 left: 50%;
 transform: translateX(-50%) translateY(100px);
 background: linear-gradient(160deg, rgba(47,30,80,0.97), rgba(24,15,42,0.98));
@@ -3672,7 +3678,7 @@ width: 100%;
 
 .app { 
 padding-top: max(2px, env(safe-area-inset-top)); 
-padding-bottom: max(40px, env(safe-area-inset-bottom)); 
+padding-bottom: calc(40px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px))); 
 padding-left: max(16px, env(safe-area-inset-left)); 
 padding-right: max(16px, env(safe-area-inset-right)); 
 }
@@ -3680,7 +3686,7 @@ padding-right: max(16px, env(safe-area-inset-right));
 @supports (padding-top: env(safe-area-inset-top)) { 
 .app { 
 padding-top: calc(2px + env(safe-area-inset-top)); 
-padding-bottom: calc(40px + env(safe-area-inset-bottom)); 
+padding-bottom: calc(40px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px))); 
 padding-left: calc(16px + env(safe-area-inset-left)); 
 padding-right: calc(16px + env(safe-area-inset-right)); 
 } 
@@ -4948,7 +4954,9 @@ body.light-mode .card-folder-count {
     position: fixed;
     z-index: 8001;
     width: 200px;
-    max-height: calc(100vh - 16px - var(--safe-bottom));
+    /* Same reason as the positioning code: --safe-bottom reads 0 here, so the
+       real bar height has to come from --nav-bottom. */
+    max-height: calc(100vh - 16px - max(var(--safe-bottom, 0px), var(--nav-bottom, 0px)));
     overflow-y: auto;
     background: var(--panel-bg);
 border: 1px solid var(--float-border);  /* was purple; same hairline as every other popup */ 
@@ -6809,8 +6817,8 @@ body.light-mode .dash-dep-v { color: var(--text-primary); }
     max-width: none; min-height: 100%; max-height: 100%;
 }
 .fav-view-header { padding: max(12px, calc(env(safe-area-inset-top) + 8px)) 14px 10px; }
-.fav-view-list { padding-bottom: max(20px, calc(env(safe-area-inset-bottom) + 18px)); }
-.dashboard-body { padding: 0 14px max(20px, calc(env(safe-area-inset-bottom) + 18px)); }
+.fav-view-list { padding-bottom: max(20px, calc(max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)) + 18px)); }
+.dashboard-body { padding: 0 14px max(20px, calc(max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)) + 18px)); }
 
 .dash-tiles { gap: 8px; margin-bottom: 10px; }
 .dash-tile { min-height: 0; padding: 9px 9px 10px; border-radius: 15px; }
@@ -6931,7 +6939,12 @@ body.light-mode .dash-backup-n { color: var(--text-primary); }
         radial-gradient(115% 70% at 12% 0%, #221046 0%, #120f22 48%, #0a0a14 100%);
     font-family: Inter, sans-serif;
     padding-top: max(14px, calc(env(safe-area-inset-top) + 10px));
-    padding-bottom: max(18px, calc(env(safe-area-inset-bottom) + 14px));
+    /* env(safe-area-inset-bottom) reports 0 in this WebView -- targetSdk 35+
+       draws edge-to-edge without publishing the inset -- so this resolved to
+       18px while the navigation bar is 48px tall, and Next sat underneath the
+       back and home keys. --nav-bottom is the real height MainActivity
+       measures and publishes; max() keeps the gesture-bar case working too. */
+    padding-bottom: calc(14px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
 }
 .intro-skip {
     position: absolute;
@@ -7145,7 +7158,7 @@ body.light-mode .dept-empty-hint b { color: var(--text-primary); }
         radial-gradient(120% 60% at 50% -8%, #4a1f80 0%, rgba(74,31,128,0) 62%),
         linear-gradient(180deg, #1e0c33 0%, #170a28 55%, #12081f 100%);
     padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px));
     animation: pwIn .22s ease-out;
 }
 @keyframes pwIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
@@ -7312,7 +7325,7 @@ body.light-mode .dept-empty-hint b { color: var(--text-primary); }
     outline: 2px solid #c4b5fd; outline-offset: 2px;
 }
 
-.img-adjust-dock { padding: 4px 0 max(12px, env(safe-area-inset-bottom)); background: #0f1013; }
+.img-adjust-dock { padding: 4px 0 calc(12px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px))); background: #0f1013; }
 .img-adjust-name { display: flex; justify-content: center; align-items: baseline; gap: 8px; min-height: 24px; }
 .img-adjust-name span { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.12em; color: #a8a8b8; text-transform: uppercase; }
 .img-adjust-name b { font-size: 1.06rem; color: #fff; font-variant-numeric: tabular-nums; }
@@ -10749,3 +10762,150 @@ body.light-mode .st-bar { background: rgba(0,0,0,0.08); }
     .st-ring { width: 90px; height: 90px; flex: 0 0 90px; }
     .st-ring-num { font-size: 1.4rem; }
 }
+
+/* ============================================================
+   Reminder delivery setup (2026-10-08)
+
+   Android gates a reminder behind three separate settings, two of which have
+   no permission dialog at all -- the most an app may do is open the screen.
+   Reported from a second phone where reminders only appeared once the app was
+   opened: the alarm had been downgraded to an inexact one and Doze sat on it.
+
+   MainActivity used to throw the user at the system toggle on first launch,
+   before the intro, with nothing to explain it; a back press out of that
+   screen then disabled reminders permanently, since it only ever asked once.
+   This says why first, and can be returned to from Settings.
+   ============================================================ */
+.aset-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    background: rgba(0,0,0,0.72);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    /* Same reason as .intro-overlay: the inset is not reported here, so the
+       real bar height has to come from --nav-bottom. */
+    padding: 20px 16px calc(16px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
+    padding-top: max(7vh, calc(18px + env(safe-area-inset-top)));
+    overflow-y: auto;
+}
+.aset-overlay.hidden { display: none; }
+
+.aset-sheet {
+    position: relative;
+    background: var(--card-bg);
+    border: 1.5px solid rgba(247,138,20,0.45);
+    border-radius: 20px;
+    padding: 22px 18px 18px;
+    width: 100%;
+    max-width: 360px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 30px rgba(247,138,20,0.18);
+    overflow: hidden;
+}
+.aset-wave { position: absolute; left: 0; bottom: 0; width: 100%; height: 130px; pointer-events: none; opacity: 0.45; }
+
+.aset-hd { display: flex; align-items: flex-start; gap: 13px; position: relative; }
+.aset-hd-ic {
+    width: 50px; height: 50px; border-radius: 16px; flex-shrink: 0;
+    background: linear-gradient(135deg,#fbab2c 0%,#f78a14 46%,#ef7009 100%);
+    border: 1px solid rgba(255,255,255,0.25);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3), 0 0 18px rgba(247,138,20,0.4);
+}
+.aset-hd-ic i { color: #fff; font-size: 1.25rem; }
+.aset-hd-t { color: var(--text-primary); font-size: 1.02rem; font-weight: 800; line-height: 1.25; padding-top: 3px; }
+.aset-hd-s { color: var(--text-secondary); font-size: 0.79rem; line-height: 1.45; margin-top: 3px; }
+
+.aset-rows { position: relative; margin: 16px 0 4px; }
+.aset-row {
+    display: flex; align-items: center; gap: 11px;
+    padding: 11px 12px; border-radius: 14px;
+    background: var(--glass-bg); border: 1px solid var(--glass-border);
+    margin-bottom: 9px;
+}
+.aset-row.done { border-color: rgba(34,197,94,0.45); background: rgba(34,197,94,0.10); }
+.aset-tick {
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 0.72rem;
+}
+.aset-tick.on { background: linear-gradient(135deg,#22c55e,#16a34a); color: #fff; box-shadow: 0 0 12px rgba(34,197,94,0.45); }
+.aset-tick.off { background: rgba(255,255,255,0.07); border: 1.5px dashed rgba(255,255,255,0.35); color: transparent; }
+.aset-txt { min-width: 0; flex: 1; }
+.aset-nm { color: var(--text-primary); font-size: 0.86rem; font-weight: 700; line-height: 1.3; }
+.aset-ds { color: var(--text-secondary); font-size: 0.735rem; line-height: 1.4; margin-top: 2px; }
+.aset-go {
+    flex-shrink: 0; border: none; border-radius: 10px; padding: 7px 13px;
+    font-family: Inter, sans-serif; font-size: 0.76rem; font-weight: 700; color: #fff;
+    cursor: pointer; white-space: nowrap;
+    background: linear-gradient(135deg,#8b5cf6,#7c3aed);
+    box-shadow: 0 4px 12px rgba(124,58,237,0.4);
+}
+.aset-go.muted {
+    background: rgba(255,255,255,0.10); border: 1px solid var(--glass-border);
+    color: var(--text-secondary); box-shadow: none;
+}
+.aset-done-lbl { flex-shrink: 0; font-size: 0.73rem; font-weight: 700; color: #4ade80; white-space: nowrap; }
+
+.aset-note {
+    position: relative; color: var(--text-secondary); font-size: 0.72rem; line-height: 1.5;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px; padding: 9px 11px; margin-top: 4px;
+}
+.aset-note b { color: var(--text-primary); }
+
+.aset-btns { position: relative; display: flex; gap: 9px; margin-top: 16px; }
+.aset-btn {
+    flex: 1; border: none; border-radius: 13px; padding: 12px;
+    font-family: Inter, sans-serif; font-size: 0.88rem; font-weight: 700; cursor: pointer;
+}
+.aset-btn.aset-sec { background: rgba(255,255,255,0.09); border: 1px solid var(--glass-border); color: var(--text-secondary); }
+.aset-btn.aset-pri {
+    color: #fff; background: linear-gradient(135deg,#fbab2c 0%,#f78a14 46%,#ef7009 100%);
+    box-shadow: 0 6px 18px rgba(247,138,20,0.38);
+}
+
+/* Narrow phones: the action button drops under the text rather than squeezing
+   the description into a two-word column. */
+@media (max-width: 360px) {
+    .aset-row { flex-wrap: wrap; }
+    .aset-go { margin-left: 37px; }
+}
+
+/* "optional" chip on the battery row. Reminders were verified arriving on
+   time with battery optimisation still on, so that row must not read as
+   another thing standing between the user and a working reminder. */
+.aset-opt {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+
+/* ============================================================
+   Bottom clearance (2026-10-08)
+
+   Every rule above that holds content clear of the navigation bar now reads
+   max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)) rather than
+   the inset alone.
+
+   The inset resolves to 0 in this WebView -- targetSdk 35+ draws edge-to-edge
+   and Android does not publish it -- so each of those rules was reserving only
+   its own literal padding while the bar is 48px tall. Measured on a Galaxy
+   S23: Favourites reserved 0px, the image editor's Save row 10px, toasts
+   20px. --nav-bottom is the height MainActivity reads from the real window
+   insets and writes onto the root element.
+
+   This was already the pattern in six other places; these had simply been
+   written before --nav-bottom existed (it arrived on 2026-09-25, and the
+   oldest of these dates from 2026-08-31).
+   ============================================================ */

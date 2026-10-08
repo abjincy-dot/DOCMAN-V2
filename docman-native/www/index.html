@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/sacramento/sacramento.css">
-<link rel="stylesheet" href="style.css?v=598">
+<link rel="stylesheet" href="style.css?v=604">
 
 </head>
 <body>
@@ -524,6 +524,31 @@ border: 1px solid rgba(255,255,255,0.2);
 <!-- First-run intro. Direct <body> child for the same containing-block reason
      as the overlay panels above. Built by renderIntro() so the three cards
      stay in one place rather than split between markup and script. -->
+<!-- Reminder delivery setup. Android will not let an app grant these for
+     itself, so the most it can do is explain them in one place and put each
+     one a single tap away. Shown after the intro on a fresh install, and
+     again from Settings whenever it is wanted. -->
+<div id="alertSetupOverlay" class="aset-overlay hidden">
+  <div class="aset-sheet">
+    <svg class="aset-wave" viewBox="0 0 360 200" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0,120 C60,90 100,150 180,110 C260,70 300,130 360,90 L360,200 L0,200 Z" fill="rgba(247,138,20,0.18)"/>
+      <path d="M0,150 C80,120 140,170 220,130 C280,105 320,150 360,130 L360,200 L0,200 Z" fill="rgba(239,112,9,0.16)"/>
+    </svg>
+    <div class="aset-hd">
+      <div class="aset-hd-ic"><i class="fas fa-bell"></i></div>
+      <div>
+        <div class="aset-hd-t">Let reminders reach you</div>
+        <div class="aset-hd-s" id="alertSetupSub">Android holds alerts back until these are on. It takes about twenty seconds.</div>
+      </div>
+    </div>
+    <div class="aset-rows" id="alertSetupRows"></div>
+    <div class="aset-btns">
+      <button class="aset-btn aset-sec" id="alertSetupLater">Later</button>
+      <button class="aset-btn aset-pri" id="alertSetupDone">Done</button>
+    </div>
+  </div>
+</div>
+
 <div id="introOverlay" class="intro-overlay hidden">
   <button class="intro-skip" id="introSkipBtn">Skip</button>
   <div class="intro-body" id="introBody"></div>
@@ -647,13 +672,13 @@ border: 1px solid rgba(255,255,255,0.2);
     <div class="img-editor-slider-row">
       <i class="fas fa-palette img-slider-icon"></i>
       <label>Hue</label>
-      <input type="range" id="imgSliderHue" min="0" max="360" value="0">
+      <input type="range" id="imgSliderHue" min="0" max="100" value="0">
       <span class="img-slider-value" id="imgSliderHueVal">0</span>
     </div>
     <div class="img-editor-slider-row">
       <i class="fas fa-water img-slider-icon"></i>
       <label>Blur</label>
-      <input type="range" id="imgSliderBlur" min="0" max="20" value="0">
+      <input type="range" id="imgSliderBlur" min="0" max="100" value="0">
       <span class="img-slider-value" id="imgSliderBlurVal">0</span>
     </div>
     <div class="img-editor-slider-row">
@@ -887,6 +912,11 @@ border: 1px solid rgba(255,255,255,0.2);
       <button class="settings-item" data-panel="appearance">
         <div class="settings-item-icon settings-icon-appearance"><i class="fas fa-palette"></i></div>
         <div class="settings-item-text"><span class="settings-item-title">Appearance</span><span class="settings-item-sub">Theme &amp; display</span></div>
+        <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-item" id="settingsAlertSetupBtn">
+        <div class="settings-item-icon settings-icon-expiry"><i class="fas fa-bell"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Reminder delivery</span><span class="settings-item-sub">Check the permissions alerts need</span></div>
         <i class="fas fa-chevron-right settings-item-arrow"></i>
       </button>
       <button class="settings-item" id="settingsShowTipsBtn">
@@ -1694,7 +1724,7 @@ border: 1px solid rgba(255,255,255,0.2);
     '</div>';
 })();
 </script>
-<script src="app.js?v=522"></script>
+<script src="app.js?v=539"></script>
 
 
 <script>

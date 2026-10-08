@@ -85,7 +85,7 @@ dependencies {
     // straight from the file, so memory use is per page: search works on a
     // 300 MB drawing set, where PDFBox (which parses a whole document into the
     // Java heap) was OutOfMemory-killed. Costs ~5 MB per ABI in the download.
-    implementation 'io.legere:pdfiumandroid:1.0.20'
+    implementation 'io.legere:pdfiumandroid:1.0.32'
     // Still used for everything that WRITES a PDF (highlights, signatures,
     // form fill, erase/crop) and as the fallback text path.
     implementation 'com.tom-roush:pdfbox-android:2.0.27.0'

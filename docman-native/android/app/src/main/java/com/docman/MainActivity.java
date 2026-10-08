@@ -1,12 +1,8 @@
 package com.docman;
 
-import android.app.AlarmManager;
 import android.content.Intent;
-import android.content.SharedPreferences;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.Settings;
 import android.webkit.WebView;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -63,7 +59,13 @@ public class MainActivity extends BridgeActivity {
         // late (this is what caused the crash-on-launch).
         getBridge().getWebView().setWebChromeClient(new DocmanWebChromeClient(getBridge()));
         exposeNavBarInsetToCss();
-        requestExactAlarmPermissionOnce();
+        // The exact-alarm toggle is no longer opened from here. Doing it in
+        // onCreate meant a fresh install landed on an Android Settings screen
+        // before the app had drawn anything, with nothing on it to say what it
+        // was for -- and a back press out of it was final, because it only
+        // ever asked once. The web layer now explains all three permissions
+        // after the intro (showAlertSetup) and can be returned to from
+        // Settings, so it keeps asking as long as it needs to.
     }
 
     // targetSdk 35+ forces edge-to-edge, so the page draws behind Android's
@@ -113,38 +115,4 @@ public class MainActivity extends BridgeActivity {
             "document.documentElement.style.setProperty('--nav-bottom','" + navBottomCssPx + "px')", null));
     }
 
-    // Android 12+ (S) requires the separate "Alarms & reminders" special
-    // permission before AlarmManager.canScheduleExactAlarms() returns true.
-    // Without it, the notification plugin's own canScheduleExactAlarms()
-    // check (see @capacitor/local-notifications' LocalNotificationManager)
-    // silently falls back to an INEXACT alarm for every scheduled reminder
-    // and expiry alert -- which the OS is free to delay for a long time
-    // while the phone is idle/locked, rather than firing anywhere near the
-    // set time. This is what "no notification or sound at all while the
-    // phone is locked" looks like from the outside -- Asked once, ever --
-    // this opens a system Settings toggle screen, not a runtime permission
-    // popup.
-    private void requestExactAlarmPermissionOnce() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return;
-        SharedPreferences prefs = getSharedPreferences("docman_native_prefs", MODE_PRIVATE);
-        if (prefs.getBoolean("asked_exact_alarm_permission", false)) return;
-
-        AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
-        if (alarmManager != null && !alarmManager.canScheduleExactAlarms()) {
-            try {
-                Intent intent = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM);
-                intent.setData(Uri.parse("package:" + getPackageName()));
-                startActivity(intent);
-                // Only now, having actually shown the screen, is it true that
-                // we asked. Setting this up front (as this did before) meant a
-                // user who never saw the screen -- or dismissed it -- was never
-                // asked again, and their reminders silently never fired.
-                prefs.edit().putBoolean("asked_exact_alarm_permission", true).apply();
-            } catch (Exception e) {
-                // Some OEM builds restrict this intent -- fall through
-                // silently rather than crash; reminders still work via the
-                // in-app due-reminders check either way.
-            }
-        }
-    }
 }
