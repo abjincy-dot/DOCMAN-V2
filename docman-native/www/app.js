@@ -15134,6 +15134,38 @@ async function ensurePublicStoragePermission() {
     }
 }
 
+// Hands the finished backup to the system file picker, which lists Drive,
+// OneDrive, the SD card and local folders as places to put it.
+//
+// This used to go through Share.share, and on a phone running AOSP's Sharesheet
+// rather than an OEM one that crashed outright -- "Intent Resolver keeps
+// stopping" -- leaving the backup stranded on the device. A Galaxy S23 was
+// fine, because Samsung ships its own share sheet. Getting a backup off the
+// phone is the entire reason for making one, so it cannot rest on which share
+// sheet a phone happens to have.
+//
+// ACTION_CREATE_DOCUMENT is also simply the right call: sharing means "send
+// this to someone", and this is a save.
+//
+// Share stays as the fallback for a native shell built before the plugin
+// existed, so an older install keeps whatever worked for it.
+async function saveBackupCopy(path, directory, name) {
+    const Filesystem = getFilesystemPlugin();
+    const BackupSave = window.Capacitor?.Plugins?.BackupSave;
+    if (!Filesystem) return;
+
+    if (BackupSave && BackupSave.saveCopy) {
+        const { uri } = await Filesystem.getUri({ path, directory });
+        expectNativeReturn();
+        const res = await BackupSave.saveCopy({ uri, name, mimeType: 'application/octet-stream' });
+        if (res && res.saved) showToast('Backup copy saved', false);
+        // A cancelled picker needs no message: the backup is still in Documents,
+        // which the dialog behind this already said.
+        return;
+    }
+    await shareNativeFile(path, directory, name);
+}
+
 async function shareNativeFile(path, directory, title) {
     const Filesystem = getFilesystemPlugin();
     const Share = window.Capacitor?.Plugins?.Share;
@@ -15209,11 +15241,11 @@ async function doExportBackupDataEncrypted(secret) {
                 `Backup saved to <b>Documents</b><br><span style="opacity:.75;font-size:0.82rem">${escapeHtml(backupFileName)}</span>` +
                 `<br><br><span style="opacity:.75;font-size:0.82rem">Find it in Files / My Files → Documents. Keep a second copy somewhere off the phone.</span>` +
                 skippedNote,
-                (share) => { if (share) shareNativeFile(backupFileName, 'DOCUMENTS', backupFileName).catch(e => console.warn('Share failed:', e)); },
-                { okLabel: 'Share a copy', cancelLabel: 'Done', okColor: 'linear-gradient(135deg,#3b82f6,#2563eb)' }
+                (save) => { if (save) saveBackupCopy(backupFileName, 'DOCUMENTS', backupFileName).catch(e => console.warn('Save a copy failed:', e)); },
+                { okLabel: 'Save a copy', cancelLabel: 'Done', okColor: 'linear-gradient(135deg,#3b82f6,#2563eb)' }
             );
         } else {
-            await shareNativeFile(backupFileName, 'CACHE', backupFileName);
+            await saveBackupCopy(backupFileName, 'CACHE', backupFileName);
             showToast('Encrypted backup exported — save it somewhere safe', true);
         }
     } catch (err) {
@@ -17239,6 +17271,19 @@ function initAndroidBackButton() {
 
         const deptInfoEl = document.getElementById('deptInfoModal');
         if (backVisible(deptInfoEl)) { closeDeptInfo(); return; }
+
+        // The reminder-setup screen, before the intro it follows: back is the
+        // same as its own way out, so the screen is marked seen and whatever
+        // opened it still gets its callback. It was the one overlay with no
+        // branch here, so back fell through and navigated underneath it.
+        const alertSetupEl = document.getElementById('alertSetupOverlay');
+        if (backVisible(alertSetupEl)) {
+            const later = document.getElementById('alertSetupLater');
+            const out = (later && getComputedStyle(later).display !== 'none')
+                ? later : document.getElementById('alertSetupDone');
+            if (out) out.click(); else closeAlertSetup();
+            return;
+        }
 
         // Back on the first-run intro behaves like Skip.
         const introEl = document.getElementById('introOverlay');
