@@ -112,37 +112,37 @@ These four overlap and are best done together.
 Search should look inside a note, not only at its title. There is a
 "searchNotes" toggle in Settings already — check what it covers. *Medium.*
 
-**4 and 9. No Cut/Copy/Paste toolbar, anywhere in the app** — *fixed, needs 59*
+**4 and 9. No Cut/Copy/Paste toolbar, anywhere in the app** — *OPEN*
 
-One line of native code, in MainActivity. exposeNavBarInsetToCss() attached an
-inset listener to the WebView itself, and a listener does not sit alongside a
-view's own onApplyWindowInsets -- it replaces it. Chromium's WebView needs its
-own to run, so with that listener in place text selected perfectly well --
-handles, magnifier, everything -- and the Cut/Copy/Paste bar never appeared
-anywhere in DOCMAN. Not once, not even in the search box.
+Correcting an earlier entry here: the nav-bar inset listener was NOT the
+cause. That conclusion came from mistaking the app's own stand-in bar, which
+was in the build at the time and showed "Select all" and "Paste" in a dark
+pill, for Android's. Removing the listener entirely changes nothing.
 
-It took ruling out, each on the device: the app's CSS (two textareas side by
-side, one with -webkit-touch-callout and user-select forced on, neither
-worked), its markup (a bare page written over the app behaved the same), its
-native code, and its activity theme. Logcat showed Chromium's selection
-controller alive and dragging while a logging override of
-onWindowStartingActionMode on the activity stayed completely silent -- the
-ActionMode was never asked for. Taking the listener off brought the bar back
-immediately.
+What is now known, measured without asking anyone to hold a phone -- a double
+tap through adb selects a word the way a finger does, and the app's window list
+says whether a toolbar exists (the two selection handles are 124x62 each; the
+caret handle is 56x68; a toolbar is nothing like either):
 
-Fixed by listening on the WebView's parent instead. The same numbers are read,
-the same padding goes on the WebView, the same insets are handed down with the
-bottom zeroed -- the WebView simply gets to do its own work with them now.
-Checked after: --nav-bottom still publishes 48px and the viewport is unchanged,
-so nothing the listener was there for was lost.
+- **A plain page in DOCMAN's own WebView gets the toolbar.** Writing a bare
+  document over the app and double tapping a word in its textarea selected 9
+  characters and produced a 1622x723 window. So the WebView, the activity and
+  the native layer are all capable of it.
+- **DOCMAN's page does not.** Same gesture in the note editor selects, and no
+  toolbar window of any kind is created.
 
-A stand-in toolbar was built while this was unexplained and removed once it
-was: the system's own bar does the job, and a second one beside it would be
-noise. Paste (9) comes with it.
+So it is something in the app's own page. Earlier attempts to rule out the CSS
+were invalid: they used a long press, and a long press in an editable field
+places a caret rather than selecting a word, so those tests proved nothing.
 
-**9. Paste into a note**
-Copy text from a file and paste it into a note. *Small to medium, once 4 is
-done.*
+Next: bisect the page. A bare textarea injected into the live app page, then
+into the modal, then the note's own -- the double tap needs to be made reliable
+first (it only selects sometimes; input keycombination for ctrl+A is accepted
+by this device and may be steadier).
+
+The stand-in Copy/Paste bar was removed on request, so notes currently have
+neither the system's bar nor one of their own. Restoring it is a few minutes'
+work if this stays unsolved.
 
 **5. Press and hold a note to preview it**
 Rather than opening it to read. *Medium — new interaction.*
