@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/sacramento/sacramento.css">
-<link rel="stylesheet" href="style.css?v=615">
+<link rel="stylesheet" href="style.css?v=616">
 
 </head>
 <body>
@@ -1448,7 +1448,11 @@ border: 1px solid rgba(255,255,255,0.2);
         <textarea id="noteContent" placeholder="Write your note here..." class="note-content-input" maxlength="1000"></textarea>
         <span class="note-count" id="noteContentCount">0/1000</span>
       </div>
-      <div class="note-colors" id="noteColors" role="radiogroup" aria-label="Note colour"></div>
+      <div class="note-style-row">
+        <div class="note-colors" id="noteColors" role="radiogroup" aria-label="Note colour"></div>
+        <button type="button" id="noteLinedBtn" class="note-lined-btn" aria-pressed="false"
+                aria-label="Ruled lines" title="Ruled lines"><i class="fas fa-align-justify"></i></button>
+      </div>
     </div>
     <div class="modal-footer note-modal-foot">
       <button onclick="closeNoteModal()"><i class="fas fa-times"></i>Cancel</button>
@@ -1719,7 +1723,7 @@ border: 1px solid rgba(255,255,255,0.2);
     '</div>';
 })();
 </script>
-<script src="app.js?v=562"></script>
+<script src="app.js?v=563"></script>
 
 
 <script>

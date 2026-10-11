@@ -5795,7 +5795,8 @@ async function addNoteToCurrentFolder(title, content, color) {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         favourite: false,
-        color: color || 'violet'
+        color: color || 'violet',
+        lined: !!noteModalLined
     };
     allNotes[folderPath].push(note);
     await saveNotesForFolder(folderPath);
@@ -5808,6 +5809,10 @@ async function updateNote(folderPath, noteId, title, content, color) {
     if (idx !== -1) {
         allNotes[folderPath][idx].title = title.trim();
         allNotes[folderPath][idx].content = content.trim();
+        // Both of these were being passed in and then dropped on the floor:
+        // changing a note's colour in the editor never survived the save.
+        if (color) allNotes[folderPath][idx].color = color;
+        allNotes[folderPath][idx].lined = !!noteModalLined;
         allNotes[folderPath][idx].updatedAt = new Date().toISOString();
         await saveNotesForFolder(folderPath);
         trackActivity('modified', { name: allNotes[folderPath][idx].title, folderPath, kind: 'note', noteId });
@@ -5859,16 +5864,35 @@ const NOTE_COLORS = [
     { id: 'slate',  from: '#64748b', to: '#94a3b8', paper: '#e6e9ee', edge: '#c4cad4' }
 ];
 let noteModalColor = 'violet';
+let noteModalLined = false;
 
 function noteColorById(id) {
     return NOTE_COLORS.find(c => c.id === id) || NOTE_COLORS[0];
+}
+
+// The rules are drawn on the page itself, behind the text, as one repeating
+// band the height of a line. NOTE_LINE_HEIGHT is pinned in px rather than left
+// as a ratio for exactly this reason: a ratio rounds differently as the font
+// renders, and the rules would drift away from the words down the page.
+const NOTE_LINE_HEIGHT = 22;
+
+function noteRuledBackground(c) {
+    if (!noteModalLined) return c.paper;
+    // The rule sits on the line's own bottom edge, so text rests on it rather
+    // than being struck through by it.
+    return 'repeating-linear-gradient(to bottom,'
+        + 'transparent 0px,'
+        + 'transparent ' + (NOTE_LINE_HEIGHT - 1) + 'px,'
+        + c.edge + ' ' + (NOTE_LINE_HEIGHT - 1) + 'px,'
+        + c.edge + ' ' + NOTE_LINE_HEIGHT + 'px)';
 }
 
 function paintNoteModalColor() {
     const c = noteColorById(noteModalColor);
     const body = document.querySelector('.note-field-body');
     if (body) {
-        body.style.background = c.paper;
+        body.style.background = noteRuledBackground(c);
+        body.style.backgroundColor = c.paper;
         // Plain borderColor lost to a rule further down the sheet and the page
         // kept a white rim that belonged to the dark field it used to be.
         body.style.setProperty('border-color', c.edge, 'important');
@@ -5879,9 +5903,31 @@ function paintNoteModalColor() {
     }
     document.querySelectorAll('.note-color-dot').forEach(d =>
         d.classList.toggle('note-color-dot-on', d.dataset.color === noteModalColor));
+    const ruled = document.getElementById('noteLinedBtn');
+    if (ruled) {
+        ruled.classList.toggle('note-lined-on', noteModalLined);
+        ruled.setAttribute('aria-pressed', noteModalLined ? 'true' : 'false');
+    }
+}
+
+// Ruled or plain, for people who write lists and want somewhere to write them
+// on. Wired once; paintNoteModalColor draws whichever the note asks for.
+function wireNoteLinedToggle() {
+    const btn = document.getElementById('noteLinedBtn');
+    if (!btn || btn.dataset.wired === '1') return;
+    btn.dataset.wired = '1';
+    // Same reason the colour swatches do this: a press must not blur the
+    // field, or Android closes the keyboard and the caret is lost.
+    btn.addEventListener('mousedown', (e) => e.preventDefault());
+    btn.onclick = () => {
+        haptic.toggle();
+        noteModalLined = !noteModalLined;
+        paintNoteModalColor();
+    };
 }
 
 function buildNoteColorPicker() {
+    wireNoteLinedToggle();
     const row = document.getElementById('noteColors');
     if (!row || row.childElementCount) return;
     row.innerHTML = NOTE_COLORS.map(c =>
@@ -5968,6 +6014,7 @@ async function openNote(note) {
     document.getElementById('noteTitle').value = note.title;
     document.getElementById('noteContent').value = note.content;
     editingNoteId = note.id;
+    noteModalLined = !!note.lined;
     prepareNoteModal('Edit Note', 'Change what you wrote', note.color);
     document.getElementById('saveNoteBtn').onclick = async () => {
         const newTitle = document.getElementById('noteTitle').value;
@@ -5982,6 +6029,7 @@ async function openNote(note) {
 
 function openNewNoteModal() {
     editingNoteId = null;
+    noteModalLined = false;
     document.getElementById('noteTitle').value = '';
     document.getElementById('noteContent').value = '';
     prepareNoteModal('New Note', 'Capture your thoughts', 'violet');

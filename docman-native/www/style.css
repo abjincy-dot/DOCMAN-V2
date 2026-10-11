@@ -10166,7 +10166,10 @@ body.light-mode .current-folder-card .cf-part-current { color: #c2710c !importan
     resize: none;
 }
 .note-title-input { font-size: 1.02rem; font-weight: 700; padding-right: 48px !important; }
-.note-content-input { font-size: 0.92rem; min-height: 160px; line-height: 1.45; }
+/* Pinned in px, not left as a ratio: the ruled page draws one band per
+   line, and a ratio rounds differently as the font renders, so the rules
+   would drift away from the words further down the page. */
+.note-content-input { font-size: 0.92rem; min-height: 160px; line-height: 22px; }
 .note-title-input::placeholder,
 .note-content-input::placeholder { color: rgba(255, 255, 255, 0.55); }
 
@@ -10968,3 +10971,44 @@ body.light-mode .st-bar { background: rgba(0,0,0,0.08); }
    leave the winner to source order. */
 body.light-mode .note-field-body.note-paper .note-content-input { color: #1f2937 !important; }
 body.light-mode .note-field-body.note-paper .note-field-ico { color: rgba(31, 41, 55, 0.5); }
+
+/* ============================================================
+   NOTE PAGE -- ruling
+   The toggle sits with the colours, because it is the same kind of choice:
+   what the page looks like. Square against their circles so the two do not
+   read as one row of seven options.
+   ============================================================ */
+.note-style-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.note-style-row .note-colors { flex: 1 1 auto; min-width: 0; }
+.note-lined-btn {
+    flex: 0 0 auto;
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+    color: #cbd5e1;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 0;
+    transition: background .16s ease, color .16s ease, border-color .16s ease, transform .12s ease;
+}
+.note-lined-btn:active { transform: scale(0.94); }
+.note-lined-btn.note-lined-on {
+    background: rgba(124, 58, 237, 0.9);
+    border-color: transparent;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
+}
+body.light-mode .note-lined-btn {
+    border-color: rgba(120, 95, 65, 0.3);
+    background: rgba(120, 95, 65, 0.06);
+    color: #4a3b2a;
+}
+@media (max-width: 376px) {
+    .note-lined-btn { width: 30px; height: 30px; font-size: 0.78rem; border-radius: 9px; }
+}
