@@ -12139,6 +12139,13 @@ function render() {
                 if (!isWithinSearchScope(path)) continue;
                 if (allNotes[path]) {
                     allNotes[path].forEach(n => {
+                        // A locked note is not searchable at all. Hiding only
+                        // the matching line was not enough: a note that
+                        // appears for one word and not another answers
+                        // questions about what is inside it, which is the
+                        // whole of what the lock is for. It is still in its
+                        // folder, under its lock, for whoever can open it.
+                        if (n.locked) return;
                         if (n.title.toLowerCase().includes(query) || n.content.toLowerCase().includes(query)) {
                             results.push({ ...n, folder: path, type: 'note' });
                         }
