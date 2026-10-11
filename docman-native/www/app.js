@@ -2459,7 +2459,23 @@ async function cancelFileAlerts(folderPath, file) {
     if (file && file.expiryDate) await imgScheduleExpiryNotification(folderPath, file.name, null);
 }
 async function restoreFileAlerts(folderPath, file) {
-    if (file && file.expiryDate) await imgScheduleExpiryNotification(folderPath, file.name, file.expiryDate);
+    if (!file || !file.expiryDate) return;
+    // A document that was already acknowledged before it was deleted should
+    // not start alerting again just because it came back.
+    await imgScheduleExpiryNotification(folderPath, file.name, file.expiryDate,
+        { acknowledged: isExpiryAcknowledged(file) });
+}
+// An expiry alarm is keyed on folder path + file name, so anything that
+// changes either one leaves the alarm armed against a key no document answers
+// to any more. It still fires, and tapping it lands on a document that is not
+// there -- which is what "the reminder comes for a file I removed" actually
+// was. The old key is cleared and the new one armed, in that order.
+async function reKeyFileAlerts(oldFolderPath, oldName, newFolderPath, file) {
+    if (!file || !file.expiryDate) return;
+    if (oldFolderPath === newFolderPath && oldName === file.name) return;
+    await imgScheduleExpiryNotification(oldFolderPath, oldName, null);
+    await imgScheduleExpiryNotification(newFolderPath, file.name, file.expiryDate,
+        { acknowledged: isExpiryAcknowledged(file) });
 }
 // A note's alerts live on the reminders that point at it. The reminder itself
 // is left alone -- only the alarm goes, so restoring the note brings its
@@ -2692,8 +2708,28 @@ async function permanentlyDeleteRecycleBinItem(id, { silent = false } = {}) {
         }
         await Promise.all(deletions);
     }
-    // Notes carry no separate blob -- their content lives entirely in the
-    // recycle bin entry itself, nothing extra to purge.
+    // A note carries no separate blob -- its content lives in the recycle bin
+    // entry itself. What it does carry is any reminder pointing at it, and the
+    // reminder outlives a permanent delete: the alarm went when the note was
+    // binned, but the row stayed in the Reminders list, for a note that can
+    // never be restored, with an "Open note" button leading nowhere.
+    const goneForGood = [];
+    if (item.kind === 'note') {
+        goneForGood.push([item.folderPath, item.payload.id]);
+    } else if (item.kind === 'folder') {
+        for (const k of Object.keys(item.payload.notesSnapshot || {})) {
+            for (const n of item.payload.notesSnapshot[k]) goneForGood.push([k, n.id]);
+        }
+    }
+    if (goneForGood.length) {
+        for (const [fp, nid] of goneForGood) {
+            for (const r of remindersForNote(fp, nid)) await cancelReminderNotification(r.id);
+        }
+        const before = reminders.length;
+        reminders = reminders.filter(r => !r.noteRef || !goneForGood.some(
+            ([fp, nid]) => r.noteRef.noteId === nid && r.noteRef.folderPath === fp));
+        if (reminders.length !== before) saveReminders();
+    }
 
     recycleBin.splice(idx, 1);
     await saveRecycleBin();
@@ -3183,20 +3219,37 @@ function imgNotificationIdFor(folderPath, fileName, offset) {
 }
 
 // ============================================================
-// EXPIRY ALERTS (approved 2026-09-16)
-// 7 days before and 3 days before at 09:00, then the expiry day itself
-// every 30 minutes from 07:00 -- stopping at 21:00 so it never nags at
-// night, and stopping immediately once the document is acknowledged --
-// then one reminder a day while it stays overdue, for a week.
+// EXPIRY ALERTS (approved 2026-09-16, cadence revised 2026-10-11)
+// 7 days, 3 days and 1 day before at 09:00; the expiry day itself in the
+// morning and again late afternoon; then one a day while it stays overdue,
+// for a week. Every one of them stops the moment the document is
+// acknowledged.
+//
+// The expiry day used to repeat every 30 minutes from 07:00 to 21:00. Those
+// alerts did not stack -- measured on the device, one in the shade at a time,
+// the group replacing the one before it -- but each repeat is scheduled under
+// its own id, so each one arrives as a fresh banner with sound and vibration.
+// Twenty-nine interruptions in a day, for one document, and nothing to show
+// for the twenty-seven after the second: if the morning alert and an
+// afternoon one are both ignored, a thirteenth will not be the one that
+// works. It also cost 38 of the alarm slots Android allows an app, so a
+// library with more than a dozen dated documents quietly ran out and later
+// documents got no alerts at all.
 //
 // Every alert is a scheduled Android notification, so it arrives with the
 // app closed. Ids come from path + name + slot, so they are stable: a
 // reschedule cancels exactly what it replaces, with nothing orphaned.
 // ============================================================
 const EXPIRY_ALERT_HOUR = 9;        // the 7-day, 3-day and overdue alerts
-const EXPIRY_DAY_START_HOUR = 7;    // the expiry day's own repeats
-const EXPIRY_DAY_END_HOUR = 21;
-const EXPIRY_REPEAT_MINUTES = 30;
+// The expiry day's own alerts, by hour. Morning, then late afternoon for a
+// document still not dealt with -- both inside waking hours, neither at night.
+const EXPIRY_DAY_HOURS = [9, 17];
+// Ids 1000..1028 were handed out by the old every-30-minutes schedule. A phone
+// upgrading from an earlier build already has them armed, and a cancel list
+// covering only the ids now in use would leave the rest firing every half hour
+// with nothing left able to reach them. So the cancel list keeps covering the
+// old range, permanently.
+const EXPIRY_LEGACY_DAY_SLOTS = 29;
 const EXPIRY_OVERDUE_DAYS = 7;
 const EXPIRY_ACTION_TYPE = 'EXPIRY_DUE';
 // Kept only so an alert scheduled by an older build, which still carries this
@@ -3205,8 +3258,9 @@ const REMINDER_ACTION_TYPE = 'REMINDER_DUE';
 // A reminder used to fire ONCE and that was it -- miss the notification and
 // nothing else ever came. Expiry already repeats every 30 minutes on the day
 // until acknowledged; this gives reminders the same treatment, but over a
-// short window rather than 07:00-21:00. Android caps how many notifications
-// an app can have pending, and expiry alone books 29 slots per document.
+// short window rather than all day. Android caps how many notifications an
+// app can have pending, which is part of why expiry stopped booking 38 slots
+// per document.
 const REMINDER_REPEAT_MINUTES = 30;
 const REMINDER_REPEAT_HOURS = 3;
 // DOCMAN never defined a channel, so every alert inherited whatever the
@@ -3217,14 +3271,17 @@ const REMINDER_REPEAT_HOURS = 3;
 const ALERT_CHANNEL_ID = 'docman-alerts-v2';
 const ALERT_CHANNEL_ID_OLD = 'docman-alerts';
 
-function expiryRepeatCount() {
-    return ((EXPIRY_DAY_END_HOUR - EXPIRY_DAY_START_HOUR) * 60) / EXPIRY_REPEAT_MINUTES + 1;
+// How many of the day's slots to clear. Not how many are scheduled -- see
+// EXPIRY_LEGACY_DAY_SLOTS for why this is the larger of the two.
+function expiryDaySlotsToCancel() {
+    return Math.max(EXPIRY_DAY_HOURS.length, EXPIRY_LEGACY_DAY_SLOTS);
 }
 
 // Every id a document can own, so a reschedule can clear the whole set.
 function expiryNotificationIds(folderPath, fileName) {
-    const ids = [imgNotificationIdFor(folderPath, fileName, 7), imgNotificationIdFor(folderPath, fileName, 3)];
-    for (let i = 0; i < expiryRepeatCount(); i++) ids.push(imgNotificationIdFor(folderPath, fileName, 1000 + i));
+    const ids = [imgNotificationIdFor(folderPath, fileName, 7), imgNotificationIdFor(folderPath, fileName, 3),
+        imgNotificationIdFor(folderPath, fileName, 1)];
+    for (let i = 0; i < expiryDaySlotsToCancel(); i++) ids.push(imgNotificationIdFor(folderPath, fileName, 1000 + i));
     for (let d = 1; d <= EXPIRY_OVERDUE_DAYS; d++) ids.push(imgNotificationIdFor(folderPath, fileName, 2000 + d));
     return ids;
 }
@@ -3277,12 +3334,15 @@ async function imgScheduleExpiryNotification(folderPath, fileName, dateStr, opts
         'A document expires in 7 days. Open DOCMAN to see which.', new Date(dayAtAlertHour.getTime() - 7 * 86400000));
     add(imgNotificationIdFor(folderPath, fileName, 3), 'Document expiring soon',
         'A document expires in 3 days. Open DOCMAN to see which.', new Date(dayAtAlertHour.getTime() - 3 * 86400000));
+    // Nothing used to be said between "in 3 days" and "today", which are the
+    // last two days anything can still be renewed in time.
+    add(imgNotificationIdFor(folderPath, fileName, 1), 'Document expiring tomorrow',
+        'A document expires tomorrow. Open DOCMAN to see which.', new Date(dayAtAlertHour.getTime() - 86400000));
 
-    for (let i = 0; i < expiryRepeatCount(); i++) {
-        const minutes = EXPIRY_DAY_START_HOUR * 60 + i * EXPIRY_REPEAT_MINUTES;
+    EXPIRY_DAY_HOURS.forEach((hour, i) => {
         add(imgNotificationIdFor(folderPath, fileName, 1000 + i), 'Document expires today',
-            'A document expires today. Open DOCMAN to see which.', expiryAtHour(dateStr, Math.floor(minutes / 60), minutes % 60), true);
-    }
+            'A document expires today. Open DOCMAN to see which.', expiryAtHour(dateStr, hour), true);
+    });
 
     for (let d = 1; d <= EXPIRY_OVERDUE_DAYS; d++) {
         add(imgNotificationIdFor(folderPath, fileName, 2000 + d), 'Document expired',
@@ -3311,6 +3371,43 @@ async function rescheduleAllExpiryNotifications() {
             await imgScheduleExpiryNotification(folderPath, file.name, file.expiryDate,
                 { acknowledged: isExpiryAcknowledged(file) });
         }
+    }
+    await sweepOrphanedExpiryAlarms();
+}
+
+// Every alarm carries the folder and name it was armed for. Any that no longer
+// names a document in the library is an orphan: it will still fire, and
+// tapping it lands on a document that is not there.
+//
+// Keying alerts on folder + name meant a rename, a move or a renamed folder
+// left the old key armed, and those paths have since been fixed -- but a phone
+// that ran the earlier code already has orphans scheduled, and a build that
+// only stops making new ones would leave them firing for up to a week each,
+// with nothing left in the app able to reach them. Cancelling by id needs the
+// id, and the id came from a name nothing remembers any more; reading them
+// back out of the pending list is the only way to find them again.
+//
+// Deliberately cautious: only alarms this app recognises as expiry alarms, and
+// only when the library has genuinely loaded. An empty allFiles during a failed
+// load would otherwise look exactly like "every document is gone" and cancel
+// every alert the person has.
+async function sweepOrphanedExpiryAlarms() {
+    const plugin = window.Capacitor?.Plugins?.LocalNotifications;
+    if (!plugin) return;
+    if (!Object.keys(allFiles).length) return;
+    try {
+        const pending = (await plugin.getPending())?.notifications || [];
+        const orphans = pending.filter(n => {
+            const e = n.extra;
+            if (!e || e.kind !== 'expiry' || !e.fileName) return false;
+            const inFolder = allFiles[e.folderPath] || [];
+            return !inFolder.some(f => f.name === e.fileName && f.expiryDate);
+        });
+        if (!orphans.length) return;
+        await plugin.cancel({ notifications: orphans.map(n => ({ id: n.id })) });
+        console.log('Cleared ' + orphans.length + ' expiry alert(s) for documents no longer in the library');
+    } catch (e) {
+        console.warn('Could not sweep orphaned expiry alerts:', e);
     }
 }
 
@@ -5177,6 +5274,7 @@ async function renameFileInFolder(folderPath, oldName, newName) {
             }
             entry.name = newName;
             await saveFilesForFolder(folderPath);
+            await reKeyFileAlerts(folderPath, oldName, folderPath, entry);
             trackActivity('modified', { name: newName, folderPath, kind: 'file' });
             render();
         }
@@ -5297,6 +5395,7 @@ async function moveFileToFolder(oldFolderPath, fileOrName, newFolderPath) {
 
     await saveFilesForFolder(oldFolderPath);
     await saveFilesForFolder(newFolderPath);
+    await reKeyFileAlerts(oldFolderPath, fileName, newFolderPath, entry);
     trackActivity('modified', { name: fileName, folderPath: newFolderPath, kind: 'file' });
     render();
     updateStats();
@@ -10862,6 +10961,8 @@ async function migrateFilesAndNotesPath(oldPath, newPath) {
         const files = allFiles[k];
         delete allFiles[k];
         allFiles[newKey] = files;
+        // Every expiry alarm in this folder is keyed on the old path.
+        for (const f of files) await reKeyFileAlerts(k, f.name, newKey, f);
         await Promise.all(files.map(async f => {
             if (!f.fsPath) {
                 await renameBlobInDB(k, f.name, newKey, f.name);
@@ -10872,11 +10973,25 @@ async function migrateFilesAndNotesPath(oldPath, newPath) {
     }
 
     const matchingNoteKeys = Object.keys(allNotes).filter(k => k === oldPath || k.startsWith(prefix));
+    let remindersRepointed = false;
     for (const k of matchingNoteKeys) {
         const newKey = k === oldPath ? newPath : newPath + k.slice(oldPath.length);
         allNotes[newKey] = allNotes[k];
         delete allNotes[k];
+        // A reminder finds its note by folder path and id. The alarm itself is
+        // keyed on the reminder, so it keeps firing either way -- but it would
+        // open nothing, because the path it points at is gone. Only the pointer
+        // needs moving, not the alarm.
+        for (const n of allNotes[newKey] || []) {
+            reminders.forEach(r => {
+                if (r.noteRef && r.noteRef.noteId === n.id && r.noteRef.folderPath === k) {
+                    r.noteRef.folderPath = newKey;
+                    remindersRepointed = true;
+                }
+            });
+        }
     }
+    if (remindersRepointed) saveReminders();
 }
 
 function renameCurrentFolder() {
@@ -14387,6 +14502,16 @@ function showAppLockScreen(onUnlock) {
         const plugin = getBiometricPlugin();
         if (!plugin) { showPinView();
             return; }
+        // Asking for a fingerprint while DOCMAN is not the app on screen puts
+        // a system dialog over whatever the person is actually doing: Android
+        // brings DOCMAN forward to host the prompt, which is how the lock
+        // screen ended up appearing on top of another app. Locking in the
+        // background is right and stays -- the screen is already up
+        // underneath. Only the asking waits.
+        if (document.visibilityState === 'hidden') {
+            whenVisibleAgain(tryBiometric);
+            return;
+        }
         try {
             const avail = await plugin.isAvailable();
             if (!avail?.available) { showPinView();
@@ -14516,8 +14641,27 @@ function showAppLockScreen(onUnlock) {
     // fires after it, so by then the browser has genuinely drawn this
     // screen at least once.
     if (biometricReady) {
-        requestAnimationFrame(() => requestAnimationFrame(tryBiometric));
+        // A hidden page need not paint at all, so rAF alone is not a reliable
+        // "we are on screen" signal -- the visibility check is.
+        whenVisibleAgain(() => requestAnimationFrame(() => requestAnimationFrame(tryBiometric)));
     }
+}
+
+// Runs fn now if DOCMAN is on screen, otherwise the next time it is. Used to
+// keep native prompts from surfacing over another app; registered once per
+// call and removed as soon as it fires, so a lock cycle that is abandoned
+// (unlocked by PIN, say) leaves nothing behind to go off later.
+function whenVisibleAgain(fn) {
+    if (document.visibilityState !== 'hidden') { fn(); return; }
+    const onVisible = () => {
+        if (document.visibilityState === 'hidden') return;
+        document.removeEventListener('visibilitychange', onVisible);
+        // Only still wanted if the lock screen is in fact up: by the time
+        // DOCMAN comes back the person may have unlocked another way, or the
+        // screen may have been taken down entirely.
+        if (document.getElementById('appLockScreen')) fn();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 }
 
 

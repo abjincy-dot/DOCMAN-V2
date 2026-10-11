@@ -1,8 +1,13 @@
 # DOCMAN — open issues
 
 Started 2026-10-10. Play right now: **58** on Internal testing and in review for
-Closed testing (12 testers). Anything marked "in 59" is written but has not
-reached a build.
+Closed testing (12 testers). Anything marked "needs 59" is written and verified
+on the device in DOCMAN dev, but has not reached a Play build.
+
+All three of section A -- 7, 8 and 10 -- are done as of 2026-10-11. None of
+them turned out to be the bug as described: the delete path was already
+correct, the alerts were never stacking, and the lock screen never left the
+app. Each time the reported symptom was real and the cause was somewhere else.
 
 ---
 
@@ -12,25 +17,52 @@ Numbered as they were given. Effort is a guess until each one is looked at.
 
 ### A. Real faults
 
-**7. A reminder outlives the file it belongs to**
-Set a reminder on a file, delete the file, and the reminder still fires. Opening
-the notification lands on an error — the file is not there. The alert should go
-when the file does, and come back if the file is restored from the Recycle Bin.
-Expiry alerts were already handled this way on 2026-10-07; file reminders were
-not. *Medium. Data consistency — fix early.*
+**7. An alert outlives the document it belongs to** — *fixed, needs 59*
+Not the delete path. Deleting was measured on the device: 36 armed alarms went
+when the file went, and all 36 came back when it was restored. What was broken
+is that an expiry alarm is keyed on **folder path + file name**, and four things
+changed one of those without moving the alarm with it:
 
-**8. One reminder still stacks a banner every 30 minutes**
-A reminder repeats every 30 minutes for 3 hours (7 times). Each repeat is meant
-to replace the one before it, and the node_modules patch that does this tested
-clean on 2026-10-08: three alerts in one group left exactly one in the shade.
-Reported as still happening, so either that test did not match what the app
-really schedules, or something else posts them. *Medium to high — needs
-watching on the device over a real 30-minute gap.*
+- renaming a file — 38 alarms left armed under the old name
+- moving a file to another folder — the same, under the old path
+- renaming a folder or department — every alarm in the whole branch orphaned,
+  and every note reminder under it left pointing at a path that no longer
+  exists, so "Open note" led nowhere
+- emptying the Recycle Bin — a note's reminder row survived the note being gone
+  for good, with an Open button leading nowhere
 
-**10. The app-lock screen appears over other apps**
-Turn on screen lock, put DOCMAN in the background, open another app, and
-DOCMAN's lock window comes up on top of it. *Medium. Visible and alarming;
-worth treating as high.*
+An orphaned alarm still fires, and tapping it lands on "file not available",
+which is what was reported. Fixed with one `reKeyFileAlerts` helper called from
+all three rename/move paths, plus reminder cleanup on permanent delete. Also:
+restoring an already-acknowledged document no longer starts alerting again.
+
+**8. The expiry alert arrives every 30 minutes** — *fixed, needs 59*
+Measured on the device with four alerts a minute apart in the real alert's own
+shape: the shade held exactly one at a time, 990001 → 990002 → 990003 → 990004,
+each replacing the one before. **The group patch works; nothing stacks.** The
+complaint was the cadence itself. The expiry day fired every 30 minutes from
+07:00 to 21:00 and each repeat is scheduled under its own id, so each arrived as
+a fresh banner with sound and vibration — 29 interruptions for one document in
+one day. Now 09:00 and 17:00. An "expires tomorrow" alert was added as well,
+because nothing used to be said between "in 3 days" and "today", the last two
+days anything can still be renewed in time. Slots per document: 38 → 12, which
+also matters because Android caps how many an app may keep pending — the old
+number ran that budget out after about a dozen dated documents, and documents
+past that quietly got no alerts at all.
+
+**10. The app-lock screen appears over other apps** — *fixed, needs 59*
+Not the lock screen, which is a DOM overlay and cannot leave the app. It was
+the fingerprint prompt the lock screen asks for: that is a native system
+dialog, and Android brings DOCMAN forward to host it. Auto Lock runs on a timer
+that keeps ticking after DOCMAN is backgrounded, so the lock could arm --
+correctly -- while the person was in another app, and then ask for a
+fingerprint on top of it.
+
+Locking in the background is right and stays; only the asking now waits for
+DOCMAN to be on screen. Measured both halves on the device: arming the lock
+while the launcher had focus left focus exactly where it was, with the lock
+screen up inside the app; bringing DOCMAN back put `BiometricPromptRoot` in
+focus, so unlocking still works.
 
 ### B. Confusing or inconsistent
 
