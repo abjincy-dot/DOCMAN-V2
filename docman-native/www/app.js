@@ -14832,14 +14832,14 @@ function exportBackupData() {
         <div style="position:relative;background:#1a1a1a;border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="encChoiceCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:#ffffff;font-size:0.98rem;font-weight:700;margin:0 0 6px;margin-right:26px;font-family:Inter,sans-serif;">Secure Your Backup</p>
-            <p style="color:#94a3b8;font-size:0.82rem;margin:0 0 18px;font-family:Inter,sans-serif;line-height:1.5;">Your backup is encrypted so only you can restore it. Choose how:</p>
+            <p style="color:#94a3b8;font-size:0.82rem;margin:0 0 18px;font-family:Inter,sans-serif;line-height:1.5;">The backup file is encrypted, so only you can open it. Keep whichever you choose somewhere safe — <b style="color:#e2e8f0">without it the backup cannot be restored, not even by us</b>.</p>
             <button id="encChoicePassword" style="touch-action:manipulation;width:100%;text-align:left;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#ffffff;cursor:pointer;font-family:Inter,sans-serif;margin-bottom:10px;">
-                <div style="font-weight:600;font-size:0.9rem;"><i class="fas fa-key" style="color:#ff6b4a;margin-right:8px;"></i>Create a Password</div>
-                <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px;">Choose your own password — easy to remember</div>
+                <div style="font-weight:600;font-size:0.9rem;"><i class="fas fa-key" style="color:#ff6b4a;margin-right:8px;"></i>Create a backup password</div>
+                <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px;">Your own words, easier to remember. This is not your app PIN.</div>
             </button>
             <button id="encChoiceRecoveryKey" style="touch-action:manipulation;width:100%;text-align:left;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#ffffff;cursor:pointer;font-family:Inter,sans-serif;">
-                <div style="font-weight:600;font-size:0.9rem;"><i class="fas fa-dice" style="color:#a78bfa;margin-right:8px;"></i>Generate a Recovery Key</div>
-                <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px;">DOCMAN creates a strong random key for you</div>
+                <div style="font-weight:600;font-size:0.9rem;"><i class="fas fa-dice" style="color:#a78bfa;margin-right:8px;"></i>Generate a recovery key</div>
+                <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px;">DOCMAN makes a strong random key. Harder to guess, so write it down.</div>
             </button>
         </div>`;
     document.body.appendChild(overlay);
@@ -15158,9 +15158,31 @@ async function saveBackupCopy(path, directory, name) {
         const { uri } = await Filesystem.getUri({ path, directory });
         expectNativeReturn();
         const res = await BackupSave.saveCopy({ uri, name, mimeType: 'application/octet-stream' });
-        if (res && res.saved) showToast('Backup copy saved', false);
         // A cancelled picker needs no message: the backup is still in Documents,
         // which the dialog behind this already said.
+        if (!res || !res.saved) return;
+
+        // The picker lists this phone alongside Drive and there is no way to
+        // leave it out -- Android has no flag for "somewhere other than here".
+        // A copy saved back onto the phone is no safer than the one already in
+        // Documents: whatever takes the phone takes both. So the destination is
+        // read back and a copy that never left is said out loud, once, without
+        // blocking anything.
+        const where = String((res && res.authority) || '');
+        const stayedOnPhone = where.includes('externalstorage')
+            || where.includes('providers.downloads')
+            || where.includes('media.documents');
+        if (stayedOnPhone) {
+            showConfirmModal(
+                'That copy is on this phone, next to the one already in Documents.' +
+                '<br><br>If the phone is lost, stolen or broken, both go with it. ' +
+                'Save one to Google Drive, or another cloud, while you can.',
+                (again) => { if (again) saveBackupCopy(path, directory, name).catch(e => console.warn('Save a copy failed:', e)); },
+                { okLabel: 'Choose again', cancelLabel: 'Leave it', title: 'Still only on this phone' }
+            );
+            return;
+        }
+        showToast('Backup copy saved off this phone', false);
         return;
     }
     await shareNativeFile(path, directory, name);
@@ -15239,7 +15261,8 @@ async function doExportBackupDataEncrypted(secret) {
         if (savedLocally) {
             showConfirmModal(
                 `Backup saved to <b>Documents</b><br><span style="opacity:.75;font-size:0.82rem">${escapeHtml(backupFileName)}</span>` +
-                `<br><br><span style="opacity:.75;font-size:0.82rem">Find it in Files / My Files → Documents. Keep a second copy somewhere off the phone.</span>` +
+                `<br><br><span style="opacity:.75;font-size:0.82rem">Find it in Files / My Files → Documents.</span>` +
+                `<br><span style="opacity:.75;font-size:0.82rem">This copy is only as safe as the phone. <b>Save a copy to Google Drive</b> — or any cloud — so a lost or broken phone does not take your documents with it.</span>` +
                 skippedNote,
                 (save) => { if (save) saveBackupCopy(backupFileName, 'DOCUMENTS', backupFileName).catch(e => console.warn('Save a copy failed:', e)); },
                 { okLabel: 'Save a copy', cancelLabel: 'Done', okColor: 'linear-gradient(135deg,#3b82f6,#2563eb)' }

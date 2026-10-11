@@ -98,6 +98,12 @@ public class BackupSavePlugin extends Plugin {
             ret.put("saved", true);
             ret.put("cancelled", false);
             ret.put("bytes", total);
+            // Which provider took the file. The JS side uses this to notice a
+            // copy that never left the phone, which is the one destination a
+            // backup must not end on: Android offers no way to keep local
+            // storage out of the picker, so the only thing left is to say so
+            // afterwards.
+            ret.put("authority", dest.getAuthority() == null ? "" : dest.getAuthority());
             call.resolve(ret);
         } catch (Exception e) {
             call.reject("Could not save the copy: " + e.getMessage());
