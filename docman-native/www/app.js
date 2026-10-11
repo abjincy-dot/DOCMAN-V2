@@ -5796,7 +5796,8 @@ async function addNoteToCurrentFolder(title, content, color) {
         updatedAt: new Date().toISOString(),
         favourite: false,
         color: color || 'violet',
-        lined: !!noteModalLined
+        lined: !!noteModalLined,
+        fontSize: noteFontPx(noteModalFont)
     };
     allNotes[folderPath].push(note);
     await saveNotesForFolder(folderPath);
@@ -5813,6 +5814,7 @@ async function updateNote(folderPath, noteId, title, content, color) {
         // changing a note's colour in the editor never survived the save.
         if (color) allNotes[folderPath][idx].color = color;
         allNotes[folderPath][idx].lined = !!noteModalLined;
+        allNotes[folderPath][idx].fontSize = noteFontPx(noteModalFont);
         allNotes[folderPath][idx].updatedAt = new Date().toISOString();
         await saveNotesForFolder(folderPath);
         trackActivity('modified', { name: allNotes[folderPath][idx].title, folderPath, kind: 'note', noteId });
@@ -5874,9 +5876,28 @@ function noteColorById(id) {
 // band the height of a line. NOTE_LINE_HEIGHT is pinned in px rather than left
 // as a ratio for exactly this reason: a ratio rounds differently as the font
 // renders, and the rules would drift away from the words down the page.
-const NOTE_LINE_HEIGHT = 22;
+// A size in px, picked a step at a time. The range stops where the text stops
+// being worth reading at one end and stops fitting at the other.
+const NOTE_FONT_MIN = 11;
+const NOTE_FONT_MAX = 24;
+const NOTE_FONT_DEFAULT = 15;
+let noteModalFont = NOTE_FONT_DEFAULT;
+
+function noteFontPx(v) {
+    const n = parseInt(v, 10);
+    if (!n || isNaN(n)) return NOTE_FONT_DEFAULT;
+    return Math.max(NOTE_FONT_MIN, Math.min(NOTE_FONT_MAX, n));
+}
+
+// The line box is derived rather than stored: the ruled page draws one band
+// per line, so the two must agree exactly, and rounding here once is safer
+// than a ratio that rounds differently as the font renders.
+function noteLineFor(px) {
+    return Math.round(px * 1.45);
+}
 
 function noteRuledBackground(c) {
+    const NOTE_LINE_HEIGHT = noteLineFor(noteModalFont);
     if (!noteModalLined) return c.paper;
     // The rule sits on the line's own bottom edge, so text rests on it rather
     // than being struck through by it.
@@ -5903,6 +5924,21 @@ function paintNoteModalColor() {
     }
     document.querySelectorAll('.note-color-dot').forEach(d =>
         d.classList.toggle('note-color-dot-on', d.dataset.color === noteModalColor));
+    const px = noteFontPx(noteModalFont);
+    const field = document.getElementById('noteContent');
+    if (field) {
+        // The short-screen pass sets font-size with !important, so this has to
+        // outrank it rather than merely come after it.
+        field.style.setProperty('font-size', px + 'px', 'important');
+        field.style.setProperty('line-height', noteLineFor(px) + 'px', 'important');
+    }
+    const sizeLabel = document.getElementById('noteFontValue');
+    if (sizeLabel) sizeLabel.textContent = px + 'px';
+    const minus = document.getElementById('noteFontMinus');
+    const plus = document.getElementById('noteFontPlus');
+    if (minus) minus.disabled = px <= NOTE_FONT_MIN;
+    if (plus) plus.disabled = px >= NOTE_FONT_MAX;
+
     const ruled = document.getElementById('noteLinedBtn');
     if (ruled) {
         ruled.classList.toggle('note-lined-on', noteModalLined);
@@ -5912,6 +5948,25 @@ function paintNoteModalColor() {
 
 // Ruled or plain, for people who write lists and want somewhere to write them
 // on. Wired once; paintNoteModalColor draws whichever the note asks for.
+function wireNoteFontButton() {
+    const step = (by) => {
+        const next = noteFontPx(noteFontPx(noteModalFont) + by);
+        if (next === noteModalFont) return;
+        noteModalFont = next;
+        haptic.toggle();
+        paintNoteModalColor();
+    };
+    [['noteFontMinus', -1], ['noteFontPlus', 1]].forEach(([id, by]) => {
+        const btn = document.getElementById(id);
+        if (!btn || btn.dataset.wired === '1') return;
+        btn.dataset.wired = '1';
+        // Same as the swatches: a press must not blur the field, or Android
+        // closes the keyboard and the caret goes with it.
+        btn.addEventListener('mousedown', (e) => e.preventDefault());
+        btn.onclick = () => step(by);
+    });
+}
+
 function wireNoteLinedToggle() {
     const btn = document.getElementById('noteLinedBtn');
     if (!btn || btn.dataset.wired === '1') return;
@@ -5928,6 +5983,7 @@ function wireNoteLinedToggle() {
 
 function buildNoteColorPicker() {
     wireNoteLinedToggle();
+    wireNoteFontButton();
     const row = document.getElementById('noteColors');
     if (!row || row.childElementCount) return;
     row.innerHTML = NOTE_COLORS.map(c =>
@@ -5992,7 +6048,50 @@ function keepNoteFocus() {
     }, { passive: false });
 }
 
+// Opening a note used to raise the keyboard straight away, which covers half
+// the note with a thing you did not ask for when all you wanted was to read
+// it. Both fields open read-only instead: no keyboard, but the text can still
+// be selected and copied, which is most of what reading a note is for. The
+// first tap on either field is the moment someone means to change something,
+// so that is when it becomes editable and the keyboard arrives.
+// When the note row is tapped, the modal opens under the finger and the tap's
+// own click then lands on the text -- which looked exactly like someone asking
+// to edit, so the keyboard came up anyway. Clicks in the first moments after
+// the editor opens are that one, not a decision.
+let noteReadModeAt = 0;
+
+function setNoteReadMode(on) {
+    const t = document.getElementById('noteTitle');
+    const c = document.getElementById('noteContent');
+    [t, c].forEach(el => { if (el) el.readOnly = on; });
+    if (on) noteReadModeAt = Date.now();
+    const modal = document.getElementById('noteModal');
+    if (modal) modal.classList.toggle('note-reading', on);
+    if (on) {
+        if (document.activeElement === t || document.activeElement === c) document.activeElement.blur();
+    }
+}
+
+function wireNoteReadToEdit() {
+    ['noteTitle', 'noteContent'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el || el.dataset.readToEdit === '1') return;
+        el.dataset.readToEdit = '1';
+        el.addEventListener('click', () => {
+            if (!el.readOnly) return;
+            if (Date.now() - noteReadModeAt < 600) return;
+            // Where the tap landed, so the caret arrives where it was asked
+            // for rather than at the start.
+            const at = el.selectionStart;
+            setNoteReadMode(false);
+            el.focus();
+            try { el.setSelectionRange(at, at); } catch (e) { /* empty field */ }
+        });
+    });
+}
+
 function prepareNoteModal(heading, sub, color) {
+    wireNoteReadToEdit();
     keepNoteFocus();
     buildNoteColorPicker();
     wireNoteCounters();
@@ -6015,7 +6114,9 @@ async function openNote(note) {
     document.getElementById('noteContent').value = note.content;
     editingNoteId = note.id;
     noteModalLined = !!note.lined;
+    noteModalFont = noteFontPx(note.fontSize);
     prepareNoteModal('Edit Note', 'Change what you wrote', note.color);
+    setNoteReadMode(true);
     document.getElementById('saveNoteBtn').onclick = async () => {
         const newTitle = document.getElementById('noteTitle').value;
         const newContent = document.getElementById('noteContent').value;
@@ -6030,6 +6131,8 @@ async function openNote(note) {
 function openNewNoteModal() {
     editingNoteId = null;
     noteModalLined = false;
+    noteModalFont = NOTE_FONT_DEFAULT;
+    setNoteReadMode(false);
     document.getElementById('noteTitle').value = '';
     document.getElementById('noteContent').value = '';
     prepareNoteModal('New Note', 'Capture your thoughts', 'violet');
@@ -10502,10 +10605,9 @@ function createNoteCard(note, folderPath, opts = {}) {
         longPressTriggered = false;
         isScrolling = false;
 
-        // Long-press removed: the row's pill button is visible and does the
-        // same job. Keeping both also double-fired, because the pill must
-        // stopPropagation (so the row does not open the item), which stopped
-        // the row's touchend from ever running cancelPress().
+        // Long press does nothing here: a tap already opens the note to be
+        // read, with no keyboard in the way, so a peek on top of that was one
+        // reading view too many. The row pill still carries the actions.
     };
 
     function openNoteMenu() {

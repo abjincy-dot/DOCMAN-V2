@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/sacramento/sacramento.css">
-<link rel="stylesheet" href="style.css?v=616">
+<link rel="stylesheet" href="style.css?v=620">
 
 </head>
 <body>
@@ -1450,6 +1450,11 @@ border: 1px solid rgba(255,255,255,0.2);
       </div>
       <div class="note-style-row">
         <div class="note-colors" id="noteColors" role="radiogroup" aria-label="Note colour"></div>
+        <div class="note-size" role="group" aria-label="Text size">
+          <button type="button" id="noteFontMinus" aria-label="Smaller text">&minus;</button>
+          <span id="noteFontValue" aria-live="polite">15px</span>
+          <button type="button" id="noteFontPlus" aria-label="Larger text">+</button>
+        </div>
         <button type="button" id="noteLinedBtn" class="note-lined-btn" aria-pressed="false"
                 aria-label="Ruled lines" title="Ruled lines"><i class="fas fa-align-justify"></i></button>
       </div>
@@ -1723,7 +1728,7 @@ border: 1px solid rgba(255,255,255,0.2);
     '</div>';
 })();
 </script>
-<script src="app.js?v=563"></script>
+<script src="app.js?v=569"></script>
 
 
 <script>

@@ -11012,3 +11012,53 @@ body.light-mode .note-lined-btn {
 @media (max-width: 376px) {
     .note-lined-btn { width: 30px; height: 30px; font-size: 0.78rem; border-radius: 9px; }
 }
+
+
+
+
+
+/* The text size, in px, a step at a time. It sits with the colours and the
+   ruling because it is the same kind of choice -- what the page looks like.
+   The row wraps rather than squeezing: six swatches, a stepper and a toggle
+   do not fit one line on a narrow phone. */
+.note-style-row { flex-wrap: wrap; row-gap: 8px; }
+.note-size {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+}
+.note-size button {
+    width: 28px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    border: none;
+    background: transparent;
+    color: #cbd5e1;
+    font-family: Inter, sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1;
+    border-radius: 9px;
+    cursor: pointer;
+    padding: 0;
+}
+.note-size button:active { background: rgba(255, 255, 255, 0.14); }
+.note-size button:disabled { opacity: 0.32; cursor: default; }
+#noteFontValue {
+    min-width: 40px;
+    text-align: center;
+    font-family: Inter, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+body.light-mode .note-size {
+    border-color: rgba(120, 95, 65, 0.3);
+    background: rgba(120, 95, 65, 0.06);
+}
+body.light-mode .note-size button,
+body.light-mode #noteFontValue { color: #4a3b2a; }

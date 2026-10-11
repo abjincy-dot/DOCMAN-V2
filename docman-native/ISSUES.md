@@ -142,8 +142,23 @@ app page failed the same way the note's own did, which put the cause at
 document level and led to the listener. After the fix, both the note body and
 its title show the toolbar.
 
-**5. Press and hold a note to preview it**
-Rather than opening it to read. *Medium — new interaction.*
+**5. Press and hold a note to preview it** — *answered differently*
+
+Built, then taken out again on the spot. Once a note opens to be read rather
+than typed into -- no keyboard, nothing in the way of the text -- a peek on
+top of that was a second reading view for the same thing, and the tap already
+did the job better. The row pill still carries the actions.
+
+**Note editor, same session**
+
+- Opens read-only: no keyboard until the text is tapped, which is the moment
+  someone means to change something. The tap that opened the editor is
+  ignored for a beat, or it would look like that moment and raise the
+  keyboard anyway.
+- A ruled page, drawn as one band per line in the page colour edge.
+- Text size in px, 11 to 24, a step at a time; the rule spacing follows it.
+- Both are remembered on the note, and so is the colour, which the editor had
+  been taking and quietly dropping since it was written.
 
 ---
 
