@@ -112,8 +112,44 @@ These four overlap and are best done together.
 Search should look inside a note, not only at its title. There is a
 "searchNotes" toggle in Settings already — check what it covers. *Medium.*
 
-**4. Note text cannot be selected or copied**
-*Small to medium.*
+**4. No Cut/Copy/Paste toolbar, anywhere in the app** — *open, cause narrowed*
+
+Not note-specific and not about selecting: text selects fine, with handles and
+Samsung's magnifier. What never appears is the Cut/Copy/Paste bar, and it
+never appears anywhere in DOCMAN, the search box included. Samsung Notes on
+the same phone shows it normally, so the phone is fine.
+
+What has been ruled out, each on the device:
+
+- **Not CSS.** Two textareas were injected side by side, one inheriting the
+  app's styles and one with -webkit-touch-callout and user-select forced
+  back on. Neither showed the toolbar. (An earlier "test" of this was
+  worthless: it used a synthetic long press that only ever placed a caret.)
+- **Not the app's markup.** A bare page written over the app in the same
+  WebView behaved the same.
+- **Not the native code.** Nothing in com.docman touches ActionMode, long
+  click or FLAG_SECURE; Capacitor's own WebView subclass does not either, and
+  captureInput is off.
+- **Not the activity theme.** MainActivity does live its whole life on
+  AppTheme.NoActionBarLaunch (parent Theme.SplashScreen) because nothing sets
+  postSplashScreenTheme and installSplashScreen() is never called -- which is
+  wrong in itself -- but moving it to AppTheme.NoActionBar changed nothing.
+  That change was reverted rather than shipped unverified.
+
+What is known: Chromium's SelectionPopupControllerImpl is alive and
+working (logcat shows onDragUpdate and the magnifier), the window list holds
+the two selection handles and no toolbar window, and a logging override of
+onWindowStartingActionMode / onWindowStartingSupportActionMode on the activity
+stayed completely silent while text was selected. So the ActionMode is never
+requested at all -- Chromium decides against it before asking.
+
+Next thread to pull: why Chromium skips the menu. The usual reason is that it
+cannot resolve an Activity from the WebView's context and falls back to a
+non-activity WindowAndroid. Worth a look at how Capacitor builds the WebView
+here.
+
+Fallback if that leads nowhere: an explicit Copy/Paste control in the note
+editor, which serves 4 and 9 whatever the cause.
 
 **9. Paste into a note**
 Copy text from a file and paste it into a note. *Small to medium, once 4 is
