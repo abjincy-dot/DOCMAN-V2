@@ -21,8 +21,6 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(DocumentScannerPlugin.class);
         registerPlugin(InAppReviewPlugin.class);
         registerPlugin(BackupFilePlugin.class);
-        registerPlugin(BackupSavePlugin.class);
-        registerPlugin(ClipboardPlugin.class);
         super.onCreate(savedInstanceState);
         // Force-discard the WebView's own HTTP disk/memory cache on every
         // launch. Capacitor serves app.js/index.html/etc. from this WebView
@@ -77,9 +75,25 @@ public class MainActivity extends BridgeActivity {
     // since a value pushed before the page exists is lost.
     private int navBottomCssPx = 0;
 
+    // Listening on the WebView ITSELF cost the app its text selection
+    // toolbar. A listener does not sit alongside a view's own
+    // onApplyWindowInsets, it replaces it, and Chromium's WebView needs its
+    // own to run: with this attached to the WebView, text selected normally --
+    // handles, magnifier, everything -- and the Cut/Copy/Paste bar never
+    // appeared anywhere in the app. Not once. It was chased through the CSS,
+    // the markup, the native code and the activity theme, each ruled out on
+    // the device, down to seeing Chromium's selection controller alive and
+    // never asking for an ActionMode at all; taking this listener off brought
+    // the bar straight back.
+    //
+    // So it listens on the parent instead. The same numbers are read, the same
+    // padding is applied to the WebView, and the same insets are handed down --
+    // the WebView simply gets to do its own work with them now, as it must.
     private void exposeNavBarInsetToCss() {
         final WebView webView = getBridge().getWebView();
-        ViewCompat.setOnApplyWindowInsetsListener(webView, (v, insets) -> {
+        final android.view.View host = (webView.getParent() instanceof android.view.View)
+                ? (android.view.View) webView.getParent() : webView;
+        ViewCompat.setOnApplyWindowInsetsListener(host, (v, insets) -> {
             Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             float density = getResources().getDisplayMetrics().density;
             navBottomCssPx = Math.round(bars.bottom / density);
@@ -90,19 +104,17 @@ public class MainActivity extends BridgeActivity {
             // Back instead of opening the menu. Padding the WebView shrinks
             // what it draws and what it can be touched on, so nothing of the
             // page ever reaches that strip.
-            v.setPadding(0, 0, 0, bars.bottom);
-            // A listener REPLACES the WebView's own inset handling, which is
-            // what feeds env(safe-area-inset-*) to the page. Returning the
-            // insets untouched (as v6/1.0.3 did) zeroed those values and slid
-            // the header up under the status bar -- so hand them on as well.
-            // The BOTTOM inset is zeroed on the way through: the padding above
-            // has already accounted for it, and leaving it set would have the
-            // page subtract the same strip a second time.
-            WindowInsetsCompat forPage = new WindowInsetsCompat.Builder(insets)
+            webView.setPadding(0, 0, 0, bars.bottom);
+            // The bottom inset is zeroed on the way down: the padding above has
+            // already accounted for it, and leaving it set would have the page
+            // subtract the same strip a second time. Everything else passes
+            // through untouched, so the WebView still feeds
+            // env(safe-area-inset-*) to the page from its own handling -- which
+            // is the whole point of not listening on the WebView any more.
+            return new WindowInsetsCompat.Builder(insets)
                 .setInsets(WindowInsetsCompat.Type.systemBars(),
                            Insets.of(bars.left, bars.top, bars.right, 0))
                 .build();
-            return ViewCompat.onApplyWindowInsets(v, forPage);
         });
         getBridge().addWebViewListener(new WebViewListener() {
             @Override

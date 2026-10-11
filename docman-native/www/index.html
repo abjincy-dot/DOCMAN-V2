@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/sacramento/sacramento.css">
-<link rel="stylesheet" href="style.css?v=613">
+<link rel="stylesheet" href="style.css?v=615">
 
 </head>
 <body>
@@ -1448,15 +1448,6 @@ border: 1px solid rgba(255,255,255,0.2);
         <textarea id="noteContent" placeholder="Write your note here..." class="note-content-input" maxlength="1000"></textarea>
         <span class="note-count" id="noteContentCount">0/1000</span>
       </div>
-      <!-- Android's own Cut/Copy/Paste bar never appears in this app -- see
-           ClipboardPlugin.java and ISSUES.md for how far that was chased. A
-           note nobody can copy out of, or paste into, is a note half useless,
-           so the two actions are offered here instead of waiting on it. -->
-      <div class="note-clip" id="noteClipRow">
-        <button type="button" id="noteSelectAllBtn"><i class="fas fa-i-cursor"></i>Select all</button>
-        <button type="button" id="noteCopyBtn"><i class="fas fa-copy"></i>Copy</button>
-        <button type="button" id="notePasteBtn"><i class="fas fa-paste"></i>Paste</button>
-      </div>
       <div class="note-colors" id="noteColors" role="radiogroup" aria-label="Note colour"></div>
     </div>
     <div class="modal-footer note-modal-foot">
@@ -1728,7 +1719,7 @@ border: 1px solid rgba(255,255,255,0.2);
     '</div>';
 })();
 </script>
-<script src="app.js?v=559"></script>
+<script src="app.js?v=561"></script>
 
 
 <script>
