@@ -13566,19 +13566,26 @@ function moveTabGlider(row, activeBtn, animate) {
         row.classList.add('has-glider');
         animate = false;            // first placement should not fly in from 0
     }
-    // Measure against the row's own box instead of offsetLeft. The pill is
-    // absolutely positioned inside the scrolling row, so it travels with the
-    // content and its origin is the row's content start -- while offsetLeft is
-    // relative to whichever ancestor the browser treats as the offset parent.
-    // The two disagreed by a fixed amount, which put the pill between tabs as
-    // soon as the row was scrolled sideways.
-    const rowBox = row.getBoundingClientRect();
-    const btnBox = activeBtn.getBoundingClientRect();
+    // offsetLeft/offsetTop/offsetWidth, not getBoundingClientRect.
+    //
+    // A rect is where the element is PAINTED, so a transform anywhere above it
+    // is baked into the answer. These rows live inside a card that scales as
+    // it opens, and the pill was being placed from a rect measured while that
+    // scale was still running: it got a position and a width belonging to a
+    // smaller card and kept them, which is how the pill came to sit beside its
+    // tab after Recent was closed and opened again. Re-placing it afterwards
+    // only turned the error into a visible jump.
+    //
+    // The offset family reports LAYOUT, which no transform touches, so the
+    // answer is the same whenever it is asked. The row carries
+    // .has-glider { position: relative }, so it is the offset parent of both
+    // the tabs and the pill -- the two share an origin, and no scrollLeft
+    // correction is needed either, since both travel with the content.
     glider.style.transition = animate ? '' : 'none';
-    glider.style.width = btnBox.width + 'px';
-    glider.style.height = btnBox.height + 'px';
-    glider.style.top = (btnBox.top - rowBox.top) + 'px';
-    glider.style.transform = 'translateX(' + (btnBox.left - rowBox.left + row.scrollLeft) + 'px)';
+    glider.style.width = activeBtn.offsetWidth + 'px';
+    glider.style.height = activeBtn.offsetHeight + 'px';
+    glider.style.top = activeBtn.offsetTop + 'px';
+    glider.style.transform = 'translateX(' + activeBtn.offsetLeft + 'px)';
     if (!animate) {
         void glider.offsetWidth;    // commit the jump before transitions resume
         glider.style.transition = '';
@@ -13728,21 +13735,6 @@ function openRecentsView() {
     requestAnimationFrame(() => {
         view.classList.add('fav-view-visible');
         updateDeptAddFabVisibility();
-        // The card scales in, and a rect measured mid-scale is a scaled rect.
-        // The pill that marks the active tab is placed from exactly that
-        // measurement, so it was landing short of its tab and staying there --
-        // which is what "the button moves when you come back to Recent" was.
-        // Placed again once the card has stopped moving, with a timer behind
-        // the transition for the case where there is no transition to end
-        // (reduced motion, or an already-visible card).
-        const card = view.querySelector('.fav-view-card');
-        const settle = () => {
-            const row = document.getElementById('recentsSubtabRow');
-            if (!row) return;
-            moveTabGlider(row, row.querySelector('.subtab-btn.active'), false);
-        };
-        if (card) card.addEventListener('transitionend', settle, { once: true });
-        setTimeout(settle, 420);
     });
 
     document.querySelectorAll('#recentsSubtabRow .subtab-btn').forEach(btn => {
