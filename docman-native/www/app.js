@@ -13728,6 +13728,21 @@ function openRecentsView() {
     requestAnimationFrame(() => {
         view.classList.add('fav-view-visible');
         updateDeptAddFabVisibility();
+        // The card scales in, and a rect measured mid-scale is a scaled rect.
+        // The pill that marks the active tab is placed from exactly that
+        // measurement, so it was landing short of its tab and staying there --
+        // which is what "the button moves when you come back to Recent" was.
+        // Placed again once the card has stopped moving, with a timer behind
+        // the transition for the case where there is no transition to end
+        // (reduced motion, or an already-visible card).
+        const card = view.querySelector('.fav-view-card');
+        const settle = () => {
+            const row = document.getElementById('recentsSubtabRow');
+            if (!row) return;
+            moveTabGlider(row, row.querySelector('.subtab-btn.active'), false);
+        };
+        if (card) card.addEventListener('transitionend', settle, { once: true });
+        setTimeout(settle, 420);
     });
 
     document.querySelectorAll('#recentsSubtabRow .subtab-btn').forEach(btn => {
