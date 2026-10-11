@@ -19110,7 +19110,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('scroll', redrawOnFirstInteraction, { capture: true, passive: true, once: true });
     window.addEventListener('touchstart', redrawOnFirstInteraction, { capture: true, passive: true, once: true });
 
+    // Long-pressing an image or a card used to raise the WebView's own menu --
+    // Save image, Copy link -- on top of the app's, which is what this is for.
+    //
+    // Cancelling it everywhere also cancelled the text selection toolbar. In a
+    // WebView, Chromium raises Cut/Copy/Paste through the context-menu path,
+    // so one unconditional preventDefault here meant no toolbar anywhere in
+    // the app: not in a note, not in the search box, not once. Text selected
+    // perfectly well and nothing ever came up with it.
+    //
+    // Somewhere text is being written or is already selected, the menu is the
+    // whole point, so it is left alone.
     document.addEventListener('contextmenu', function(e) {
+        if (e.target.closest('input, textarea, [contenteditable="true"], [contenteditable=""]')) return;
+        const sel = window.getSelection();
+        if (sel && String(sel).trim().length) return;
         e.preventDefault();
     });
 

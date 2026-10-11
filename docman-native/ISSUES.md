@@ -112,37 +112,35 @@ These four overlap and are best done together.
 Search should look inside a note, not only at its title. There is a
 "searchNotes" toggle in Settings already — check what it covers. *Medium.*
 
-**4 and 9. No Cut/Copy/Paste toolbar, anywhere in the app** — *OPEN*
+**4 and 9. No Cut/Copy/Paste toolbar, anywhere in the app** — *fixed, needs 59*
 
-Correcting an earlier entry here: the nav-bar inset listener was NOT the
-cause. That conclusion came from mistaking the app's own stand-in bar, which
-was in the build at the time and showed "Select all" and "Paste" in a dark
-pill, for Android's. Removing the listener entirely changes nothing.
+One line, in the web layer:
 
-What is now known, measured without asking anyone to hold a phone -- a double
-tap through adb selects a word the way a finger does, and the app's window list
-says whether a toolbar exists (the two selection handles are 124x62 each; the
-caret handle is 56x68; a toolbar is nothing like either):
+    document.addEventListener('contextmenu', e => e.preventDefault());
 
-- **A plain page in DOCMAN's own WebView gets the toolbar.** Writing a bare
-  document over the app and double tapping a word in its textarea selected 9
-  characters and produced a 1622x723 window. So the WebView, the activity and
-  the native layer are all capable of it.
-- **DOCMAN's page does not.** Same gesture in the note editor selects, and no
-  toolbar window of any kind is created.
+It was there to stop the WebView raising its own Save image / Copy link menu
+over the app's. But in a WebView Chromium raises Cut/Copy/Paste through the
+context-menu path too, so cancelling it unconditionally cancelled the
+selection toolbar everywhere -- every field, every screen. Text selected
+perfectly and nothing ever came up with it. It now returns early inside
+inputs, textareas and contenteditables, and whenever there is a live
+selection.
 
-So it is something in the app's own page. Earlier attempts to rule out the CSS
-were invalid: they used a long press, and a long press in an editable field
-places a caret rather than selecting a word, so those tests proved nothing.
+Two earlier conclusions in this file were wrong and are worth remembering as
+a method, not just a result. The nav-bar inset listener was blamed because a
+build showed a toolbar after it was removed -- that was the app's own stand-in
+bar, mistaken for Android's. And the CSS was "ruled out" with a long press,
+which in an editable field places a caret rather than selecting a word, so
+that test proved nothing either way.
 
-Next: bisect the page. A bare textarea injected into the live app page, then
-into the modal, then the note's own -- the double tap needs to be made reliable
-first (it only selects sometimes; input keycombination for ctrl+A is accepted
-by this device and may be steadier).
-
-The stand-in Copy/Paste bar was removed on request, so notes currently have
-neither the system's bar nor one of their own. Restoring it is a few minutes'
-work if this stays unsolved.
+What settled it was a harness that needs no one to hold the phone: tap to
+focus,  (ctrl+A) to select, then read the app's
+window list -- the two selection handles are 124x62, the caret handle 56x68,
+and the toolbar is 1622x723, so its presence is unambiguous. Validated on a
+bare page first, then used to bisect: a plain textarea injected into the live
+app page failed the same way the note's own did, which put the cause at
+document level and led to the listener. After the fix, both the note body and
+its title show the toolbar.
 
 **5. Press and hold a note to preview it**
 Rather than opening it to read. *Medium — new interaction.*
