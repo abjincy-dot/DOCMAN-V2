@@ -5460,11 +5460,21 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     const dueNow = new Date();
     const hasDueReminder = reminders.some(r => isReminderLiveUnseen(r, dueNow));
 
+    // Two tabs in one track and an action beside it, rather than three pills
+    // in a row where the action looked like a third tab. The track makes the
+    // pair read as one control: a single lit segment inside it, the other
+    // plain. Reminders leads, because the panel is opened far more often to
+    // see what is due than to check a date that is still months off, and the
+    // action belongs to it.
     const tabRowHtml = `
-        <div class="expdoc-tab-row" style="display:flex;gap:6px;margin:0 0 12px;">
-            <button class="expdoc-tab${activeTab === 'expiring' ? ' expdoc-tab-active' : ''}" data-tab="expiring" style="flex:1 1 0;min-width:0;text-align:center;padding:7px 0;border-radius:999px;font-size:0.7rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'expiring' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'expiring' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'expiring' ? '#fff' : c.tabInactiveText};">Expiring</button>
-            <button class="expdoc-tab${hasDueReminder ? ' expdoc-tab-due' : ''}${activeTab === 'reminders' ? ' expdoc-tab-active' : ''}" data-tab="reminders" style="flex:1 1 0;min-width:0;text-align:center;padding:7px 0;border-radius:999px;font-size:0.7rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'reminders' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'reminders' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'reminders' ? '#fff' : c.tabInactiveText};">Reminders</button>
-            <button id="expdocAddReminder" aria-label="Add reminder" title="Add reminder" style="flex:0 0 auto;align-self:center;display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:999px;border:none;background:#7c3aed;color:#fff;cursor:pointer;box-shadow:0 5px 14px rgba(124,58,237,0.38);"><i class="fas fa-plus" style="font-size:0.8rem;"></i></button>
+        <div style="display:flex;align-items:center;gap:8px;margin:0 0 12px;">
+            <div class="expdoc-tab-row" style="display:flex;gap:4px;flex:1 1 0;min-width:0;padding:4px;border-radius:999px;background:${c.tabInactiveBg};border:1px solid ${c.tabInactiveBorder};">
+                <button class="expdoc-tab${hasDueReminder ? ' expdoc-tab-due' : ''}${activeTab === 'reminders' ? ' expdoc-tab-active' : ''}" data-tab="reminders" style="flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 5px;border-radius:999px;font-size:0.68rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:none;background:transparent;color:${activeTab === 'reminders' ? '#fff' : c.tabInactiveText};"><i class="fas fa-calendar-days" style="font-size:0.72rem;flex:0 0 auto;"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Reminders</span></button>
+                <button class="expdoc-tab${activeTab === 'expiring' ? ' expdoc-tab-active' : ''}" data-tab="expiring" style="flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 5px;border-radius:999px;font-size:0.68rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:none;background:transparent;color:${activeTab === 'expiring' ? '#fff' : c.tabInactiveText};"><i class="fas fa-clock" style="font-size:0.72rem;flex:0 0 auto;"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Expiring</span></button>
+            </div>
+            <button id="expdocAddReminder" aria-label="Add reminder" ${activeTab === 'reminders' ? 'title="Add reminder"' : 'disabled aria-disabled="true" title="Switch to Reminders to add one"'} style="flex:0 0 auto;display:flex;align-items:center;gap:5px;padding:3px 8px 3px 3px;border-radius:999px;border:none;${activeTab === 'reminders'
+                ? 'background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;box-shadow:0 5px 14px rgba(99,62,231,0.34);'
+                : 'background:rgba(124,58,237,0.12);color:#9b89c9;box-shadow:none;pointer-events:none;'}font-size:0.68rem;font-weight:700;font-family:Inter,sans-serif;cursor:pointer;white-space:nowrap;transition:background .22s ease,color .22s ease,box-shadow .22s ease;"><span style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;flex:0 0 auto;transition:background .22s ease,color .22s ease;${activeTab === 'reminders' ? 'background:#fff;color:#6d35e0;' : 'background:rgba(167,139,250,0.26);color:#cdbcfb;'}"><i class="fas fa-plus" style="font-size:0.74rem;"></i></span><span class="expdoc-add-label">Add reminder</span></button>
         </div>`;
 
     let titleHtml, summaryHtml, bodyHtml;

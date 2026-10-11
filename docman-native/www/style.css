@@ -10909,3 +10909,16 @@ body.light-mode .st-bar { background: rgba(0,0,0,0.08); }
    written before --nav-bottom existed (it arrived on 2026-09-25, and the
    oldest of these dates from 2026-08-31).
    ============================================================ */
+
+/* ============================================================
+   REMINDERS PANEL -- the add action beside the tab track
+   A segmented pair, a circled plus and a label only all fit down to about
+   377px: measured on the phone, the row is 295px at 384px, the two tabs need
+   173 of it and the action the rest. Below that the circle goes and the word
+   stays, not the other way round -- "Add reminder" says what the button does
+   without having to be recognised first, and the plus does not.
+   ============================================================ */
+@media (max-width: 376px) {
+    #expdocAddReminder > span:first-child { display: none; }
+    #expdocAddReminder { padding: 5px 11px !important; gap: 0 !important; }
+}
