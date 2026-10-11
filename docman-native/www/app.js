@@ -10350,6 +10350,28 @@ function createFileCard(file, folderPath, opts = {}) {
     return div;
 }
 
+// One line of a note's body around the words that matched, or nothing when
+// the search did not reach the body -- when the title already carries the
+// match, when the note is locked, or when there is no search at all.
+function noteSearchSnippet(note, query) {
+    const q = (query || '').trim();
+    if (!q || note.locked) return '';
+    const body = note.content || '';
+    const at = body.toLowerCase().indexOf(q.toLowerCase());
+    if (at === -1) return '';
+    // Collapse the whitespace first so a note written over several lines gives
+    // one readable line here, and keep a little context before the match so it
+    // does not start mid-word.
+    const flat = body.replace(/\s+/g, ' ').trim();
+    const flatAt = flat.toLowerCase().indexOf(q.toLowerCase());
+    const from = Math.max(0, flatAt - 26);
+    const to = Math.min(flat.length, flatAt + q.length + 48);
+    const cut = flat.slice(from, to);
+    const lead = from > 0 ? '…' : '';
+    const tail = to < flat.length ? '…' : '';
+    return '<div class="card-note-snippet">' + lead + highlightMatch(cut, q) + tail + '</div>';
+}
+
 function createNoteCard(note, folderPath, opts = {}) {
     const div = document.createElement('div');
     div.className = 'card note-card';
@@ -10357,10 +10379,21 @@ function createNoteCard(note, folderPath, opts = {}) {
     const nc = noteColorById(note.color);
     div.style.setProperty('--note-stripe', 'linear-gradient(180deg,' + nc.from + ',' + nc.to + ')');
     const titleHtml = opts.highlightQuery ? highlightMatch(note.title, opts.highlightQuery) : escapeHtml(note.title);
+    // Search has always looked inside a note's body -- it was the card that
+    // never said so. A note found by its text looked exactly like a note that
+    // had nothing to do with the search: same title, no highlight, no reason
+    // given. That is what "note contents are not searchable" turned out to
+    // mean. The matching words now show underneath, with enough either side
+    // to recognise them by.
+    //
+    // Never for a locked note: the title is already out, but the body is the
+    // thing the lock was put on.
+    const snippetHtml = noteSearchSnippet(note, opts.highlightQuery);
     div.innerHTML = `
         <div class="card-icon"><i class="fas fa-sticky-note"></i></div>
         <div class="card-info">
             <div class="card-filename" title="${escapeHtml(note.title)}">${titleHtml}</div>
+            ${snippetHtml}
         </div>
         ${note.locked ? '<i class="fas fa-lock card-lock-indicator"></i>' : ''}
         <i class="fas fa-star card-fav-indicator${note.favourite ? '' : ' card-fav-hidden'}"></i>

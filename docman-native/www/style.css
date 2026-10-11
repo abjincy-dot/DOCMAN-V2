@@ -10226,13 +10226,23 @@ body.light-mode .note-modal-foot button:first-child {
 
 /* The colour a note was saved with shows as a stripe down its row, so the
    picker means something once the dialog is closed. */
+
+   The row is a pill -- 60px of corner radius on a 44px-tall card, so its
+   left edge is a half circle. A straight bar at left:0 therefore sat
+   OUTSIDE the card for most of its length: six pixels down from the top the
+   edge has already curved 6.9px inwards. .card is overflow:visible
+   !important (the row menu has to escape it) so nothing clipped it either,
+   and it read as a loose line floating beside the row. Inset and rounded
+   instead: across the middle half the curve reaches at most 0.067 x height
+   inwards, under 3px here, and 5px clears that at any height while still
+   leaving room before the icon, which starts 12px in.
 .note-card { position: relative; }
 .note-card::before {
     content: '';
     position: absolute;
-    left: 0; top: 14%; bottom: 14%;
-    width: 4px;
-    border-radius: 0 3px 3px 0;
+    left: 5px; top: 25%; bottom: 25%;
+    width: 3px;
+    border-radius: 999px;
     background: var(--note-stripe, transparent);
     /* .card::before already draws a stripe here but keeps it at opacity 0 --
        without this the colour is set and never seen. */
@@ -10921,4 +10931,20 @@ body.light-mode .st-bar { background: rgba(0,0,0,0.08); }
 @media (max-width: 376px) {
     #expdocAddReminder > span:first-child { display: none; }
     #expdocAddReminder { padding: 5px 11px !important; gap: 0 !important; }
+}
+
+/* ============================================================
+   NOTE SEARCH SNIPPET
+   The line of a note's body that a search matched, under its title. One line
+   only -- the card is a row in a list, not a preview -- with the match itself
+   picked out by .search-highlight, same as in the title.
+   ============================================================ */
+.card-note-snippet {
+    font-size: 0.68rem;
+    line-height: 1.35;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
