@@ -3733,20 +3733,6 @@ async function refreshAlertPermissionRow() {
     else sub.textContent = 'Alarms & reminders is off — tap to allow';
 }
 
-async function fixAlertPermissions() {
-    const notif = window.Capacitor?.Plugins?.LocalNotifications;
-    const exact = window.Capacitor?.Plugins?.ExactAlarm;
-    if (!notif || !isNativePlatform()) { showToast('Available in the app on your phone', true); return; }
-    try {
-        const perm = await notif.checkPermissions();
-        if (perm.display !== 'granted') await notif.requestPermissions();
-    } catch (e) { /* the row's own text reports the result */ }
-    try {
-        if (exact && !(await exact.canScheduleExact()).granted) await exact.openSettings();
-    } catch (e) { /* nothing more we can do from here */ }
-    await rescheduleAllExpiryNotifications();
-    refreshAlertPermissionRow();
-}
 // ============================================================
 // RATE DOCMAN (approved 2026-09-16)
 // Google Play's own in-app review card, asked for right after a document
@@ -5478,7 +5464,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
         <div class="expdoc-tab-row" style="display:flex;gap:6px;margin:0 0 12px;">
             <button class="expdoc-tab${activeTab === 'expiring' ? ' expdoc-tab-active' : ''}" data-tab="expiring" style="flex:1 1 0;min-width:0;text-align:center;padding:7px 0;border-radius:999px;font-size:0.7rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'expiring' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'expiring' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'expiring' ? '#fff' : c.tabInactiveText};">Expiring</button>
             <button class="expdoc-tab${hasDueReminder ? ' expdoc-tab-due' : ''}${activeTab === 'reminders' ? ' expdoc-tab-active' : ''}" data-tab="reminders" style="flex:1 1 0;min-width:0;text-align:center;padding:7px 0;border-radius:999px;font-size:0.7rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'reminders' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'reminders' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'reminders' ? '#fff' : c.tabInactiveText};">Reminders</button>
-            <button id="expdocAddReminder" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:4px;padding:7px 11px;border-radius:999px;border:none;background:linear-gradient(135deg,#f9a825,#ef7a0c);color:#fff;font-size:0.7rem;font-weight:700;font-family:Inter,sans-serif;cursor:pointer;white-space:nowrap;box-shadow:0 5px 14px rgba(239,122,12,0.32);"><i class="fas fa-plus" style="font-size:0.65rem;"></i>Add reminder</button>
+            <button id="expdocAddReminder" aria-label="Add reminder" title="Add reminder" style="flex:0 0 auto;align-self:center;display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:999px;border:none;background:#7c3aed;color:#fff;cursor:pointer;box-shadow:0 5px 14px rgba(124,58,237,0.38);"><i class="fas fa-plus" style="font-size:0.8rem;"></i></button>
         </div>`;
 
     let titleHtml, summaryHtml, bodyHtml;
@@ -12079,6 +12065,12 @@ function render() {
     prunePdfMergeSelection();
     pruneStaleSelection();
 
+    // Home is where a folder visit ends, so it is where the FILES / NOTES
+    // switch goes back to FILES -- otherwise the next folder opened inherits
+    // a choice made in a different one. Only the variable and the pill are
+    // touched; this runs inside render(), so it must not call it back.
+    if (!currentPath.length && currentActiveTab !== 'pdfs') applyFilesNotesChrome('pdfs');
+
     if (query) {
         isSearchMode = true;
         document.getElementById('clearSearchBtn').classList.remove('hidden');
@@ -13989,14 +13981,18 @@ function closeRecycleBinView() {
 // TAB SWITCHING
 // ============================================================
 
-function setActiveTab(tab) {
-    haptic.toggle();
+// Which half of the pill is lit, and which of the two add buttons is offered.
+// Separate from setActiveTab because the switch also has to be put back to
+// FILES on the way home, where a re-render and a haptic tick would both be
+// wrong -- render() is what calls it.
+function applyFilesNotesChrome(tab) {
     currentActiveTab = tab;
     const pdfBtn = document.getElementById('pdfTabBtn');
     const notesBtn = document.getElementById('notesTabBtn');
     const uploadBtn = document.getElementById('uploadBtn');
     const newNoteBtn = document.getElementById('newNoteBtn');
     const toggleEl = document.getElementById('fileNoteToggle');
+    if (!pdfBtn || !notesBtn || !uploadBtn || !newNoteBtn) return;
 
     if (tab === 'pdfs') {
         pdfBtn.classList.add('active');
@@ -14011,6 +14007,11 @@ function setActiveTab(tab) {
         newNoteBtn.classList.remove('hidden');
         if (toggleEl) { toggleEl.classList.add('active-notes'); toggleEl.classList.remove('active-files'); }
     }
+}
+
+function setActiveTab(tab) {
+    haptic.toggle();
+    applyFilesNotesChrome(tab);
     render();
 
     // render() just replaced #content's cards outright with no transition
@@ -16998,7 +16999,14 @@ function initSettingsPage() {
 
     const settingsAlertsRow = document.getElementById('settingsAlertsRow');
     if (settingsAlertsRow) {
-        settingsAlertsRow.onclick = () => { haptic.press(); fixAlertPermissions(); };
+        // This used to fire the permission requests directly, showing nothing:
+        // a tap either produced Android's dialog or appeared to do nothing at
+        // all, and it never covered battery or autostart. The setup screen
+        // does, and says what each permission is for, so the row opens that.
+        // It is the same screen a fresh install is shown, which is the point
+        // -- there was a second row further down Settings that opened it, and
+        // two rows asking for the same three permissions is what this merges.
+        settingsAlertsRow.onclick = () => { haptic.press(); showAlertSetup({ fromSettings: true }); };
         refreshAlertPermissionRow();
     }
 
@@ -18243,6 +18251,14 @@ function wireAlertSetup() {
     if (!o) return;
     const finish = () => {
         closeAlertSetup();
+        // The row that opened this says whether alerts will arrive; something
+        // was very likely just changed, so it should not still read the old
+        // answer when the screen comes down.
+        refreshAlertPermissionRow();
+        // Anything scheduled while a permission was missing was quietly
+        // downgraded to an inexact alarm and would stay that way. Granting it
+        // only helps what is scheduled afterwards, so everything is re-armed.
+        rescheduleAllExpiryNotifications();
         const cb = alertSetupOnDone;
         alertSetupOnDone = null;
         if (cb) cb();
@@ -18465,8 +18481,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     document.getElementById('settingsShowTipsBtn').onclick = () => { closeSettingsPage(); showIntro(); };
     wireAlertSetup();
-    const alertSetupBtn = document.getElementById('settingsAlertSetupBtn');
-    if (alertSetupBtn) alertSetupBtn.onclick = () => { closeSettingsPage(); showAlertSetup(); };
 
     // First launch only. Deliberately not re-shown after an update: an intro
     // that reappears reads as a bug to someone who has already read it.

@@ -4,10 +4,11 @@ Started 2026-10-10. Play right now: **58** on Internal testing and in review for
 Closed testing (12 testers). Anything marked "needs 59" is written and verified
 on the device in DOCMAN dev, but has not reached a Play build.
 
-All three of section A -- 7, 8 and 10 -- are done as of 2026-10-11. None of
-them turned out to be the bug as described: the delete path was already
-correct, the alerts were never stacking, and the lock screen never left the
-app. Each time the reported symptom was real and the cause was somewhere else.
+Section A (7, 8, 10) and all of section B except the back-button sweep (1, 2, 6)
+are done as of 2026-10-11. None of section A turned out to be the bug as
+described: the delete path was already correct, the alerts were never stacking,
+and the lock screen never left the app. Each time the reported symptom was real
+and the cause was somewhere else.
 
 ---
 
@@ -66,18 +67,36 @@ focus, so unlocking still works.
 
 ### B. Confusing or inconsistent
 
-**1. Two settings rows do nearly the same thing**
-"Expiry & reminder alerts" and "Reminder delivery" sit near each other and read
-alike. The second was added on 2026-10-08. They should be merged, or clearly
-separated. *Small.*
+**1. Two settings rows do nearly the same thing** — *fixed, needs 59*
+Real, and worse than it looked: both asked for the same three Android
+permissions. "Expiry & reminder alerts" (Alerts & security) had the better name,
+the better place and a subtitle that said what the state actually was, but
+tapping it fired the permission requests directly, showing nothing, and it never
+touched battery or autostart. "Reminder delivery" (App) had the screen that
+explains each one and does cover them. One row now, with both halves: the kept
+row opens that screen, over Settings so Done returns there, and on the way back
+it re-reads its own subtitle and re-arms the alarms -- anything scheduled while
+a permission was missing had been downgraded to inexact and would have stayed
+that way. `fixAlertPermissions` is gone.
 
-**2. The Add Reminder button is yellow**
-Expiry and reminder buttons elsewhere use different colours, so this one does
-not match. *Small — colour only.*
+**2. The Add Reminder button is yellow** — *fixed, needs 59*
+Not only the colour. Three pills sat in that row and two were filled: the
+selected tab, and an Add button in amber that read louder than the selection
+beside it, so it looked like a third tab. Two tabs and an action are not three
+tabs. It is now a round violet "+" -- the panel's own violet, the one the
+selected day wears in the calendar just below -- so only the selection stays
+filled and the two tabs get the width back (115px to 125px each). Four options
+were rendered on the phone and D was chosen.
 
-**6. FILES / NOTES does not go back to FILES**
-Switch to NOTES, go home, come back, and it is still on NOTES. It should always
-open on FILES. *Small.*
+**6. FILES / NOTES does not go back to FILES** — *fixed, needs 59*
+The switch belongs to a folder but was remembered for the whole app, so a choice
+made in one folder followed you into the next -- with its files, and anything
+just added to it, behind an unexplained tap. Home is where a folder visit ends,
+so that is where it goes back to FILES. render() already says "every navigation
+lands here", which makes it the one place that catches every route home: the
+back button, the breadcrumb, goHome, a department being deleted. The chrome was
+split out of setActiveTab so this can put the pill back without re-rendering
+(render is what calls it) or ticking the haptics.
 
 **11. Back button behaviour, everywhere**
 Check that back returns to the previous screen rather than jumping home, across
