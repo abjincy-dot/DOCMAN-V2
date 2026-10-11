@@ -22,6 +22,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(InAppReviewPlugin.class);
         registerPlugin(BackupFilePlugin.class);
         registerPlugin(BackupSavePlugin.class);
+        registerPlugin(ClipboardPlugin.class);
         super.onCreate(savedInstanceState);
         // Force-discard the WebView's own HTTP disk/memory cache on every
         // launch. Capacitor serves app.js/index.html/etc. from this WebView

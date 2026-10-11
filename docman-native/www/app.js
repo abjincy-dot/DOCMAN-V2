@@ -5841,13 +5841,22 @@ async function deleteNoteFromFolder(folderPath, noteId, rowEl) {
 // A note can carry one of six colours. It is a real field on the note, not
 // just a swatch in the dialog: the editor's body tints to it and so does the
 // note row in the list, which is the only reason the picker earns its space.
+//
+// Three values, because the colour has three jobs and they do not want the
+// same thing. "paper" is what the writing area becomes -- a tinted page, soft
+// enough to read dark text on, which a saturated fill never was: the body used
+// to be a full violet-to-blue gradient with the text fighting it. "from"/"to"
+// stay saturated for the 3px stripe on the row in the list, where a pastel
+// would simply disappear, in either theme. "edge" sits between them, for the
+// page's own border and the swatch's rim, so the swatch still says which hue
+// it is while showing the page you actually get.
 const NOTE_COLORS = [
-    { id: 'violet', from: '#7c3aed', to: '#2563eb' },
-    { id: 'blue',   from: '#2563eb', to: '#0ea5e9' },
-    { id: 'green',  from: '#059669', to: '#10b981' },
-    { id: 'amber',  from: '#d97706', to: '#f59e0b' },
-    { id: 'red',    from: '#dc2626', to: '#f43f5e' },
-    { id: 'slate',  from: '#64748b', to: '#94a3b8' }
+    { id: 'violet', from: '#7c3aed', to: '#2563eb', paper: '#e7e3fb', edge: '#c3b9f2' },
+    { id: 'blue',   from: '#2563eb', to: '#0ea5e9', paper: '#d9e8f9', edge: '#a9cbef' },
+    { id: 'green',  from: '#059669', to: '#10b981', paper: '#d6f1e3', edge: '#a3dcc3' },
+    { id: 'amber',  from: '#d97706', to: '#f59e0b', paper: '#fde6c4', edge: '#f3cb8c' },
+    { id: 'red',    from: '#dc2626', to: '#f43f5e', paper: '#fbd9d9', edge: '#f0b0b0' },
+    { id: 'slate',  from: '#64748b', to: '#94a3b8', paper: '#e6e9ee', edge: '#c4cad4' }
 ];
 let noteModalColor = 'violet';
 
@@ -5859,8 +5868,14 @@ function paintNoteModalColor() {
     const c = noteColorById(noteModalColor);
     const body = document.querySelector('.note-field-body');
     if (body) {
-        body.style.background = `linear-gradient(135deg, ${c.from} 0%, ${c.to} 100%)`;
-        body.style.borderColor = c.to;
+        body.style.background = c.paper;
+        // Plain borderColor lost to a rule further down the sheet and the page
+        // kept a white rim that belonged to the dark field it used to be.
+        body.style.setProperty('border-color', c.edge, 'important');
+        // The class, not the inline colour, is what turns the text, the
+        // placeholder, the icon and the counter dark -- they are set in CSS
+        // with !important and are easier to beat there than to fight here.
+        body.classList.add('note-paper');
     }
     document.querySelectorAll('.note-color-dot').forEach(d =>
         d.classList.toggle('note-color-dot-on', d.dataset.color === noteModalColor));
@@ -5871,7 +5886,7 @@ function buildNoteColorPicker() {
     if (!row || row.childElementCount) return;
     row.innerHTML = NOTE_COLORS.map(c =>
         `<button type="button" class="note-color-dot" data-color="${c.id}" role="radio" aria-label="${c.id}"
-                 style="background:linear-gradient(135deg,${c.from},${c.to});"></button>`).join('');
+                 style="background:${c.paper};box-shadow:inset 0 0 0 2px ${c.edge},0 3px 8px rgba(0,0,0,0.4);"></button>`).join('');
     // Tapping a swatch moved focus off the text field, and Android closes the
     // keyboard with it. Remember what was focused before the press and put the
     // caret back afterwards, so picking a colour never interrupts typing.
@@ -5929,6 +5944,99 @@ function keepNoteFocus() {
     card.addEventListener('touchstart', (e) => {
         if (!e.target.closest('input, textarea, button')) e.preventDefault();
     }, { passive: false });
+    wireNoteClipboardRow();
+}
+
+// Which of the two fields the caret was last in, so Copy and Paste act on the
+// one being written in rather than always the body. Buttons do not take focus
+// (see below), so this survives the tap that triggers them.
+let noteClipField = 'content';
+
+function noteClipTarget() {
+    return document.getElementById(noteClipField === 'title' ? 'noteTitle' : 'noteContent');
+}
+
+// Android's Cut/Copy/Paste bar never appears anywhere in DOCMAN -- measured
+// down to Chromium never asking for an ActionMode at all, with the app's CSS,
+// markup, native code and activity theme each ruled out on the device. Until
+// that is understood the app does the two things itself, through the system
+// clipboard, which works either way. See ClipboardPlugin.java.
+function wireNoteClipboardRow() {
+    const row = document.getElementById('noteClipRow');
+    if (!row || row.dataset.wired === '1') return;
+    row.dataset.wired = '1';
+
+    ['noteTitle', 'noteContent'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('focus', () => { noteClipField = id === 'noteTitle' ? 'title' : 'content'; });
+    });
+
+    // mousedown, not click: it fires before the field would blur, so
+    // preventing it keeps the caret and the keyboard exactly where they were.
+    row.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
+
+    const sel = document.getElementById('noteSelectAllBtn');
+    const copy = document.getElementById('noteCopyBtn');
+    const paste = document.getElementById('notePasteBtn');
+
+    if (sel) sel.onclick = () => {
+        haptic.press();
+        const el = noteClipTarget();
+        if (!el || !el.value.length) { showToast('Nothing to select yet', true); return; }
+        el.focus();
+        el.setSelectionRange(0, el.value.length);
+    };
+
+    if (copy) copy.onclick = async () => {
+        haptic.press();
+        const el = noteClipTarget();
+        if (!el) return;
+        // A selection if there is one, the whole field if there is not --
+        // which is what "copy this note" means when nothing is highlighted.
+        const start = el.selectionStart, end = el.selectionEnd;
+        const text = (start !== end) ? el.value.slice(start, end) : el.value;
+        if (!text) { showToast('Nothing to copy yet', true); return; }
+        try {
+            await window.Capacitor.Plugins.DocmanClipboard.write({ text });
+            showToast(start !== end ? 'Selection copied' : 'Note copied');
+        } catch (err) {
+            console.warn('Copy failed:', err);
+            showToast('Could not copy', true);
+        }
+    };
+
+    if (paste) paste.onclick = async () => {
+        haptic.press();
+        const el = noteClipTarget();
+        if (!el) return;
+        let text = '';
+        try {
+            const r = await window.Capacitor.Plugins.DocmanClipboard.read();
+            text = (r && r.text) || '';
+        } catch (err) {
+            console.warn('Paste failed:', err);
+            showToast('Could not read the clipboard', true);
+            return;
+        }
+        if (!text) { showToast('Nothing on the clipboard', true); return; }
+        // The title is one line, so a multi-line paste into it is flattened
+        // rather than silently losing everything after the first newline.
+        if (noteClipField === 'title') text = text.replace(/\s*\n+\s*/g, ' ');
+        const cap = parseInt(el.getAttribute('maxlength'), 10) || Infinity;
+        const start = el.selectionStart, end = el.selectionEnd;
+        const room = cap - (el.value.length - (end - start));
+        const cut = text.length > room;
+        if (room <= 0) { showToast('No room left in this field', true); return; }
+        const insert = cut ? text.slice(0, room) : text;
+        el.value = el.value.slice(0, start) + insert + el.value.slice(end);
+        const caret = start + insert.length;
+        el.focus();
+        el.setSelectionRange(caret, caret);
+        // The character counters and anything else watching the field are
+        // driven by input events, which setting .value does not fire.
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        showToast(cut ? 'Pasted as much as would fit' : 'Pasted');
+    };
 }
 
 function prepareNoteModal(heading, sub, color) {

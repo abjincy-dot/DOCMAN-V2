@@ -10948,3 +10948,69 @@ body.light-mode .st-bar { background: rgba(0,0,0,0.08); }
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ============================================================
+   NOTE PAGE
+   The writing area is a tinted page now, not a saturated gradient with the
+   text fighting it. Everything sitting on that page has to turn dark to
+   match: the text and its placeholder are set to white with !important
+   further up, so these need the same weight and more specificity to win.
+   One ink colour for all six papers -- they are all pale enough to take it,
+   which is the point of choosing them that way.
+   ============================================================ */
+.note-field-body.note-paper .note-content-input { color: #1f2937 !important; }
+.note-field-body.note-paper .note-content-input::placeholder { color: rgba(31, 41, 55, 0.45) !important; }
+.note-field-body.note-paper .note-field-ico { color: rgba(31, 41, 55, 0.5); }
+.note-field-body.note-paper .note-count { color: rgba(31, 41, 55, 0.5); }
+
+/* Light mode sets the body text dark with !important too, by a rule that is
+   no more specific than the one above -- so say it again here rather than
+   leave the winner to source order. */
+body.light-mode .note-field-body.note-paper .note-content-input { color: #1f2937 !important; }
+body.light-mode .note-field-body.note-paper .note-field-ico { color: rgba(31, 41, 55, 0.5); }
+
+/* ============================================================
+   NOTE PAGE -- the clipboard row
+   Three small actions under the page, in the same language as the rest of
+   this dialog: a translucent pill on the dark card, the colour swatches
+   immediately below. They sit OUTSIDE the page on purpose -- they act on it,
+   they are not part of what is written.
+   ============================================================ */
+.note-clip {
+    display: flex;
+    gap: 8px;
+    margin-top: -2px;
+}
+.note-clip button {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.06);
+    color: #e2e8f0;
+    font-family: Inter, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background .16s ease, transform .12s ease;
+}
+.note-clip button i { font-size: 0.7rem; opacity: 0.85; flex: 0 0 auto; }
+.note-clip button:active { background: rgba(255, 255, 255, 0.13); transform: scale(0.97); }
+
+body.light-mode .note-clip button {
+    border-color: rgba(120, 95, 65, 0.3);
+    background: rgba(120, 95, 65, 0.06);
+    color: #4a3b2a;
+}
+body.light-mode .note-clip button:active { background: rgba(120, 95, 65, 0.13); }
+
+/* The narrow-screen pass shrinks the rest of this dialog; these go with it. */
+@media (max-width: 376px) {
+    .note-clip button { font-size: 0.68rem; padding: 7px 4px; gap: 4px; }
+}
