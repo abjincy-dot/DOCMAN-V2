@@ -15233,11 +15233,11 @@ function exportBackupData() {
 }
 
 function promptBackupPassword() {
-    showPasswordPromptModal('Create a password for this backup (at least 6 characters). You\'ll need it to restore.', (pw) => {
+    showPasswordPromptModal('Type a password for this backup file. At least 6 characters, and something you will still know in a year — it is the only way back in.', (pw) => {
         if (pw === null) return;
         pw = pw.trim();
         if (pw.length < 6) { showToast('Password must be at least 6 characters', true); promptBackupPassword(); return; }
-        showPasswordPromptModal('Confirm your password:', (pw2) => {
+        showPasswordPromptModal('Type it again, to be sure.', (pw2) => {
             if (pw2 === null) return;
             if (pw2.trim() !== pw) { showToast('Passwords do not match', true); promptBackupPassword(); return; }
             doExportBackupDataEncrypted(pw);
