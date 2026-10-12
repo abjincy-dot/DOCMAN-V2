@@ -10107,12 +10107,30 @@ body.light-mode .current-folder-card .cf-part-current { color: #c2710c !importan
     gap: 10px;
     padding: 16px 16px 10px;
 }
+/* In the head the title reads as a heading, and a heading does not look
+   like something you can type into. The rule under it says the word is a
+   field without turning it back into a boxed input, and it brightens on
+   focus so the caret has somewhere obvious to belong. */
 .note-modal-head .note-title-input {
     flex: 1 1 auto;
     min-width: 0;
     font-size: 1.12rem !important;
     font-weight: 800;
-    padding-right: 0 !important;
+    padding: 8px 0 1px !important;
+    border-bottom: 1.5px solid rgba(167, 139, 250, 0.4) !important;
+    border-radius: 0 !important;
+    transition: border-color .18s ease;
+}
+.note-modal-head .note-title-input:focus {
+    border-bottom-color: rgba(167, 139, 250, 0.95) !important;
+}
+/* Reading a note is not editing it, so the rule stays out of the way until
+   the writing starts. */
+#noteModal.note-reading .note-modal-head .note-title-input {
+    border-bottom-color: rgba(167, 139, 250, 0.22) !important;
+}
+body.light-mode .note-modal-head .note-title-input {
+    border-bottom-color: rgba(120, 95, 65, 0.4) !important;
 }
 .note-modal-head .note-count {
     position: static;
