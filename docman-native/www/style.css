@@ -11021,7 +11021,17 @@ body.light-mode .note-lined-btn {
    ruling because it is the same kind of choice -- what the page looks like.
    The row wraps rather than squeezing: six swatches, a stepper and a toggle
    do not fit one line on a narrow phone. */
-.note-style-row { flex-wrap: wrap; row-gap: 8px; }
+/* Two deliberate rows, not a squeeze. Six swatches, a stepper and a toggle
+   come to well over the 328px a phone gives this dialog, and left to wrap on
+   their own the toggle dropped onto a second line the card had no height
+   for -- it was cut in half by the card
+'
+s own bottom edge. So the colours
+   take a line and the two controls take the next, with the card given room
+   for both. */
+.note-style-row { flex-wrap: wrap; row-gap: 10px; }
+.note-style-row .note-colors { flex: 1 0 100%; }
+.note-style-row .note-size { margin-right: auto; }
 .note-size {
     flex: 0 0 auto;
     display: flex;
@@ -11062,3 +11072,13 @@ body.light-mode .note-size {
 }
 body.light-mode .note-size button,
 body.light-mode #noteFontValue { color: #4a3b2a; }
+
+/* A note that is only being read has nothing to save and nothing to cancel,
+   so the footer stays away until something is actually changed. The dialog's
+   own X is the way out until then. */
+#noteModal.note-reading .note-modal-foot { display: none; }
+/* The footer carried the card
+'
+s bottom padding. With it gone the last row of
+   controls sat 2px off the edge -- inside the card, but reading as clipped. */
+#noteModal.note-reading .modal-body-note { padding-bottom: 18px !important; }

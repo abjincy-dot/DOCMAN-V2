@@ -5952,6 +5952,7 @@ function wireNoteFontButton() {
     const step = (by) => {
         const next = noteFontPx(noteFontPx(noteModalFont) + by);
         if (next === noteModalFont) return;
+        leaveNoteReadMode();
         noteModalFont = next;
         haptic.toggle();
         paintNoteModalColor();
@@ -5976,6 +5977,7 @@ function wireNoteLinedToggle() {
     btn.addEventListener('mousedown', (e) => e.preventDefault());
     btn.onclick = () => {
         haptic.toggle();
+        leaveNoteReadMode();
         noteModalLined = !noteModalLined;
         paintNoteModalColor();
     };
@@ -5997,6 +5999,7 @@ function buildNoteColorPicker() {
         dot.addEventListener('pointerdown', () => { focusBefore = document.activeElement; });
         dot.onclick = () => {
             haptic.toggle();
+            leaveNoteReadMode();
             noteModalColor = dot.dataset.color;
             paintNoteModalColor();
             if (focusBefore && typeof focusBefore.focus === 'function'
@@ -6070,6 +6073,15 @@ function setNoteReadMode(on) {
     if (on) {
         if (document.activeElement === t || document.activeElement === c) document.activeElement.blur();
     }
+}
+
+// Save and Cancel are hidden while a note is only being read -- there is
+// nothing to save and nothing to cancel. Anything that does change the note
+// has to bring them back, or it would be a change with no way to keep it: the
+// text, but the colour, the ruling and the size too.
+function leaveNoteReadMode() {
+    const c = document.getElementById('noteContent');
+    if (c && c.readOnly) setNoteReadMode(false);
 }
 
 function wireNoteReadToEdit() {
