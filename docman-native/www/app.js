@@ -15212,15 +15212,15 @@ function exportBackupData() {
     overlay.innerHTML = `
         <div style="position:relative;background:#1a1a1a;border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="encChoiceCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
-            <p style="color:#ffffff;font-size:0.98rem;font-weight:700;margin:0 0 6px;margin-right:26px;font-family:Inter,sans-serif;">Secure Your Backup</p>
-            <p style="color:#94a3b8;font-size:0.82rem;margin:0 0 18px;font-family:Inter,sans-serif;line-height:1.5;">The backup file is encrypted, so only you can open it. Keep whichever you choose somewhere safe — <b style="color:#e2e8f0">without it the backup cannot be restored, not even by us</b>.</p>
+            <p style="color:#ffffff;font-size:0.98rem;font-weight:700;margin:0 0 6px;margin-right:26px;font-family:Inter,sans-serif;">Lock the backup file</p>
+            <p style="color:#94a3b8;font-size:0.82rem;margin:0 0 18px;font-family:Inter,sans-serif;line-height:1.5;">Everything in DOCMAN goes into one file. Lock it, and anyone who finds that file still cannot read your documents.<br><br>You will be asked for this <b style="color:#e2e8f0">only when restoring the backup</b> — on a new phone, say. It is not your app PIN, and <b style="color:#e2e8f0">without it the backup cannot be opened, not even by us</b>.</p>
             <button id="encChoicePassword" style="touch-action:manipulation;width:100%;text-align:left;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#ffffff;cursor:pointer;font-family:Inter,sans-serif;margin-bottom:10px;">
-                <div style="font-weight:600;font-size:0.9rem;"><i class="fas fa-key" style="color:#ff6b4a;margin-right:8px;"></i>Create a backup password</div>
-                <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px;">Your own words, easier to remember. This is not your app PIN.</div>
+                <div style="font-weight:600;font-size:0.9rem;"><i class="fas fa-key" style="color:#ff6b4a;margin-right:8px;"></i>Choose a password for this file</div>
+                <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px;">Words of your own. Easiest to remember months from now.</div>
             </button>
             <button id="encChoiceRecoveryKey" style="touch-action:manipulation;width:100%;text-align:left;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#ffffff;cursor:pointer;font-family:Inter,sans-serif;">
-                <div style="font-weight:600;font-size:0.9rem;"><i class="fas fa-dice" style="color:#a78bfa;margin-right:8px;"></i>Generate a recovery key</div>
-                <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px;">DOCMAN makes a strong random key. Harder to guess, so write it down.</div>
+                <div style="font-weight:600;font-size:0.9rem;"><i class="fas fa-dice" style="color:#a78bfa;margin-right:8px;"></i>Let DOCMAN make a key</div>
+                <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px;">A long random key — harder to guess, impossible to remember. Save it somewhere.</div>
             </button>
         </div>`;
     document.body.appendChild(overlay);
