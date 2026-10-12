@@ -10121,8 +10121,8 @@ body.light-mode .current-folder-card .cf-part-current { color: #c2710c !importan
     opacity: 0.75;
 }
 .note-modal-icon {
-    width: 42px; height: 42px;
-    flex: 0 0 42px;
+    width: 36px; height: 36px;
+    flex: 0 0 36px;
     border-radius: 13px;
     background: linear-gradient(135deg, #a855f7, #6366f1);
     display: flex; align-items: center; justify-content: center;
