@@ -1316,6 +1316,10 @@ function localTodayIso() {
 // opts.disallowPast rejects a date before today on Save -- used for both a
 // reminder's due date and a document's expiry date, since neither makes
 // sense set in the past.
+// opts.minTomorrow goes one further and refuses today, for expiry dates only.
+// A reminder for later today is an ordinary thing to want; an expiry dated
+// today has no warning left to give, which is the whole point of recording
+// one.
 function showDateModal(message, defaultVal, callback, opts = {}) {
     const existing = document.getElementById('customDateModal');
     if (existing) existing.remove();
@@ -1491,7 +1495,8 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
 
         daysEl.innerHTML = cells.map(cell => {
             const isSelected = selectedIso === cell.iso;
-            const isPast = opts.disallowPast && cell.iso < todayIso;
+            const isPast = opts.disallowPast
+                && (cell.iso < todayIso || (opts.minTomorrow && cell.iso === todayIso));
             let color = cell.inMonth ? c.dayInMonth : c.dayOutMonth;
             let bg = 'transparent';
             let fontWeight = '500';
@@ -1826,6 +1831,15 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
         }
         if (opts.disallowPast && selectedIso && selectedIso < todayIso) {
             showToast("Due date can't be in the past", true);
+            return;
+        }
+        // An expiry is a warning about something still ahead. Dated today it
+        // has nothing left to warn about: the 7-day, 3-day and day-before
+        // alerts are all behind us, and the two on the day itself may have
+        // gone too. The picker already refuses yesterday for the same reason,
+        // so this finishes the thought rather than introducing one.
+        if (opts.minTomorrow && selectedIso === todayIso) {
+            showToast('An expiry date needs to be tomorrow or later', true);
             return;
         }
         if (opts.withTime) {
@@ -3426,7 +3440,7 @@ function renewExpiryDate(folderPath, fileName) {
     showDateModal(`New expiry date for "${escapeHtml(fileName)}":`, (file && file.expiryDate) || '', (val) => {
         if (val === null) return;
         setFileExpiryDate(folderPath, fileName, val);
-    }, { disallowPast: true });
+    }, { disallowPast: true, minTomorrow: true });
 }
 
 // Tapping the notification, or one of its two buttons, while the app runs.
@@ -10409,7 +10423,7 @@ function createFileCard(file, folderPath, opts = {}) {
                 onSetExpiry: () => showDateModal(`Expiry date for "${escapeHtml(file.name)}":`, file.expiryDate || '', (val) => {
                     if (val === undefined) return; // cancelled, no change
                     setFileExpiryDate(folderPath, file.name, val);
-                }, { disallowPast: true }),
+                }, { disallowPast: true, minTomorrow: true }),
                 onDetail: () => showFileDetailModal(file, folderPath),
                 isLocked: !!file.locked,
                 onLock: () => {
