@@ -19,6 +19,18 @@ Everything below is the state of the work; nothing here needs re-discovering.
 - The user has said: *verify things yourself instead of repeatedly asking me to test.*
 - Files/notes/folders use the **⋯ row menu**; only departments use long-press.
 
+## 1a. State as of 12 Oct 2026, end of day
+
+- **versionCode 61 / 1.0.0 is live on Closed testing - Alpha.** Verified from the installed
+  APK pulled off the phone, not from the Console number alone.
+- **Production is still Inactive.** Promoting 61 needs no new upload.
+- **minSdk is now 24.** Play refused code 60 because automatic protection requires 24.
+  Codes 59 and 60 were built but never accepted; the next build is **62**.
+- **Still no pre-launch report has ever been generated**, for any version. Waiting on 61.
+  If nothing appears, contact Play support rather than building again.
+- Store icon and privacy policy are both updated and live.
+- Open: the feature graphic still shows the old purple icon.
+
 ## 2. Where the repo stands
 
 - Branch: `docman-2026-09-24-pdf-search-ui-animations`
