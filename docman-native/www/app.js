@@ -4840,6 +4840,7 @@ function countDepartmentFiles(obj, path = []) {
 // ============================================================
 
 function selectDepartment(d) {
+    clearNavReturn();
     guardFolderEntry([d], () => {
         navigateWithPageTurn(() => {
             currentPath = [d];
@@ -4899,14 +4900,22 @@ function guardFolderDeletion(pathArr, onAllowed) {
 }
 
 function goBack() {
+    // Arrived here from somewhere that is not the folder above: go back to
+    // that, exactly as it was, rather than up one level.
+    if (navReturn && !isSearchMode) {
+        const { path, restore } = navReturn;
+        navReturn = null;
+        navigateWithPageTurn(() => {
+            currentPath = path;
+            render();
+            restore();
+        }, 'back');
+        return;
+    }
     if (currentPath.length && !isSearchMode) {
-        // Leaving the last folder after arriving from the Dashboard puts the
-        // Dashboard back up, rather than the home screen.
-        const backToDashboard = currentPath.length === 1 && returnToDashboard;
         navigateWithPageTurn(() => {
             currentPath.pop();
             render();
-            if (backToDashboard) openDashboardView();
         }, 'back');
     } else if (isSearchMode) {
         clearSearch();
@@ -4914,7 +4923,7 @@ function goBack() {
 }
 
 function goHome() {
-    returnToDashboard = false;
+    clearNavReturn();
     if (currentPath.length === 0 && !isSearchMode) return;
     if (isSearchMode) { clearSearch(); return; }
     navigateWithPageTurn(() => {
@@ -4924,6 +4933,7 @@ function goHome() {
 }
 
 function navigateToBreadcrumb(idx) {
+    clearNavReturn();
     if (idx === -1 && currentPath.length === 0) return;
     if (idx >= 0 && idx === currentPath.length - 1) return;
     const isGoingBack = idx < currentPath.length - 1;
@@ -5697,6 +5707,13 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     overlay.querySelectorAll('.expdoc-row').forEach(row => {
         row.addEventListener('click', () => {
             const folderPath = row.dataset.folder;
+            // The panel is where this journey started, so back belongs there
+            // and not one folder up a tree nobody walked down.
+            // The tab is read NOW, not when back is pressed: close() below
+            // clears expdocLastTab, so a later read would always say
+            // Expiring and quietly lose the Reminders tab.
+            const cameFromTab = expdocLastTab || 'expiring';
+            markNavReturn(() => showExpiringDocumentsPanel(cameFromTab));
             close();
             currentPath = folderPath ? folderPath.split('/') : [];
             render();
@@ -12668,6 +12685,7 @@ function render() {
             const folderCard = createCard(key, () => {
                 guardFolderEntry([...currentPath, key], () => {
                     navigateWithPageTurn(() => {
+                        clearNavReturn();
                         currentPath.push(key);
                         render();
                     }, 'forward');
@@ -14053,8 +14071,8 @@ function renderDashboardView() {
 
     body.querySelectorAll('.dash-dep-row').forEach(row => {
         row.onclick = () => {
+            markNavReturn(() => openDashboardView());
             closeDashboardView();
-            returnToDashboard = true;
             currentPath = [row.dataset.dept];
             render();
         };
@@ -14082,8 +14100,8 @@ function renderDashboardView() {
         row.onclick = () => {
             const folderPath = row.dataset.folder;
             const fileName = row.dataset.file;
+            markNavReturn(() => openDashboardView());
             closeDashboardView();
-            returnToDashboard = true;
             currentPath = folderPath ? folderPath.split('/') : [];
             // setActiveTab, not a bare assignment: the card only exists on the
             // Files tab, and setting the variable alone left the FILES/NOTES
@@ -14160,10 +14178,27 @@ function openDashboardView(focusExpiring) {
 // Set when a Dashboard row navigated away to a folder, so coming back out of
 // that folder reopens the Dashboard instead of landing on the home screen.
 // Cleared by closing the Dashboard itself, and by going home on purpose.
-let returnToDashboard = false;
+// Where a folder was opened FROM, so Back puts that back instead of walking
+// up a folder tree the person never walked down. Statistics is the clearest
+// case: tapping the largest file jumps to its folder, and back then climbed
+// out of that folder and left you somewhere you never chose, with Statistics
+// nowhere in sight.
+//
+// The path is remembered as well as the screen, so back restores exactly what
+// was on display, not an approximation of it. Cleared the moment it is used,
+// and whenever the person navigates by hand -- a marker that outlives its
+// journey would fire at some unrelated moment later.
+let navReturn = null;   // { path: string[], restore: () => void }
+
+function markNavReturn(restore) {
+    navReturn = { path: currentPath.slice(), restore };
+}
+
+function clearNavReturn() {
+    navReturn = null;
+}
 
 function closeDashboardView() {
-    returnToDashboard = false;
     const view = document.getElementById('dashboardView');
     view.classList.remove('fav-view-visible');
     updateDeptAddFabVisibility();
@@ -16674,7 +16709,8 @@ function renderStatisticsPanel() {
         if (fileRow) {
             fileRow.style.display = "";
             fileRow.onclick = () => {
-                openFolderPathInApp(s.largestFile.folderPath);
+                openFolderPathInApp(s.largestFile.folderPath,
+                    () => { openSettingsPage(); showSettingsScreen('settingsPanel-statistics'); });
             };
         }
     } else {
@@ -16688,7 +16724,8 @@ function renderStatisticsPanel() {
         pill("statLargestFolderPill", s.largestFolder.count + (s.largestFolder.count === 1 ? " file" : " files"));
         if (folderRow) {
             folderRow.onclick = () => {
-                openFolderPathInApp(s.largestFolder.path);
+                openFolderPathInApp(s.largestFolder.path,
+                    () => { openSettingsPage(); showSettingsScreen('settingsPanel-statistics'); });
             };
         }
     } else {
@@ -16730,10 +16767,11 @@ function renderStatisticsPanel() {
 
 // Opens a folder path from inside Settings: closes the settings page, then
 // walks the app to that folder the same way a tap on the home screen would.
-function openFolderPathInApp(path) {
+function openFolderPathInApp(path, restore) {
     if (!path) return;
     const parts = path.split('/').filter(Boolean);
     if (!parts.length) return;
+    if (restore) markNavReturn(restore); else clearNavReturn();
     closeSettingsPage();
     // The same lock check every other way into a folder runs, so a locked
     // folder still asks for the PIN when it is reached from Statistics.

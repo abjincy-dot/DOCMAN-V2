@@ -98,67 +98,33 @@ back button, the breadcrumb, goHome, a department being deleted. The chrome was
 split out of setActiveTab so this can put the pill back without re-rendering
 (render is what calls it) or ticking the haptics.
 
-**11. Back button behaviour, everywhere**
-Check that back returns to the previous screen rather than jumping home, across
-the whole app. Three cases have already been found this way (the row menu, the
-intro, the reminder-setup screen), so a sweep is worth doing. *Medium — an
-audit, not one fix.*
+**11. Back button behaviour, everywhere** — *fixed, needs 59*
 
-### C. Notes
+Swept with the real back key rather than by reading. Most of it was already
+right: every modal, the date picker, the sort and locked-item sheets, the
+note editor, the expiring panel, the settings sub-screens and all four
+full-screen views close on back and leave what is underneath alone. A prompt
+takes two presses -- the first closes the keyboard -- which is what every
+Android app does.
 
-These four overlap and are best done together.
+What was broken was jumping INTO a folder from a screen. Statistics ->
+largest file navigates to that file's folder and closes Settings; back then
+climbed one level up a tree the person never walked down, and Statistics was
+nowhere. The app had a mechanism for this -- returnToDashboard -- but it was
+a single boolean, for the Dashboard only, and only from one folder deep.
 
-**3. Note contents are not searchable**
-Search should look inside a note, not only at its title. There is a
-"searchNotes" toggle in Settings already — check what it covers. *Medium.*
+It is general now: the screen AND the path are remembered at the moment of
+the jump, and back restores both exactly. Marked at every jump site --
+Statistics (largest file and largest folder), the Dashboard (departments and
+expiring rows) and the Expiring panel -- and cleared whenever the person
+navigates by hand, since a marker that outlives its journey would fire at
+some unrelated moment later.
 
-**4 and 9. No Cut/Copy/Paste toolbar, anywhere in the app** — *fixed, needs 59*
-
-One line, in the web layer:
-
-    document.addEventListener('contextmenu', e => e.preventDefault());
-
-It was there to stop the WebView raising its own Save image / Copy link menu
-over the app's. But in a WebView Chromium raises Cut/Copy/Paste through the
-context-menu path too, so cancelling it unconditionally cancelled the
-selection toolbar everywhere -- every field, every screen. Text selected
-perfectly and nothing ever came up with it. It now returns early inside
-inputs, textareas and contenteditables, and whenever there is a live
-selection.
-
-Two earlier conclusions in this file were wrong and are worth remembering as
-a method, not just a result. The nav-bar inset listener was blamed because a
-build showed a toolbar after it was removed -- that was the app's own stand-in
-bar, mistaken for Android's. And the CSS was "ruled out" with a long press,
-which in an editable field places a caret rather than selecting a word, so
-that test proved nothing either way.
-
-What settled it was a harness that needs no one to hold the phone: tap to
-focus,  (ctrl+A) to select, then read the app's
-window list -- the two selection handles are 124x62, the caret handle 56x68,
-and the toolbar is 1622x723, so its presence is unambiguous. Validated on a
-bare page first, then used to bisect: a plain textarea injected into the live
-app page failed the same way the note's own did, which put the cause at
-document level and led to the listener. After the fix, both the note body and
-its title show the toolbar.
-
-**5. Press and hold a note to preview it** — *answered differently*
-
-Built, then taken out again on the spot. Once a note opens to be read rather
-than typed into -- no keyboard, nothing in the way of the text -- a peek on
-top of that was a second reading view for the same thing, and the tap already
-did the job better. The row pill still carries the actions.
-
-**Note editor, same session**
-
-- Opens read-only: no keyboard until the text is tapped, which is the moment
-  someone means to change something. The tap that opened the editor is
-  ignored for a beat, or it would look like that moment and raise the
-  keyboard anyway.
-- A ruled page, drawn as one band per line in the page colour edge.
-- Text size in px, 11 to 24, a step at a time; the rule spacing follows it.
-- Both are remembered on the note, and so is the colour, which the editor had
-  been taking and quietly dropping since it was written.
+Measured on the device, all five jump sites: back returns to the screen it
+came from with the path it had. Two faults of my own were caught this way --
+a settings panel named by a wrong id, which left back opening a blank
+Settings page, and the expiring panel's tab being read after close() had
+already cleared it, which would have lost the Reminders tab.
 
 ---
 
