@@ -13739,6 +13739,16 @@ function openRecentsView() {
     requestAnimationFrame(() => {
         view.classList.add('fav-view-visible');
         updateDeptAddFabVisibility();
+        // The pill that marks the active tab is placed while the view is
+        // still hidden, so it is measured a frame before the row has its
+        // final size -- on a cold start it came out 8px short of its tab
+        // and stayed there. Placed once more on the frame after the view
+        // becomes visible: about 32ms, too soon to see, where doing it on
+        // transitionend was late enough to read as a jump.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            const row = document.getElementById('recentsSubtabRow');
+            if (row) moveTabGlider(row, row.querySelector('.subtab-btn.active'), false);
+        }));
     });
 
     document.querySelectorAll('#recentsSubtabRow .subtab-btn').forEach(btn => {
