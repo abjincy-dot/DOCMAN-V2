@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/sacramento/sacramento.css">
-<link rel="stylesheet" href="style.css?v=623">
+<link rel="stylesheet" href="style.css?v=624">
 
 </head>
 <body>
@@ -1430,19 +1430,11 @@ border: 1px solid rgba(255,255,255,0.2);
 <div id="noteModal" class="modal">
   <div class="modal-content note-modal-card">
     <div class="note-modal-head">
-      <span class="note-modal-icon"><i class="far fa-pen-to-square"></i></span>
-      <span class="note-modal-titles">
-        <span class="note-modal-h" id="noteModalHeading">New Note</span>
-        <span class="note-modal-sub" id="noteModalSub">Capture your thoughts</span>
-      </span>
+      <input type="text" id="noteTitle" placeholder="Note title..." class="note-title-input" maxlength="100" autocomplete="off">
+      <span class="note-count" id="noteTitleCount">0/100</span>
       <button class="note-modal-x" onclick="closeNoteModal()" aria-label="Close"><i class="fas fa-times"></i></button>
     </div>
     <div class="modal-body modal-body-note">
-      <div class="note-field note-field-title">
-        <i class="fas fa-align-left note-field-ico"></i>
-        <input type="text" id="noteTitle" placeholder="Note title..." class="note-title-input" maxlength="100" autocomplete="off">
-        <span class="note-count" id="noteTitleCount">0/100</span>
-      </div>
       <div class="note-field note-field-body">
         <i class="far fa-file-lines note-field-ico"></i>
         <textarea id="noteContent" placeholder="Write your note here..." class="note-content-input" maxlength="1000"></textarea>

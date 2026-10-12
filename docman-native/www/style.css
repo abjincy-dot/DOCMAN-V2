@@ -10098,11 +10098,27 @@ body.light-mode .current-folder-card .cf-part-current { color: #c2710c !importan
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65) !important;
     max-width: 440px !important;
 }
+/* The head holds the note title now. "Edit Note / Change what you wrote"
+   told nobody anything they had not just done, and cost a row the writing
+   area wanted. */
 .note-modal-head {
     display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 18px 18px 4px;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 16px 10px;
+}
+.note-modal-head .note-title-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 1.12rem !important;
+    font-weight: 800;
+    padding-right: 0 !important;
+}
+.note-modal-head .note-count {
+    position: static;
+    flex: 0 0 auto;
+    transform: none;
+    opacity: 0.75;
 }
 .note-modal-icon {
     width: 42px; height: 42px;
@@ -10169,7 +10185,7 @@ body.light-mode .current-folder-card .cf-part-current { color: #c2710c !importan
 /* Pinned in px, not left as a ratio: the ruled page draws one band per
    line, and a ratio rounds differently as the font renders, so the rules
    would drift away from the words further down the page. */
-.note-content-input { font-size: 0.92rem; min-height: 160px; line-height: 22px; }
+.note-content-input { font-size: 0.92rem; min-height: 240px; line-height: 22px; }
 .note-title-input::placeholder,
 .note-content-input::placeholder { color: rgba(255, 255, 255, 0.55); }
 
@@ -10279,7 +10295,7 @@ body.light-mode .note-modal-foot button:first-child {
 .note-field { padding-left: 48px !important; }
 .note-title-input,
 .note-content-input { padding-left: 2px !important; }
-.note-content-input { min-height: 120px; }
+.note-content-input { min-height: 190px; }
 /* The overlay must not park the card under the status bar either. */
 #noteModal.modal {
     align-items: center !important;
@@ -10315,7 +10331,7 @@ body.light-mode .note-modal-foot button:first-child {
 .note-field-ico { left: 12px !important; top: 11px !important; font-size: 0.78rem !important; }
 .note-field-body { padding-bottom: 20px !important; }
 .note-title-input { font-size: 0.92rem !important; }
-.note-content-input { font-size: 0.86rem !important; min-height: 92px !important; }
+.note-content-input { font-size: 0.86rem !important; min-height: 150px !important; }
 .note-count { font-size: 0.62rem !important; right: 10px !important; bottom: 5px !important; }
 
 .note-colors { gap: 8px !important; padding: 0 0 2px !important; }
@@ -10388,7 +10404,7 @@ body.light-mode .note-modal-foot button:first-child {
 .note-field-ico { opacity: 0.95; }
 
 /* A little more room to write in. */
-.note-content-input { min-height: 132px !important; }
+.note-content-input { min-height: 200px !important; }
 
 /* Title row: one line of text, no counter, no divider above the footer.
    The 100-character cap still applies -- maxlength does the work; the readout
