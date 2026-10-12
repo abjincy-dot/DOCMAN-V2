@@ -11837,6 +11837,25 @@ async function startDocumentScan() {
     haptic.success();
     const pages = r.pageCount || 0;
     showToast(pages > 1 ? `Scan saved · ${pages} pages` : 'Scan saved');
+
+    // The scanner screen belongs to Google and cannot be restyled, but what
+    // happens on the way back is ours. A scan arrives called "Scan
+    // 12-Oct-2026 08.30.pdf", which says when it was taken and nothing about
+    // what it is -- in a document manager that is the one thing worth
+    // knowing. Asked here, while the person still remembers what they just
+    // held up to the camera, rather than left for the row menu later.
+    //
+    // The file is already on disk under its timestamp name before this runs,
+    // so dismissing the question costs nothing: the scan is safe either way.
+    const dot = added.name.lastIndexOf('.');
+    const stem = dot > 0 ? added.name.slice(0, dot) : added.name;
+    showPromptModal('Name this scan', stem, async (chosen) => {
+        if (chosen === null) return;                 // keep the timestamp name
+        const trimmed = chosen.trim();
+        if (!trimmed || trimmed === stem) return;
+        await renameFileInFolder(folderPath, added.name, trimmed);
+        showToast('Saved as "' + trimmed + '"');
+    }, { icon: 'fa-file-pdf', subtitle: 'Or leave it as it is', placeholder: 'What is this document?' });
 }
 
 async function importEditedCopy(Filesystem, notePath, pdfPath) {

@@ -61,7 +61,12 @@ public class DocumentScannerPlugin extends Plugin {
                 .setGalleryImportAllowed(true)
                 .setPageLimit(PAGE_LIMIT)
                 .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_PDF)
-                .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_BASE_WITH_FILTER)
+                // FULL rather than BASE_WITH_FILTER: same screen, but Google
+                // editor then offers rotate, reorder and the full set of
+                // filters. The scanner UI belongs to Play services and cannot
+                // be restyled, so the capability it exposes is the only part
+                // of it we get a say in.
+                .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
                 .build();
         GmsDocumentScanner scanner = GmsDocumentScanning.getClient(options);
 
