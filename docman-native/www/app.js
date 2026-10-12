@@ -1996,7 +1996,7 @@ function showNoteViewModal(file, folderPath, anchorEl) {
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     overlay.querySelector('#noteViewEditBtn').onclick = () => {
         close();
-        showTextareaPromptModal(`Quick note for "${file.name}":`, file.note || '', (val) => {
+        showTextareaPromptModal(`Quick note for "${escapeHtml(file.name)}":`, file.note || '', (val) => {
             if (val === null) return;
             setFileNote(folderPath, file.name, val.trim());
         }, { icon: 'fa-note-sticky', subtitle: 'A short note kept with this file', placeholder: 'Write your note...' });
@@ -2035,7 +2035,7 @@ function showTagViewModal(file, folderPath) {
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     overlay.querySelector('#tagViewEditBtn').onclick = () => {
         close();
-        showPromptModal(`Tags for "${file.name}" (comma separated):`, (file.tags || []).join(', '), (val) => {
+        showPromptModal(`Tags for "${escapeHtml(file.name)}" (comma separated):`, (file.tags || []).join(', '), (val) => {
             if (val === null) return;
             const tags = val.split(',').map(t => t.trim()).filter(Boolean);
             setFileTags(folderPath, file.name, tags);
@@ -3423,7 +3423,7 @@ async function acknowledgeExpiry(folderPath, fileName) {
 
 function renewExpiryDate(folderPath, fileName) {
     const file = (allFiles[folderPath] || []).find(f => f.name === fileName);
-    showDateModal(`New expiry date for "${fileName}":`, (file && file.expiryDate) || '', (val) => {
+    showDateModal(`New expiry date for "${escapeHtml(fileName)}":`, (file && file.expiryDate) || '', (val) => {
         if (val === null) return;
         setFileExpiryDate(folderPath, fileName, val);
     }, { disallowPast: true });
@@ -10385,16 +10385,16 @@ function createFileCard(file, folderPath, opts = {}) {
                 onConvertToPdf: getFileType(file.name) === 'image' ? () => imgConvertSingleFileToPdf(folderPath, file.name) : null,
                 onAddToPdf: getFileType(file.name) === 'image' ? () => imgAddToPdfQueue(folderPath, file.name) : null,
                 onMergePdfs: getFileType(file.name) === 'pdf' ? () => startPdfMergeSelection(folderPath, file) : null,
-                onAddNote: () => showTextareaPromptModal(`Quick note for "${file.name}":`, file.note || '', (val) => {
+                onAddNote: () => showTextareaPromptModal(`Quick note for "${escapeHtml(file.name)}":`, file.note || '', (val) => {
                     if (val === null) return; // cancelled
                     setFileNote(folderPath, file.name, val.trim());
                 }, { icon: 'fa-note-sticky', subtitle: 'Add a quick note for this file', placeholder: 'Write your note...' }),
-                onEditTags: () => showPromptModal(`Tags for "${file.name}" (comma separated):`, (file.tags || []).join(', '), (val) => {
+                onEditTags: () => showPromptModal(`Tags for "${escapeHtml(file.name)}" (comma separated):`, (file.tags || []).join(', '), (val) => {
                     if (val === null) return; // cancelled
                     const tags = val.split(',').map(t => t.trim()).filter(Boolean);
                     setFileTags(folderPath, file.name, tags);
                 }, { icon: 'fa-tags', subtitle: 'Comma-separated tags for this file', placeholder: 'e.g. invoice, 2026, urgent' }),
-                onSetExpiry: () => showDateModal(`Expiry date for "${file.name}":`, file.expiryDate || '', (val) => {
+                onSetExpiry: () => showDateModal(`Expiry date for "${escapeHtml(file.name)}":`, file.expiryDate || '', (val) => {
                     if (val === undefined) return; // cancelled, no change
                     setFileExpiryDate(folderPath, file.name, val);
                 }, { disallowPast: true }),
