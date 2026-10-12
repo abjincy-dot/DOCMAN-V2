@@ -13598,10 +13598,14 @@ function moveTabGlider(row, activeBtn, animate) {
 function scrollTabIntoView(row, btn) {
     if (row.scrollWidth <= row.clientWidth) return;
     const edge = 14;                        // breathing room, not flush to the edge
-    const rowBox = row.getBoundingClientRect();
-    const btnBox = btn.getBoundingClientRect();
-    const start = btnBox.left - rowBox.left + row.scrollLeft;
-    const end = start + btnBox.width;
+    // Layout, not rects -- for the same reason the pill is placed from layout.
+    // These rows sit in a card that scales as it opens, and a rect taken while
+    // that is running is a scaled rect: the row was being scrolled to a
+    // position worked out for a smaller card, which left the last tab cut off
+    // at the edge. offsetLeft is already relative to the row's own box, so it
+    // needs no scrollLeft correction.
+    const start = btn.offsetLeft;
+    const end = start + btn.offsetWidth;
     const still = document.body.classList.contains('reduce-motion')
         || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const behavior = still ? 'auto' : 'smooth';
