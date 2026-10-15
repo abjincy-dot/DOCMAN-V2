@@ -58,3 +58,5 @@ Addendum: expiry banners merge per date (see PROGRESS.md 15 Oct). Unverified on 
 Addendum: expiry cards with document pictures built (see PROGRESS.md 15 Oct). Not installed or seen on device.
 
 Addendum: work committed (02e4617) and pushed to the branch on GitHub. Previously "nothing committed" — now resolved.
+
+**Current build: 1.0.0 / versionCode 66, built 15 Oct, not uploaded.** build.gradle now says 1.0.0 / 66.

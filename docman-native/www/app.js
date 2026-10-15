@@ -3412,7 +3412,8 @@ async function imgScheduleExpiryNotification(folderPath, fileName, dateStr, opts
         'A document expires in 3 days. Open DOCMAN to see which.', 'Documents expiring soon',
         `${sharing} documents expire in 3 days. Open DOCMAN to see which.`, new Date(dayAtAlertHour.getTime() - 3 * 86400000));
     // Nothing used to be said between "in 3 days" and "today", which are the
-    // last two days anything can still be renewed in time.
+    // last two days anything can still be renewed in time. (Dropped for an hour
+    // on 15 Oct and put back: the user finds the day before useful.)
     add(imgNotificationIdFor(folderPath, fileName, 1), 'd1', 'Document expiring tomorrow',
         'A document expires tomorrow. Open DOCMAN to see which.', 'Documents expiring tomorrow',
         `${sharing} documents expire tomorrow. Open DOCMAN to see which.`, new Date(dayAtAlertHour.getTime() - 86400000));
