@@ -1,9 +1,10 @@
 // ============================================================
 // DOCMAN - Document Manager
-// Version: 1.0.0
 // ============================================================
 
-const APP_VERSION = '1.0.0';
+// Fallback only: the real version is read from the installed app
+// (build.gradle versionName) at startup, so it never goes stale.
+let APP_VERSION = '1.0.0';
 
 const PRIVACY_POLICY_URL = 'https://abjincy-dot.github.io/docman-privacy/';
 
@@ -166,7 +167,8 @@ function hexToBytes(hex) {
 // ============================================================
 // BACKUP ENCRYPTION (password or recovery key, WhatsApp-style)
 // ============================================================
-// Format: [16-byte ASCII magic][16-byte salt][12-byte IV][AES-GCM ciphertext].
+// v1 format (restore only now -- new backups use the streaming v2 format
+// below): [magic][16-byte salt][12-byte IV][AES-GCM ciphertext].
 // The magic lets importBackupData() tell an encrypted backup apart from a
 // plain pre-encryption-era .zip export (or an internal Safety Snapshot,
 // which is deliberately never encrypted -- see writeSafetySnapshot()'s own
@@ -240,6 +242,382 @@ async function isEncryptedBackup(blob) {
     const magicBytes = new TextEncoder().encode(BACKUP_ENC_MAGIC);
     for (let i = 0; i < magicBytes.length; i++) if (head[i] !== magicBytes[i]) return false;
     return true;
+}
+
+// ============================================================
+// STREAMING BACKUP FORMAT (v2)
+// ============================================================
+// v1 built the whole ZIP in memory, then encrypted it in one piece, and
+// restore read it all back into memory -- a library of a few GB crashed or
+// failed. v2 never holds more than one ~4 MB piece:
+//
+//   file   = "DOCMANBKUPv2" | flags (1 = encrypted) | [salt 16 | noncePrefix 8] | frames
+//   frame  = length u32 | last u8 | body   (body = AES-GCM ciphertext of the
+//            plain piece when encrypted: iv = noncePrefix | frame index u32,
+//            additional data = the last byte, so a cut-off or reordered
+//            backup fails to decrypt instead of restoring half a library)
+//   frames joined = records: headerLen u32 | header JSON | payload bytes
+//   records = { t:'manifest' } then { t:'file', path, name } per file, then { t:'end' }
+//
+// Unencrypted v2 is used for Safety Snapshots (internal, like v1's plain zip).
+// v1 backups (encrypted or plain zip) still restore through the old path.
+
+const BACKUP_V2_MAGIC = 'DOCMANBKUPv2';
+const BACKUP_V2_PIECE = 4 * 1024 * 1024;
+const BACKUP_V2_MAX_FILES = 200000;
+const BACKUP_V2_MAX_SINGLE_FILE = 8 * 1024 * 1024 * 1024;
+
+class BackupWrongSecretError extends Error {}
+
+function bytesToBase64(bytes) {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(bin);
+}
+
+function base64ToBytes(b64) {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+}
+
+function u32be(n) {
+    const b = new Uint8Array(4);
+    new DataView(b.buffer).setUint32(0, n);
+    return b;
+}
+
+function backupFrameIv(noncePrefix, index) {
+    const iv = new Uint8Array(12);
+    iv.set(noncePrefix, 0);
+    new DataView(iv.buffer).setUint32(8, index);
+    return iv;
+}
+
+// A "source" is { size, read(offset, length) -> Uint8Array }.
+function blobByteSource(blob) {
+    return {
+        size: blob.size,
+        read: async (offset, length) => new Uint8Array(await blob.slice(offset, offset + length).arrayBuffer())
+    };
+}
+
+// Reads a file in the app's own storage piece by piece through the native
+// BackupFile plugin. Falls back to reading it whole where that plugin
+// doesn't exist (older builds, the browser).
+async function nativeByteSource(path, directory) {
+    const Filesystem = getFilesystemPlugin();
+    const BackupFile = window.Capacitor?.Plugins?.BackupFile;
+    if (!Filesystem) return null;
+    if (BackupFile) {
+        try {
+            const { uri } = await Filesystem.getUri({ path, directory });
+            const st = await Filesystem.stat({ path, directory });
+            return {
+                path,
+                size: Number(st.size) || 0,
+                read: async (offset, length) => base64ToBytes((await BackupFile.readChunk({ uri, offset, length })).data)
+            };
+        } catch (e) {
+            console.warn('Native chunk source unavailable, reading whole file:', e);
+        }
+    }
+    const blob = await readBlobFromFS(path);
+    return blob ? { ...blobByteSource(blob), path } : null;
+}
+
+// A library file as a byte source: native path when it has one, otherwise
+// whatever loadFileData() finds (IndexedDB blob, legacy data URL).
+async function libraryFileByteSource(folderPath, file) {
+    if (file.fsPath && directoryIsNative()) {
+        const src = await nativeByteSource(file.fsPath, 'DATA');
+        if (src) return src;
+    }
+    const blob = await loadFileData(folderPath, file.name);
+    return blob ? blobByteSource(blob) : null;
+}
+
+function directoryIsNative() {
+    return !!(getFilesystemPlugin() && window.Capacitor?.isNativePlatform?.());
+}
+
+// Sink that appends straight to a native file, one bridge call per frame.
+// FileReader does the base64 conversion in native code; the hand-rolled
+// String.fromCharCode + btoa loop is measurably slower (44ms vs 29ms per 4MB
+// on a desktop, and the gap is wider on a phone, where this is one of the two
+// costs that made restoring a 168 MB backup drag -- see nativeFileSink).
+function bytesToBase64Async(bytes) {
+    return new Promise((resolve) => {
+        try {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+            reader.onerror = () => resolve(bytesToBase64(bytes));
+            reader.readAsDataURL(new Blob([bytes]));
+        } catch (e) {
+            resolve(bytesToBase64(bytes));
+        }
+    });
+}
+
+// Appends to a native file. Two things make this fast enough for a
+// multi-GB library:
+//   * pieces are batched to FLUSH_BYTES, so a 168 MB restore costs ~21 bridge
+//     calls instead of 42 (every call JSON-serializes a base64 string),
+//   * one write stays in flight while the next batch is being encoded, so the
+//     encode and the disk write overlap instead of queuing end to end.
+// Callers MUST await flush() before trusting the file on disk.
+function nativeFileSink(path, directory) {
+    const Filesystem = getFilesystemPlugin();
+    // 6 MB, not more: at the peak this holds the batch, its merged copy and
+    // two base64 strings (the one being written and the one just encoded),
+    // which is already ~20 MB on top of whatever the caller is holding.
+    const FLUSH_BYTES = 6 * 1024 * 1024;
+    let pending = [];
+    let pendingBytes = 0;
+    let first = true;
+    let written = 0;
+    let inFlight = Promise.resolve();
+    let failure = null;
+
+    const flushBuffer = async () => {
+        // A write that failed while nobody was awaiting it is reported at the
+        // next opportunity. Without the .catch() below its rejection would
+        // land in window.onunhandledrejection instead -- logged as a second,
+        // confusing error after the real one.
+        if (failure) throw failure;
+        if (!pendingBytes) return;
+        const merged = new Uint8Array(pendingBytes);
+        let at = 0;
+        for (const piece of pending) { merged.set(piece, at); at += piece.length; }
+        pending = [];
+        pendingBytes = 0;
+        const data = await bytesToBase64Async(merged);
+        const append = !first;
+        first = false;
+        const previous = inFlight;
+        inFlight = (async () => {
+            await previous;
+            await Filesystem.writeFile({ path, data, directory, recursive: true, append });
+        })().catch((err) => { failure = failure || err; });
+        // Depth-1 pipeline: wait for the PREVIOUS write (which ran while this
+        // batch was being encoded), never for the one just started.
+        await previous;
+        if (failure) throw failure;
+    };
+
+    return {
+        write: async (bytes) => {
+            // Copied: callers hand over views into a buffer they reuse.
+            pending.push(bytes.slice());
+            pendingBytes += bytes.length;
+            written += bytes.length;
+            if (pendingBytes >= FLUSH_BYTES) await flushBuffer();
+        },
+        flush: async () => {
+            await flushBuffer();
+            await inFlight;
+            if (failure) throw failure;
+        },
+        get written() { return written; }
+    };
+}
+
+// Sink that collects Blob parts (browser build, tests).
+function blobSink() {
+    const parts = [];
+    let written = 0;
+    return {
+        write: async (bytes) => { parts.push(new Blob([bytes])); written += bytes.length; },
+        flush: async () => {},
+        toBlob: () => new Blob(parts, { type: 'application/octet-stream' }),
+        get written() { return written; }
+    };
+}
+
+class BackupStreamWriter {
+    // secret: null for an unencrypted (snapshot) stream.
+    constructor(sink) {
+        this.sink = sink;
+        this.buf = new Uint8Array(BACKUP_V2_PIECE);
+        this.fill = 0;
+        this.index = 0;
+        this.key = null;
+        this.noncePrefix = null;
+    }
+
+    async begin(secret) {
+        const magic = new TextEncoder().encode(BACKUP_V2_MAGIC);
+        if (secret) {
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            this.noncePrefix = crypto.getRandomValues(new Uint8Array(8));
+            this.key = await deriveBackupKey(secret, salt, 'encrypt');
+            const head = new Uint8Array(magic.length + 1 + 16 + 8);
+            head.set(magic, 0); head[magic.length] = 1;
+            head.set(salt, magic.length + 1); head.set(this.noncePrefix, magic.length + 17);
+            await this.sink.write(head);
+        } else {
+            const head = new Uint8Array(magic.length + 1);
+            head.set(magic, 0); head[magic.length] = 0;
+            await this.sink.write(head);
+        }
+    }
+
+    async _frame(plain, last) {
+        let body = plain;
+        if (this.key) {
+            body = new Uint8Array(await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv: backupFrameIv(this.noncePrefix, this.index), additionalData: new Uint8Array([last ? 1 : 0]) },
+                this.key, plain));
+        }
+        const out = new Uint8Array(5 + body.length);
+        out.set(u32be(body.length), 0);
+        out[4] = last ? 1 : 0;
+        out.set(body, 5);
+        await this.sink.write(out);
+        this.index++;
+    }
+
+    async write(bytes) {
+        let pos = 0;
+        while (pos < bytes.length) {
+            const n = Math.min(bytes.length - pos, this.buf.length - this.fill);
+            this.buf.set(bytes.subarray(pos, pos + n), this.fill);
+            this.fill += n;
+            pos += n;
+            if (this.fill === this.buf.length) {
+                await this._frame(this.buf.slice(0, this.fill), false);
+                this.fill = 0;
+            }
+        }
+    }
+
+    async record(header, payloadSource, onBytes) {
+        const headerBytes = new TextEncoder().encode(JSON.stringify(header));
+        await this.write(u32be(headerBytes.length));
+        await this.write(headerBytes);
+        if (!payloadSource) return;
+        for (let off = 0; off < header.size; off += BACKUP_V2_PIECE) {
+            const piece = await payloadSource.read(off, Math.min(BACKUP_V2_PIECE, header.size - off));
+            if (!piece.length) throw new Error('File shrank while backing up: ' + header.name);
+            await this.write(piece);
+            if (onBytes) onBytes(piece.length);
+        }
+    }
+
+    async finish() {
+        await this.record({ t: 'end', size: 0 }, null);
+        await this._frame(this.buf.slice(0, this.fill), true);
+        this.fill = 0;
+    }
+}
+
+async function isBackupV2(source) {
+    const magic = new TextEncoder().encode(BACKUP_V2_MAGIC);
+    if (source.size < magic.length + 1) return false;
+    const head = await source.read(0, magic.length);
+    return magic.every((b, i) => head[i] === b);
+}
+
+class BackupStreamReader {
+    constructor(source) {
+        this.source = source;
+        this.pos = 0;
+        this.key = null;
+        this.noncePrefix = null;
+        this.salt = null;
+        this.encrypted = false;
+        this.index = 0;
+        this.sawLast = false;
+        this.piece = new Uint8Array(0);
+        this.piecePos = 0;
+    }
+
+    // Reads the file header. Returns true when a secret is needed.
+    async open() {
+        const magicLen = BACKUP_V2_MAGIC.length;
+        const head = await this.source.read(0, magicLen + 1 + 24);
+        this.encrypted = head[magicLen] === 1;
+        if (this.encrypted) {
+            this.salt = head.slice(magicLen + 1, magicLen + 17);
+            this.noncePrefix = head.slice(magicLen + 17, magicLen + 25);
+            this.pos = magicLen + 25;
+        } else {
+            this.pos = magicLen + 1;
+        }
+        return this.encrypted;
+    }
+
+    // Derives the key and proves it on the first frame. Throws
+    // BackupWrongSecretError when it doesn't decrypt.
+    async unlock(secret) {
+        this.key = await deriveBackupKey(secret, this.salt, 'decrypt');
+        const savedPos = this.pos;
+        try {
+            await this._nextFrame();
+        } catch (e) {
+            this.key = null;
+            this.pos = savedPos;
+            this.index = 0;
+            this.sawLast = false;
+            throw e;
+        }
+    }
+
+    async _nextFrame() {
+        if (this.sawLast) throw new Error('Backup ended unexpectedly');
+        const hdr = await this.source.read(this.pos, 5);
+        if (hdr.length < 5) throw new Error('Backup file is incomplete');
+        const len = new DataView(hdr.buffer, hdr.byteOffset, 4).getUint32(0);
+        const last = hdr[4] === 1;
+        if (len > BACKUP_V2_PIECE + 64) throw new Error('Backup file is damaged');
+        let body = len ? await this.source.read(this.pos + 5, len) : new Uint8Array(0);
+        if (body.length < len) throw new Error('Backup file is incomplete');
+        if (this.encrypted) {
+            try {
+                body = new Uint8Array(await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv: backupFrameIv(this.noncePrefix, this.index), additionalData: new Uint8Array([last ? 1 : 0]) },
+                    this.key, body));
+            } catch (e) {
+                throw this.index === 0 ? new BackupWrongSecretError('Wrong secret') : new Error('Backup file is damaged');
+            }
+        }
+        this.pos += 5 + len;
+        this.index++;
+        this.sawLast = last;
+        this.piece = body;
+        this.piecePos = 0;
+    }
+
+    // Delivers exactly n bytes to onPiece in pieces (no concatenation).
+    async pipe(n, onPiece) {
+        let left = n;
+        while (left > 0) {
+            if (this.piecePos >= this.piece.length) await this._nextFrame();
+            const take = Math.min(left, this.piece.length - this.piecePos);
+            if (take > 0) {
+                await onPiece(this.piece.subarray(this.piecePos, this.piecePos + take));
+                this.piecePos += take;
+                left -= take;
+            }
+        }
+    }
+
+    async readExact(n) {
+        const out = new Uint8Array(n);
+        let at = 0;
+        await this.pipe(n, async (p) => { out.set(p, at); at += p.length; });
+        return out;
+    }
+
+    async nextHeader() {
+        const lenBytes = await this.readExact(4);
+        const len = new DataView(lenBytes.buffer).getUint32(0);
+        if (len > 1024 * 1024) throw new Error('Backup file is damaged');
+        return JSON.parse(new TextDecoder().decode(await this.readExact(len)));
+    }
 }
 
 async function hashPinPBKDF2(pin, saltBytes, iterations) {
@@ -451,30 +829,186 @@ function renderFileIconBadge(fileName) {
         </div>`;
 }
 
-// Asynchronously loads an image file's actual pixel data and swaps it
-// in as the badge's thumbnail (progressive enhancement -- the CSS
-// mountain/sun placeholder shows first so the row isn't empty while
-// this loads). Call this right after inserting a card built with
-// renderFileIconBadge() for an image file.
-async function wireFileIconThumbnail(cardEl, file, folderPath) {
-    const imgEl = cardEl.querySelector('.file-icon-badge-thumb');
-    if (!imgEl) return;
+// ---- Image thumbnails --------------------------------------------------
+// The badge is ~40px, but this used to load every image's FULL file (a
+// 1.7 MB, 12 MP phone photo) as its thumbnail, for every card in the
+// folder at once -- a folder of 100 photos meant 100 full-size decodes and
+// could run the WebView out of memory. Now:
+//   1. a card only loads its thumbnail when it's near the screen,
+//   2. at most THUMB_CONCURRENCY full images are decoded at a time,
+//   3. each photo is shrunk once to a ~10 KB THUMB_PX image, kept in memory
+//      for instant re-renders and on disk (CACHE/thumbs) for next launch.
+// The cache key includes size and modifiedAt, so an edited photo gets a
+// fresh thumbnail. The OS may clear CACHE at any time; it's just rebuilt.
+const THUMB_PX = 160;
+const THUMB_CONCURRENCY = 2;
+const THUMB_MEM_MAX = 500;
+const thumbMemCache = new Map(); // key -> object URL of the small thumbnail
+const thumbQueue = [];
+let thumbActive = 0;
+let thumbObserver = null;
+
+function thumbKeyFor(folderPath, file) {
+    // fsPath first: two files in one folder can share a name, size and date,
+    // and would otherwise be handed the same cached thumbnail.
+    const identity = file.fsPath || `${folderPath}/${file.name}`;
+    return `${identity}|${file.size || 0}|${file.modifiedAt || file.uploadedAt || 0}`;
+}
+
+// Two 32-bit FNV-1a passes -> 16 hex chars: a safe, fixed-length file name.
+function thumbHash(str) {
+    let h1 = 0x811c9dc5, h2 = 0x01000193 ^ str.length;
+    for (let i = 0; i < str.length; i++) {
+        const c = str.charCodeAt(i);
+        h1 = Math.imul(h1 ^ c, 0x01000193);
+        h2 = Math.imul(h2 ^ c, 0x5bd1e995);
+    }
+    return (h1 >>> 0).toString(16).padStart(8, '0') + (h2 >>> 0).toString(16).padStart(8, '0');
+}
+
+function thumbMemPut(key, url) {
+    thumbMemCache.set(key, url);
+    if (thumbMemCache.size > THUMB_MEM_MAX) {
+        const oldestKey = thumbMemCache.keys().next().value;
+        URL.revokeObjectURL(thumbMemCache.get(oldestKey));
+        thumbMemCache.delete(oldestKey);
+    }
+}
+
+async function thumbReadDisk(key) {
+    const Filesystem = getFilesystemPlugin();
+    if (!Filesystem || !window.Capacitor?.convertFileSrc) return null;
     try {
-        let blob = file.fileData instanceof Blob ? file.fileData : null;
-        if (!blob && file.dataUrl) {
-            imgEl.src = file.dataUrl;
-            imgEl.classList.add('file-icon-badge-thumb-loaded');
+        const { uri } = await Filesystem.getUri({ path: `thumbs/${thumbHash(key)}.webp`, directory: 'CACHE' });
+        const resp = await fetch(window.Capacitor.convertFileSrc(uri));
+        if (!resp.ok) return null;
+        const blob = await resp.blob();
+        return blob.size ? blob : null;
+    } catch (e) { return null; }
+}
+
+async function thumbWriteDisk(key, blob) {
+    const Filesystem = getFilesystemPlugin();
+    if (!Filesystem) return;
+    try {
+        const dataUrl = await new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(r.result);
+            r.onerror = () => reject(r.error);
+            r.readAsDataURL(blob);
+        });
+        await Filesystem.writeFile({
+            path: `thumbs/${thumbHash(key)}.webp`,
+            data: String(dataUrl).split(',')[1],
+            directory: 'CACHE',
+            recursive: true
+        });
+    } catch (e) { /* cache only -- ignore */ }
+}
+
+// Shrinks a full image to a small WebP. Returns null if the browser can't
+// decode it (e.g. SVG), in which case the caller shows the original.
+async function makeThumbBlob(blob) {
+    let bmp = null;
+    try {
+        bmp = await createImageBitmap(blob, { resizeWidth: THUMB_PX, resizeQuality: 'medium' });
+        const canvas = document.createElement('canvas');
+        canvas.width = bmp.width;
+        canvas.height = bmp.height;
+        canvas.getContext('2d').drawImage(bmp, 0, 0);
+        return await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.8));
+    } catch (e) {
+        return null;
+    } finally {
+        if (bmp) bmp.close();
+    }
+}
+
+function thumbShow(imgEl, url) {
+    imgEl.onload = () => imgEl.classList.add('file-icon-badge-thumb-loaded');
+    imgEl.src = url;
+}
+
+async function thumbLoad(job) {
+    const { imgEl, file, folderPath, key } = job;
+    if (!imgEl.isConnected) return; // card was re-rendered away while queued
+    const cached = thumbMemCache.get(key);
+    if (cached) { thumbShow(imgEl, cached); return; }
+
+    let small = await thumbReadDisk(key);
+    if (!small) {
+        const full = file.fileData instanceof Blob ? file.fileData : await loadFileDataFor(folderPath, file);
+        if (!full) return;
+        small = await makeThumbBlob(full);
+        if (!small) {
+            // Undecodable here (SVG etc.): show the original, uncached --
+            // these are tiny vector files, not photos. Revoked once the <img>
+            // has taken it, so the blob isn't held for the session.
+            if (imgEl.isConnected) {
+                const rawUrl = URL.createObjectURL(full);
+                imgEl.onload = () => {
+                    imgEl.classList.add('file-icon-badge-thumb-loaded');
+                    URL.revokeObjectURL(rawUrl);
+                };
+                imgEl.onerror = () => URL.revokeObjectURL(rawUrl);
+                imgEl.src = rawUrl;
+            }
             return;
         }
-        if (!blob) blob = await loadFileData(folderPath, file.name);
-        if (!blob) return;
-        const url = URL.createObjectURL(blob);
-        imgEl.onload = () => imgEl.classList.add('file-icon-badge-thumb-loaded');
-        imgEl.src = url;
-    } catch (e) {
-        // Leave the mountain/sun placeholder showing -- not worth
-        // surfacing an error just for a thumbnail.
+        thumbWriteDisk(key, small);
     }
+    const url = URL.createObjectURL(small);
+    thumbMemPut(key, url);
+    if (imgEl.isConnected) thumbShow(imgEl, url);
+}
+
+function thumbPump() {
+    while (thumbActive < THUMB_CONCURRENCY && thumbQueue.length) {
+        const job = thumbQueue.shift();
+        thumbActive++;
+        thumbLoad(job).catch(() => { /* keep the placeholder */ }).finally(() => {
+            thumbActive--;
+            thumbPump();
+        });
+    }
+}
+
+function getThumbObserver() {
+    if (thumbObserver || typeof IntersectionObserver === 'undefined') return thumbObserver;
+    thumbObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            thumbObserver.unobserve(entry.target);
+            const job = entry.target._thumbJob;
+            entry.target._thumbJob = null;
+            if (job) { thumbQueue.push(job); thumbPump(); }
+        }
+    }, { rootMargin: '400px 0px' });
+    return thumbObserver;
+}
+
+// Call right after building a card with renderFileIconBadge() for an image
+// file. The CSS mountain/sun placeholder shows until the thumbnail is ready.
+function wireFileIconThumbnail(cardEl, file, folderPath) {
+    const imgEl = cardEl.querySelector('.file-icon-badge-thumb');
+    if (!imgEl) return;
+    if (!(file.fileData instanceof Blob) && file.dataUrl) {
+        thumbShow(imgEl, file.dataUrl);
+        return;
+    }
+    const key = thumbKeyFor(folderPath, file);
+    const cached = thumbMemCache.get(key);
+    if (cached) {
+        // Already made this session: show at once, no fade, no flicker.
+        imgEl.src = cached;
+        imgEl.classList.add('file-icon-badge-thumb-loaded');
+        return;
+    }
+    const job = { imgEl, file, folderPath, key };
+    const observer = getThumbObserver();
+    if (!observer) { thumbQueue.push(job); thumbPump(); return; }
+    cardEl._thumbJob = job;
+    observer.observe(cardEl);
 }
 
 function getFileType(fileName) {
@@ -530,6 +1064,36 @@ function computeFolderSizeBytes(folderObj, pathArr) {
     return total;
 }
 
+// Counts everything inside a folder/department, for the delete dialog --
+// "and all its contents" hides how much is at stake, and a wrong tap on a
+// department can carry hundreds of files into the Recycle Bin.
+function summarizeFolderContents(pathArr) {
+    const node = pathArr.reduce((o, p) => o?.[p], fileSystem) || {};
+    let folders = 0, files = 0, notes = 0;
+    const walk = (obj, arr) => {
+        const key = arr.join('/');
+        files += (allFiles[key] || []).length;
+        notes += (allNotes[key] || []).length;
+        for (const k in obj) {
+            if (obj[k] && typeof obj[k] === 'object') { folders++; walk(obj[k], [...arr, k]); }
+        }
+    };
+    walk(node, pathArr);
+    return { folders, files, notes, bytes: computeFolderSizeBytes(node, pathArr) };
+}
+
+// The line shown in the delete dialog: "3 folders, 37 files, 12 notes - 128 MB",
+// or a plain "It is empty." when there is nothing to lose.
+function folderContentsLine(pathArr) {
+    const c = summarizeFolderContents(pathArr);
+    const parts = [];
+    if (c.folders) parts.push(c.folders + (c.folders === 1 ? ' folder' : ' folders'));
+    if (c.files) parts.push(c.files + (c.files === 1 ? ' file' : ' files'));
+    if (c.notes) parts.push(c.notes + (c.notes === 1 ? ' note' : ' notes'));
+    if (!parts.length) return { text: 'This folder is empty.', empty: true };
+    return { text: parts.join(', ') + (c.bytes ? ' · ' + formatBytes(c.bytes) : ''), empty: false };
+}
+
 // ============================================================
 // HAPTIC FEEDBACK
 // ============================================================
@@ -578,10 +1142,13 @@ function showToast(msg, isErr = false) {
     toast.classList.add('show');
 
     clearTimeout(toastTimeout);
+    // 3s was long enough to still be sitting there after the next tap --
+    // "Moved to Recycle Bin" in particular outstayed the action it described.
+    // Errors keep the longer time, since those are the ones worth reading.
     toastTimeout = setTimeout(() => {
         toast.classList.remove('show');
         setTimeout(() => toast.classList.add('hidden'), 300);
-    }, 3000);
+    }, isErr ? 3000 : 1600);
 }
 
 // ============================================================
@@ -591,7 +1158,7 @@ function showToast(msg, isErr = false) {
 // icon/subtitle/placeholder are optional -- omitting them renders the
 // original plain title-only header, so any call site that hasn't been
 // given the richer treatment yet looks exactly as it did before.
-function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColor, cancelLabel, callback, inputType = 'text', multiline = false, icon, iconGradient, subtitle, placeholder, inputIcon }) {
+function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColor, cancelLabel, callback, inputType = 'text', multiline = false, icon, iconGradient, subtitle, placeholder, inputIcon, countdown = 0, title, bannerIcon, item }) {
     const isPrompt = type === 'prompt';
     const id = isPrompt ? 'customPrompt' : 'customConfirm';
     const resolvedOkLabel = okLabel || (isPrompt ? 'OK' : 'Delete');
@@ -600,13 +1167,28 @@ function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColo
         : 'linear-gradient(135deg,#ef4444,#dc2626)');
     const resolvedIconGradient = iconGradient || 'linear-gradient(135deg,#8b5cf6,#6366f1)';
 
+    // --- confirm-dialog extras (prompts ignore all of this) ---
+    const dlgTitle = title || resolvedOkLabel;
+    const dlgIcon = bannerIcon || 'fa-triangle-exclamation';
+    // item: { name, meta, icon } -- the file/note the action applies to, shown
+    // as a chip. This app allows same-name files in one folder, so a name
+    // inside a sentence is not enough to tell you what you are about to lose.
+    const chipHtml = item ? `
+                <div class="dlg2-chip">
+                    <div class="dlg2-chip-ic"><i class="fas ${item.icon || 'fa-file'}"></i></div>
+                    <div style="min-width:0">
+                        <div class="dlg2-chip-n">${escapeHtml(item.name || '')}</div>
+                        ${item.meta ? `<div class="dlg2-chip-m">${escapeHtml(item.meta)}</div>` : ''}
+                    </div>
+                </div>` : '';
+
     const existing = document.getElementById(id);
     if (existing) existing.remove();
 
     const overlay = document.createElement('div');
     overlay.id = id;
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
-    overlay.innerHTML = `
+    overlay.innerHTML = isPrompt ? `
         <div style="position:relative;background:var(--card-bg);border:${icon ? '1.5px solid rgba(99,102,241,0.55)' : '1px solid var(--glass-border)'};border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;overflow-x:hidden;box-shadow:${icon ? '0 20px 60px rgba(0,0,0,0.6), 0 0 32px rgba(99,102,241,0.28)' : '0 20px 60px rgba(0,0,0,0.6)'};">
             ${icon ? `<svg viewBox="0 0 360 200" preserveAspectRatio="none" style="position:absolute;left:0;bottom:0;width:100%;height:140px;pointer-events:none;opacity:0.5;">
                 <path d="M0,120 C60,90 100,150 180,110 C260,70 300,130 360,90 L360,200 L0,200 Z" fill="rgba(99,102,241,0.25)"/>
@@ -635,6 +1217,20 @@ function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColo
                 <button id="modalCancel" style="padding:10px 22px;border-radius:40px;border:1px solid var(--glass-border);background:transparent;color:var(--text-primary);cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">${cancelLabel || 'Cancel'}</button>
                 <button id="modalOk" style="padding:10px 22px;border-radius:40px;border:none;background:${resolvedOkColor};color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">${resolvedOkLabel}</button>
             </div>
+        </div>` : `
+        <div class="dlg2">
+            <div class="dlg2-art"></div>
+            <div class="dlg2-badge"><i class="fas ${dlgIcon}"></i></div>
+            <button id="modalCloseX" class="dlg2-x" aria-label="Close">&#10005;</button>
+            <div class="dlg2-head">
+                <div class="dlg2-title">${escapeHtml(dlgTitle)}</div>
+                <div class="dlg2-sub">${message}</div>
+                ${chipHtml}
+            </div>
+            <div class="dlg2-row">
+                <button id="modalCancel" class="dlg2-cancel">${cancelLabel || 'Cancel'}</button>
+                <button id="modalOk" class="dlg2-ok" style="background:${resolvedOkColor}"><i class="fas ${dlgIcon}"></i>${resolvedOkLabel}</button>
+            </div>
         </div>`;
     document.body.appendChild(overlay);
 
@@ -642,10 +1238,34 @@ function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColo
     if (input) { input.focus();
         input.select(); }
 
-    const close = (val) => { overlay.remove();
+    const close = (val) => { if (countdownTimer) clearInterval(countdownTimer);
+        overlay.remove();
         callback(val); };
 
-    overlay.querySelector('#modalOk').onclick = () => close(isPrompt ? input?.value : true);
+    const okBtn = overlay.querySelector('#modalOk');
+    // countdown: the confirm button stays dead for a few seconds and counts
+    // down, so a delete that takes everything inside a department with it
+    // cannot be triggered by a reflex double-tap.
+    let countdownTimer = null;
+    if (countdown > 0) {
+        let left = countdown;
+        const paint = () => {
+            okBtn.textContent = resolvedOkLabel + ' (' + left + ')';
+            okBtn.style.opacity = '0.55';
+            okBtn.style.pointerEvents = 'none';
+        };
+        paint();
+        countdownTimer = setInterval(() => {
+            left--;
+            if (left > 0) { paint(); return; }
+            clearInterval(countdownTimer);
+            countdownTimer = null;
+            okBtn.textContent = resolvedOkLabel;
+            okBtn.style.opacity = '1';
+            okBtn.style.pointerEvents = 'auto';
+        }, 800);
+    }
+    okBtn.onclick = () => close(isPrompt ? input?.value : true);
     overlay.querySelector('#modalCancel').onclick = () => close(isPrompt ? null : false);
     overlay.querySelector('#modalCloseX').onclick = () => close(isPrompt ? null : false);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(isPrompt ? null : false); });
@@ -671,7 +1291,23 @@ function showPasswordPromptModal(message, callback, opts = {}) {
 }
 
 function showConfirmModal(message, callback, opts = {}) {
-    showModal({ type: 'confirm', message, callback, okLabel: opts.okLabel, okColor: opts.okColor, cancelLabel: opts.cancelLabel });
+    showModal({ type: 'confirm', message, callback, okLabel: opts.okLabel, okColor: opts.okColor, cancelLabel: opts.cancelLabel, countdown: opts.countdown || 0, title: opts.title, bannerIcon: opts.bannerIcon, item: opts.item });
+}
+
+// Today's date as the calendar means it -- the one on the wall, in the phone's
+// own timezone.
+//
+// toISOString() is UTC, so east of Greenwich it names yesterday for the first
+// hours after midnight: at 01:24 on 8 October in Asia/Muscat (GMT+4) it still
+// says 2026-10-07. Every 'is this day in the past' test in this file compares
+// against calendar cells built from local y/m/d, so for those four hours the
+// app let a reminder be set for yesterday, and skipped the past-time check on
+// the real today because the two strings never matched. Reported from a phone
+// in Muscat at 1am; it would do the same anywhere with a positive UTC offset.
+function localTodayIso() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
 }
 
 // Date-picker modal for Expiry Date/Reminders -- callback receives an ISO
@@ -680,11 +1316,15 @@ function showConfirmModal(message, callback, opts = {}) {
 // opts.disallowPast rejects a date before today on Save -- used for both a
 // reminder's due date and a document's expiry date, since neither makes
 // sense set in the past.
+// opts.minTomorrow goes one further and refuses today, for expiry dates only.
+// A reminder for later today is an ordinary thing to want; an expiry dated
+// today has no warning left to give, which is the whole point of recording
+// one.
 function showDateModal(message, defaultVal, callback, opts = {}) {
     const existing = document.getElementById('customDateModal');
     if (existing) existing.remove();
 
-    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayIso = localTodayIso();
     const pad2 = (n) => String(n).padStart(2, '0');
     const isoFor = (y, m, d) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
 
@@ -707,7 +1347,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
     const isLight = document.body.classList.contains('light-mode');
     const innerBorder = isLight ? 'rgba(120, 95, 65, 0.55)' : 'rgba(255,255,255,0.4)';
     const c = {
-        cardBg: 'var(--panel-bg)', cardBorder: 'var(--glass-border)',
+        cardBg: 'var(--panel-bg)', cardBorder: 'var(--float-border)',
         closeBg: 'var(--glass-bg)', closeColor: 'var(--text-primary)',
         title: 'var(--text-primary)',
         innerBg: 'var(--glass-bg)',
@@ -728,15 +1368,16 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
     // it doesn't shift the card itself up, so that never actually helped --
     // shrinking the top offset instead does, by giving the whole card (and
     // so its bottom edge) more headroom to sit higher on screen.
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:4vh;padding-bottom:calc(20px + env(safe-area-inset-bottom));overflow-y:auto;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom));overflow:hidden;';
     overlay.innerHTML = `
-        <style>.time-wheel-col{scrollbar-width:none;}.time-wheel-col::-webkit-scrollbar{display:none;}</style>
-        <div style="position:relative;background:${c.cardBg};border:1px solid ${c.cardBorder};border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+        <style>.time-wheel-col,.ampm-col{scrollbar-width:none;}.time-wheel-col::-webkit-scrollbar,.ampm-col::-webkit-scrollbar{display:none;}</style>
+        <div style="position:relative;background:${c.cardBg};border:1px solid ${c.cardBorder};border-radius:20px;padding:20px 20px 18px;width:100%;max-width:360px;display:flex;flex-direction:column;max-height:calc(100vh - 86px);max-height:calc(100dvh - 86px);box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="dateModalCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:${c.closeBg};color:${c.closeColor};font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
-            <p style="color:${c.title};font-size:0.95rem;font-weight:600;margin-bottom:16px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;">${message}</p>
-            <div style="background:${c.innerBg};border-radius:20px;padding:16px 14px 14px;margin-bottom:20px;position:relative;overflow:hidden;">
+            <p style="color:${c.title};font-size:0.95rem;font-weight:600;margin-bottom:8px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.35;">${message}</p>
+            <div id="dateModalScroll" style="flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 -4px;padding:0 4px;">
+            <div style="background:${c.innerBg};border-radius:18px;padding:10px 10px 8px;margin-bottom:12px;position:relative;overflow:hidden;">
                 <div style="position:absolute;top:-46px;left:50%;transform:translateX(-50%);width:150px;height:90px;background:radial-gradient(ellipse at center, rgba(139,92,246,0.55) 0%, transparent 70%);pointer-events:none;"></div>
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;position:relative;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;position:relative;">
                     <button id="calPrevMonth" aria-label="Previous month" style="width:30px;height:30px;border-radius:50%;border:1px solid ${c.navBorder};background:transparent;color:${c.navColor};display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;"><i class="fas fa-chevron-left" style="font-size:0.7rem;"></i></button>
                     <div id="calMonthLabel" style="color:${c.monthLabel};font-weight:700;font-size:1rem;font-family:Inter,sans-serif;"></div>
                     <button id="calNextMonth" aria-label="Next month" style="width:30px;height:30px;border-radius:50%;border:1px solid ${c.navBorder};background:transparent;color:${c.navColor};display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;"><i class="fas fa-chevron-right" style="font-size:0.7rem;"></i></button>
@@ -744,18 +1385,18 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
                 <div id="calWeekdays" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:4px;"></div>
                 <div id="calDays" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;"></div>
             </div>
-            <p id="dateModalSelectedLabel" style="color:${c.selectedLabelMuted};font-size:0.78rem;margin:-12px 0 16px;font-family:Inter,sans-serif;"></p>
+            <p id="dateModalSelectedLabel" style="color:${c.selectedLabelMuted};font-size:0.73rem;margin:-6px 0 10px;font-family:Inter,sans-serif;"></p>
             ${opts.withTime ? `
-            <div style="margin-bottom:20px;">
+            <div style="margin-bottom:14px;">
                 <div style="color:${c.timeLabel};font-size:0.78rem;font-weight:600;margin-bottom:8px;font-family:Inter,sans-serif;">Time</div>
                 <div style="position:relative;background:${c.innerBg};border-radius:16px;padding:4px 10px;display:flex;gap:4px;">
                     <div style="position:absolute;left:8px;right:8px;top:50%;transform:translateY(-50%);height:42px;border-radius:12px;background:rgba(139,92,246,0.16);border-top:1px solid rgba(139,92,246,0.5);border-bottom:1px solid rgba(139,92,246,0.5);pointer-events:none;"></div>
-                    <div id="wheelHour" class="time-wheel-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:63px 0;"></div></div>
-                    <div id="wheelMinute" class="time-wheel-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:63px 0;"></div></div>
-                    <div id="wheelAmPm" class="ampm-col" style="position:relative;flex:1;height:168px;overflow:hidden;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="ampm-inner" style="position:absolute;left:0;right:0;top:63px;transition:top 0.18s ease;"></div></div>
+                    <div id="wheelHour" class="time-wheel-col" style="flex:1;height:116px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:37px 0;"></div></div>
+                    <div id="wheelMinute" class="time-wheel-col" style="flex:1;height:116px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:37px 0;"></div></div>
+                    <div id="wheelAmPm" class="ampm-col" style="flex:1;height:116px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="ampm-inner" style="padding:37px 0;"></div></div>
                 </div>
                 ${opts.withEndTime ? `
-                <button id="toggleEndTime" type="button" style="display:flex;align-items:center;gap:6px;background:none;border:none;color:#a78bfa;font-size:0.78rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;padding:10px 0 0;"><i class="fas fa-plus" style="font-size:0.65rem;"></i> Add end time</button>
+                <button id="toggleEndTime" type="button" style="display:flex;align-items:center;gap:6px;background:none;border:none;color:#a78bfa;font-size:0.78rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;padding:8px 0 0;"><i class="fas fa-plus" style="font-size:0.65rem;"></i> Add end time</button>
                 <div id="endTimeSection" style="display:none;margin-top:14px;">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                         <div style="color:${c.timeLabel};font-size:0.78rem;font-weight:600;font-family:Inter,sans-serif;">End time</div>
@@ -763,19 +1404,45 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
                     </div>
                     <div style="position:relative;background:${c.innerBg};border-radius:16px;padding:4px 10px;display:flex;gap:4px;">
                         <div style="position:absolute;left:8px;right:8px;top:50%;transform:translateY(-50%);height:42px;border-radius:12px;background:rgba(139,92,246,0.16);border-top:1px solid rgba(139,92,246,0.5);border-bottom:1px solid rgba(139,92,246,0.5);pointer-events:none;"></div>
-                        <div id="wheelEndHour" class="time-wheel-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:63px 0;"></div></div>
-                        <div id="wheelEndMinute" class="time-wheel-col" style="flex:1;height:168px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:63px 0;"></div></div>
-                        <div id="wheelEndAmPm" class="ampm-col" style="position:relative;flex:1;height:168px;overflow:hidden;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="ampm-inner" style="position:absolute;left:0;right:0;top:63px;transition:top 0.18s ease;"></div></div>
+                        <div id="wheelEndHour" class="time-wheel-col" style="flex:1;height:116px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:37px 0;"></div></div>
+                        <div id="wheelEndMinute" class="time-wheel-col" style="flex:1;height:116px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="time-wheel-inner" style="padding:37px 0;"></div></div>
+                        <div id="wheelEndAmPm" class="ampm-col" style="flex:1;height:116px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 32%, black 68%, transparent 100%);"><div class="ampm-inner" style="padding:37px 0;"></div></div>
                     </div>
                 </div>` : ''}
             </div>` : ''}
-            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+            ${opts.withRepeat ? `
+            <div style="margin-bottom:14px;">
+                <div style="color:${c.timeLabel};font-size:0.78rem;font-weight:600;margin-bottom:8px;font-family:Inter,sans-serif;">Repeat</div>
+                <div id="repeatChips" style="display:flex;gap:8px;flex-wrap:wrap;">
+                    ${[['none', 'Never'], ['monthly', 'Every month'], ['yearly', 'Every year']].map(([v, l]) =>
+                        `<button type="button" class="date-repeat-chip" data-repeat="${v}" style="padding:8px 15px;border-radius:40px;border:1px solid ${innerBorder};background:transparent;color:${c.cancelColor};font-family:Inter,sans-serif;font-size:0.78rem;cursor:pointer;">${l}</button>`).join('')}
+                </div>
+            </div>` : ''}
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;padding-top:14px;flex-shrink:0;">
                 ${defaultVal ? `<button id="dateModalClear" style="padding:10px 18px;border-radius:40px;border:1px solid rgba(239,68,68,0.4);background:transparent;color:#f87171;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Clear</button>` : ''}
                 <button id="dateModalCancel" style="padding:10px 22px;border-radius:40px;border:1px solid ${c.cancelBorder};background:transparent;color:${c.cancelColor};cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
                 <button id="dateModalOk" style="padding:10px 22px;border-radius:40px;border:none;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">Save</button>
             </div>
         </div>`;
     document.body.appendChild(overlay);
+
+    // Repeat chips. Kept inside the date step rather than added as a third
+    // screen: how often a reminder comes back is part of when it is due, and
+    // a separate step for one three-way choice is a step too many.
+    let repeatMode = opts.defaultRepeat || 'none';
+    if (opts.withRepeat) {
+        const chips = overlay.querySelectorAll('.date-repeat-chip');
+        const paintChips = () => chips.forEach(ch => {
+            const on = ch.dataset.repeat === repeatMode;
+            ch.style.background = on ? 'rgba(139,92,246,0.18)' : 'transparent';
+            ch.style.borderColor = on ? 'rgba(139,92,246,0.75)' : innerBorder;
+            ch.style.color = on ? '#c4b5fd' : c.cancelColor;
+            ch.style.fontWeight = on ? '700' : '400';
+        });
+        chips.forEach(ch => { ch.onclick = () => { repeatMode = ch.dataset.repeat; paintChips(); }; });
+        paintChips();
+    }
 
     const monthLabelEl = overlay.querySelector('#calMonthLabel');
     const weekdaysEl = overlay.querySelector('#calWeekdays');
@@ -820,14 +1487,16 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
             cells.push({ day: d, iso: isoFor(viewYear, viewMonth, d), inMonth: true });
         }
         let nextDay = 1;
-        while (cells.length < 42) {
+        const cellsNeeded = Math.ceil((startOffset + daysInMonth) / 7) * 7;
+        while (cells.length < cellsNeeded) {
             cells.push({ day: nextDay, iso: isoFor(nextYear, nextMonth, nextDay), inMonth: false });
             nextDay++;
         }
 
         daysEl.innerHTML = cells.map(cell => {
             const isSelected = selectedIso === cell.iso;
-            const isPast = opts.disallowPast && cell.iso < todayIso;
+            const isPast = opts.disallowPast
+                && (cell.iso < todayIso || (opts.minTomorrow && cell.iso === todayIso));
             let color = cell.inMonth ? c.dayInMonth : c.dayOutMonth;
             let bg = 'transparent';
             let fontWeight = '500';
@@ -841,7 +1510,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
             } else if (cell.iso === todayIso) {
                 border = '1.5px solid rgba(139,92,246,0.6)';
             }
-            return `<button class="cal-day" data-iso="${cell.iso}" ${isPast ? 'disabled' : ''} style="aspect-ratio:1;border:${border};background:${bg};color:${color};font-size:0.85rem;font-family:Inter,sans-serif;font-weight:${fontWeight};border-radius:50%;cursor:${isPast ? 'default' : 'pointer'};display:flex;align-items:center;justify-content:center;padding:0;">${cell.day}</button>`;
+            return `<button class="cal-day" data-iso="${cell.iso}" ${isPast ? 'disabled' : ''} style="width:32px;height:32px;margin:0 auto;border:${border};background:${bg};color:${color};font-size:0.82rem;font-family:Inter,sans-serif;font-weight:${fontWeight};border-radius:50%;cursor:${isPast ? 'default' : 'pointer'};display:flex;align-items:center;justify-content:center;padding:0;">${cell.day}</button>`;
         }).join('');
 
         daysEl.querySelectorAll('.cal-day:not(:disabled)').forEach(btn => {
@@ -870,6 +1539,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
                 // easy way back to "no date chosen" if a day gets tapped by
                 // accident, without having to cancel the whole reminder.
                 selectedIso = selectedIso === btn.dataset.iso ? null : btn.dataset.iso;
+                if (window.__docmanClampPickerTime) window.__docmanClampPickerTime();
                 if (selectedIso) {
                     const [y, m] = selectedIso.split('-').map(Number);
                     viewYear = y;
@@ -974,41 +1644,129 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
             };
         };
 
-        // AM/PM has only two values, so a wheel is the wrong control: five
-        // repeated copies scroll past and a small flick lands on the wrong
-        // one. Same column look, but the chosen value sits in the centre band
-        // and a tap on the other swaps them. Returns an index into
-        // ampmValues, exactly like setupWheel's reader, and needs no layout
-        // (absolutely positioned), so the end-time copy can be built while
-        // its section is still display:none.
+        // Scrolls like the hour and minute columns. It was tap-only before,
+        // because the looping wheel the others use repeats its values five
+        // times and a small flick on a two-value list lands on the wrong copy.
+        // That reasoning held for a LOOPING wheel; a plain two-item column with
+        // spacers above and below does not loop, so it scrolls cleanly and
+        // still lands on one of the two. Tapping the other one still works.
         const setupAmPm = (colId, initialValue) => {
             const col = overlay.querySelector(colId);
             const inner = col.querySelector('.ampm-inner');
-            let value = initialValue === 'PM' ? 'PM' : 'AM';
-            inner.innerHTML = ampmValues.map(v => `<div class="ampm-item" data-ampm="${v}" style="height:${WHEEL_ITEM_H}px;display:flex;align-items:center;justify-content:center;font-size:1.05rem;font-weight:600;color:${c.wheelDim};cursor:pointer;transition:color 0.15s ease;">${v}</div>`).join('');
+            inner.innerHTML = ampmValues.map(v =>
+                `<div class="ampm-item" data-ampm="${v}" style="height:${WHEEL_ITEM_H}px;display:flex;align-items:center;justify-content:center;scroll-snap-align:center;font-size:1.05rem;font-weight:600;color:${c.wheelDim};cursor:pointer;transition:color 0.15s ease;">${v}</div>`
+            ).join('');
             const items = Array.from(inner.children);
-            const apply = () => {
-                inner.style.top = (value === 'AM' ? 63 : 63 - WHEEL_ITEM_H) + 'px';
-                items.forEach(el => {
-                    const on = el.dataset.ampm === value;
+            const applyCenterStyle = (i) => {
+                items.forEach((el, n) => {
+                    const on = n === i;
                     el.style.color = on ? c.wheelCenter : c.wheelDim;
                     el.style.fontWeight = on ? '700' : '600';
                     el.style.fontSize = on ? '1.15rem' : '1.05rem';
                 });
             };
-            items.forEach(el => el.addEventListener('click', () => {
-                if (el.dataset.ampm === value) return;
-                value = el.dataset.ampm;
-                haptic.toggle();
-                apply();
-            }));
-            apply();
-            return () => Math.max(0, ampmValues.indexOf(value));
+            let idx = initialValue === 'PM' ? 1 : 0;
+            col.scrollTop = idx * WHEEL_ITEM_H;
+            applyCenterStyle(idx);
+
+            let rafPending = false;
+            col.addEventListener('scroll', () => {
+                if (rafPending) return;
+                rafPending = true;
+                requestAnimationFrame(() => {
+                    rafPending = false;
+                    const i = Math.min(items.length - 1, Math.max(0, Math.round(col.scrollTop / WHEEL_ITEM_H)));
+                    if (i !== idx) haptic.toggle(); // same tick the tap used to give
+                    idx = i;
+                    applyCenterStyle(idx);
+                });
+            });
+            items.forEach((el, i) => {
+                el.addEventListener('click', () => col.scrollTo({ top: i * WHEEL_ITEM_H, behavior: 'smooth' }));
+            });
+
+            // Read fresh from scrollTop, like setupWheel, so a Save tapped the
+            // instant a scroll settles cannot read a one-frame-stale value.
+            return () => Math.min(items.length - 1, Math.max(0, Math.round(col.scrollTop / WHEEL_ITEM_H)));
         };
 
         var readHourIdx = setupWheel('#wheelHour', hourValues, v => v, defHour12);
         var readMinuteIdx = setupWheel('#wheelMinute', minuteValues, v => pad2(v), defM);
         var readAmPmIdx = setupAmPm('#wheelAmPm', defAmPm);
+
+        // A time already gone cannot be picked. The calendar has always
+        // disabled past DAYS; this does the same for the hours and minutes on
+        // today, which were still free to land in the morning when it is
+        // already afternoon. Rather than let it settle and complain on Save,
+        // the wheels roll themselves forward to the next free minute, so the
+        // past is simply not somewhere they come to rest.
+        const WHEEL_REPEATS = 5;              // as built in setupWheel
+        const WHEEL_HOME_COPY = Math.floor(WHEEL_REPEATS / 2);
+
+        const scrollWheelToValue = (colId, values, value, behavior = 'smooth') => {
+            const col = overlay.querySelector(colId);
+            if (!col) return;
+            const i = values.indexOf(value);
+            if (i < 0) return;
+            col.scrollTo({ top: (WHEEL_HOME_COPY * values.length + i) * WHEEL_ITEM_H, behavior });
+        };
+
+        const currentPickedMinutes = () => {
+            let h24 = hourValues[readHourIdx()] % 12;
+            if (ampmValues[readAmPmIdx()] === 'PM') h24 += 12;
+            return h24 * 60 + minuteValues[readMinuteIdx()];
+        };
+
+        let clampTimer = null;
+        // A reminder being written now almost always means 'shortly', so the
+        // moment today is the chosen day the wheels go to the next minute
+        // rather than to the 09:00 they default to -- which was a stale
+        // breakfast time to scroll away from every single time. That snap is
+        // the 'force' pass, used when today is picked and nothing is stored.
+        // The plain pass, which scrolling uses, only steps in when the wheels
+        // have come to rest somewhere already gone, so a time chosen by hand
+        // is left exactly where the finger put it.
+        const clampTimeToFuture = (instant = false, force = false) => {
+            const behavior = instant ? 'auto' : 'smooth';
+            if (!opts.disallowPast || selectedIso !== todayIso) return;
+            const now = new Date();
+            const nowMinutes = now.getHours() * 60 + now.getMinutes();
+            if (!force && currentPickedMinutes() > nowMinutes) return;
+            // The next whole minute, never past the end of the day.
+            const target = Math.min(nowMinutes + 1, 23 * 60 + 59);
+            const h24 = Math.floor(target / 60);
+            let h12 = h24 % 12;
+            if (h12 === 0) h12 = 12;
+            scrollWheelToValue('#wheelHour', hourValues, h12, behavior);
+            scrollWheelToValue('#wheelMinute', minuteValues, target % 60, behavior);
+            const col = overlay.querySelector('#wheelAmPm');
+            if (col) col.scrollTo({ top: (h24 >= 12 ? 1 : 0) * WHEEL_ITEM_H, behavior });
+        };
+
+        // Debounced: run once the wheel has come to rest, not on every frame
+        // of the flick, or it would fight the finger mid-scroll.
+        const scheduleClamp = (force = false) => {
+            if (clampTimer) clearTimeout(clampTimer);
+            clampTimer = setTimeout(() => clampTimeToFuture(false, force), 420);
+        };
+        ['#wheelHour', '#wheelMinute', '#wheelAmPm'].forEach((id) => {
+            const col = overlay.querySelector(id);
+            if (col) col.addEventListener('scroll', () => scheduleClamp(false));
+        });
+        // Picking today while the wheels sit on a morning hour has to correct
+        // itself too, not only scrolling does.
+        // Picking a day re-runs this; it forces the snap only when the
+        // reminder has no time of its own to respect.
+        window.__docmanClampPickerTime = () => scheduleClamp(!opts.defaultTime);
+
+        // The wheels could also OPEN on a time already gone. Editing a reminder
+        // due today, or adding one from a date that is already today, starts
+        // the wheels at the stored time (09:00 when nothing is stored), which
+        // is history by lunchtime. The clamp only ever ran once a wheel moved,
+        // so the picker sat on a time Save would then refuse with 'Pick a time
+        // later than now' -- the modal disagreeing with itself. Roll it forward
+        // on open as well, instantly, so the wrong value is never shown.
+        clampTimeToFuture(true, !opts.defaultTime);
 
         // End time -- optional, so its wheels are only actually built (and
         // scrolled into position) the first time the section is revealed.
@@ -1028,8 +1786,17 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
                 if (endTimeBuilt) return;
                 endTimeBuilt = true;
                 let [defEH, defEM] = (opts.defaultEndTime || opts.defaultTime || '10:00').split(':').map(Number);
-                if (!opts.defaultEndTime) { defEM = defM;
-                    defEH = (defH + 1) % 24; } // an hour after start time, as a plain sensible default
+                if (!opts.defaultEndTime) {
+                    // 'An hour after the start time' has to mean the start time
+                    // actually standing on the wheels, not the one the modal
+                    // opened with. Those two part company the moment the start
+                    // clamps forward for today, and the end would otherwise
+                    // open in the morning while the start sits in the evening.
+                    let sh = hourValues[readHourIdx()] % 12;
+                    if (ampmValues[readAmPmIdx()] === 'PM') sh += 12;
+                    defEM = minuteValues[readMinuteIdx()];
+                    defEH = (sh + 1) % 24;
+                }
                 let defEHour12 = defEH % 12;
                 if (defEHour12 === 0) defEHour12 = 12;
                 const defEAmPm = defEH >= 12 ? 'PM' : 'AM';
@@ -1066,8 +1833,26 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
             showToast("Due date can't be in the past", true);
             return;
         }
+        // An expiry is a warning about something still ahead. Dated today it
+        // has nothing left to warn about: the 7-day, 3-day and day-before
+        // alerts are all behind us, and the two on the day itself may have
+        // gone too. The picker already refuses yesterday for the same reason,
+        // so this finishes the thought rather than introducing one.
+        if (opts.minTomorrow && selectedIso === todayIso) {
+            showToast('An expiry date needs to be tomorrow or later', true);
+            return;
+        }
         if (opts.withTime) {
             if (!selectedIso) { close(null); return; }
+            if (opts.disallowPast && selectedIso === todayIso) {
+                const nowM = new Date().getHours() * 60 + new Date().getMinutes();
+                let ch = hourValues[readHourIdx()] % 12;
+                if (ampmValues[readAmPmIdx()] === 'PM') ch += 12;
+                if (ch * 60 + minuteValues[readMinuteIdx()] <= nowM) {
+                    showToast('Pick a time later than now', true);
+                    return;
+                }
+            }
             let h24 = hourValues[readHourIdx()] % 12;
             if (ampmValues[readAmPmIdx()] === 'PM') h24 += 12;
             const time = `${pad2(h24)}:${pad2(minuteValues[readMinuteIdx()])}`;
@@ -1077,7 +1862,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
                 if (ampmValues[readEndAmPmIdx()] === 'PM') eh24 += 12;
                 endTime = `${pad2(eh24)}:${pad2(minuteValues[readEndMinuteIdx()])}`;
             }
-            close({ date: selectedIso, time, endTime });
+            close({ date: selectedIso, time, endTime, repeat: repeatMode });
             return;
         }
         close(selectedIso);
@@ -1116,7 +1901,7 @@ function showFileDetailModal(file, folderPath) {
         : '<span style="color:#64748b;font-size:0.8rem;">No tags</span>';
 
     overlay.innerHTML = `
-        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(96,165,250,0.3);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+        <div style="position:relative;background:#1a1a1a;border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="fileDetailCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:16px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;word-break:break-word;">${escapeHtml(file.name)}</p>
             <div style="font-family:Inter,sans-serif;">
@@ -1165,34 +1950,70 @@ function showFileDetailModal(file, folderPath) {
 // File Detail for the common case of just wanting to (re-)read it.
 // Its own Edit button hands off to the same textarea prompt the
 // long-press menu's "Add Note" uses, so both paths stay in sync.
-function showNoteViewModal(file, folderPath) {
+function showNoteViewModal(file, folderPath, anchorEl) {
     const existing = document.getElementById('customNoteViewModal');
     if (existing) existing.remove();
 
+    // A comment bubble pinned to the row, the way a spreadsheet shows one --
+    // not a dialog in the middle of the screen. It used to be a tall card
+    // starting 12vh down with no transition, which read as a page rather than
+    // a note. Growing out of the icon that was tapped is what makes it feel
+    // attached to the file instead of to the app.
     const overlay = document.createElement('div');
     overlay.id = 'customNoteViewModal';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
+    overlay.className = 'qnote-catcher';
     overlay.innerHTML = `
-        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(56,189,248,0.3);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
-            <button id="noteViewCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
-            <p style="color:#94a3b8;font-size:0.72rem;font-weight:600;margin-bottom:8px;font-family:Inter,sans-serif;text-transform:uppercase;letter-spacing:0.04em;margin-right:26px;">Note · ${escapeHtml(file.name)}</p>
-            <div style="color:#ffffff;font-size:0.9rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;font-family:Inter,sans-serif;margin-bottom:22px;">${escapeHtml(file.note || '')}</div>
-            <div style="display:flex;gap:12px;justify-content:flex-end;">
-                <button id="noteViewEditBtn" style="padding:10px 22px;border-radius:40px;border:none;background:linear-gradient(135deg,#38bdf8,#0284c7);color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">Edit</button>
-                <button id="noteViewDeleteBtn" style="padding:10px 22px;border-radius:40px;border:none;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">Delete</button>
+        <div class="qnote-bubble" role="dialog" aria-label="Quick note">
+            <div class="qnote-arrow"></div>
+            <div class="qnote-name">${escapeHtml(file.name)}</div>
+            <div class="qnote-body">${escapeHtml(file.note || '')}</div>
+            <div class="qnote-actions">
+                <button id="noteViewEditBtn" class="qnote-act"><i class="fas fa-pen"></i>Edit</button>
+                <button id="noteViewDeleteBtn" class="qnote-act qnote-act-danger"><i class="fas fa-trash"></i>Delete</button>
+                <button id="noteViewCloseX" class="qnote-act qnote-act-close">Close</button>
             </div>
         </div>`;
     document.body.appendChild(overlay);
 
-    const close = () => overlay.remove();
+    // Placed after it is in the DOM, so the bubble has a real measured size.
+    // Below the anchor by default; above it when there is no room, and always
+    // clamped inside the screen -- an anchored popup that runs off the edge is
+    // the usual way this goes wrong.
+    const bubble = overlay.querySelector('.qnote-bubble');
+    const arrow = overlay.querySelector('.qnote-arrow');
+    const place = () => {
+        const M = 8;
+        const r = anchorEl && anchorEl.getBoundingClientRect
+            ? anchorEl.getBoundingClientRect()
+            : { left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 3, bottom: innerHeight / 3, width: 0, height: 0 };
+        const bw = bubble.offsetWidth, bh = bubble.offsetHeight;
+        let left = Math.min(Math.max(M, r.right - bw), innerWidth - bw - M);
+        let top = r.bottom + 10;
+        let above = false;
+        if (top + bh > innerHeight - M) {
+            const up = r.top - bh - 10;
+            if (up > M) { top = up; above = true; } else { top = Math.max(M, innerHeight - bh - M); }
+        }
+        bubble.style.left = left + 'px';
+        bubble.style.top = top + 'px';
+        bubble.classList.toggle('qnote-above', above);
+        // the pointer tracks the anchor's centre, clamped to the bubble's ends
+        const cx = r.left + r.width / 2;
+        arrow.style.left = Math.min(Math.max(14, cx - left - 6), bw - 26) + 'px';
+        bubble.style.transformOrigin = (cx - left) + 'px ' + (above ? bh + 'px' : '0px');
+    };
+    place();
+    window.addEventListener('resize', place);
+
+    const close = () => { window.removeEventListener('resize', place); overlay.remove(); };
     overlay.querySelector('#noteViewCloseX').onclick = close;
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     overlay.querySelector('#noteViewEditBtn').onclick = () => {
         close();
-        showTextareaPromptModal(`Note for "${file.name}":`, file.note || '', (val) => {
+        showTextareaPromptModal(`Quick note for "${escapeHtml(file.name)}":`, file.note || '', (val) => {
             if (val === null) return;
             setFileNote(folderPath, file.name, val.trim());
-        }, { icon: 'fa-note-sticky', subtitle: 'Add a quick note for this file', placeholder: 'Write your note...' });
+        }, { icon: 'fa-note-sticky', subtitle: 'A short note kept with this file', placeholder: 'Write your note...' });
     };
     overlay.querySelector('#noteViewDeleteBtn').onclick = () => {
         close();
@@ -1212,7 +2033,7 @@ function showTagViewModal(file, folderPath) {
     overlay.id = 'customTagViewModal';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
     overlay.innerHTML = `
-        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(236,72,153,0.4);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+        <div style="position:relative;background:#1a1a1a;border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="tagViewCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:#94a3b8;font-size:0.72rem;font-weight:600;margin-bottom:8px;font-family:Inter,sans-serif;text-transform:uppercase;letter-spacing:0.04em;margin-right:26px;">Tags · ${escapeHtml(file.name)}</p>
             <div style="color:#ffffff;font-size:0.9rem;line-height:1.5;word-break:break-word;font-family:Inter,sans-serif;margin-bottom:22px;">${escapeHtml((file.tags || []).join(', '))}</div>
@@ -1228,7 +2049,7 @@ function showTagViewModal(file, folderPath) {
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     overlay.querySelector('#tagViewEditBtn').onclick = () => {
         close();
-        showPromptModal(`Tags for "${file.name}" (comma separated):`, (file.tags || []).join(', '), (val) => {
+        showPromptModal(`Tags for "${escapeHtml(file.name)}" (comma separated):`, (file.tags || []).join(', '), (val) => {
             if (val === null) return;
             const tags = val.split(',').map(t => t.trim()).filter(Boolean);
             setFileTags(folderPath, file.name, tags);
@@ -1344,6 +2165,93 @@ let docmanSettings = loadSettings();
 function loadReminders() {
     try { return JSON.parse(localStorage.getItem(REMINDERS_KEY)) || []; } catch (e) { return []; }
 }
+// A reminder keeps nagging until it has been SEEN, not until enough time has
+// passed -- three days of being ignored is usually evidence it was missed,
+// not that it was dealt with. Opening the panel marks what is due as seen;
+// the reminder itself is never deleted, it just stops raising the launch
+// dialog and stops pulsing. Same shape as expiry's expiryAckFor, keyed to the
+// occurrence so editing the date makes it alert again.
+function reminderOccurrenceKey(r) {
+    return r.dueAt ? r.dueAt + 'T' + (r.dueTime || '09:00') : '';
+}
+// Live = standing today, or still standing from an earlier day. Counting only
+// reminders whose exact minute had passed meant one set for 14:00 was invisible
+// at 13:08 -- the app said nothing about a reminder the user had set for that
+// same day, which is the opposite of useful.
+const REMINDER_REPEAT_LABELS = { none: '', monthly: 'Every month', yearly: 'Every year' };
+
+// Move a repeating reminder on to its next occurrence. Steps one month/year
+// at a time rather than jumping once, so a reminder left alone for half a
+// year lands on a date still ahead of now instead of one already gone. The
+// ORIGINAL day of the month is kept as the anchor and only clamped to the
+// month being landed on -- otherwise a reminder set for the 31st would creep
+// down to the 28th permanently after its first February.
+function advanceReminderOccurrence(r) {
+    if (!r || !r.dueAt) return false;
+    if (r.repeat !== 'monthly' && r.repeat !== 'yearly') return false;
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const anchorDay = r.repeatAnchorDay || Number(r.dueAt.slice(8, 10)) || 1;
+    let y = Number(r.dueAt.slice(0, 4));
+    let m = Number(r.dueAt.slice(5, 7)) - 1;
+    const build = () => `${y}-${pad2(m + 1)}-${pad2(Math.min(anchorDay, new Date(y, m + 1, 0).getDate()))}`;
+    const now = new Date();
+    let guard = 0;
+    do {
+        if (r.repeat === 'yearly') y++;
+        else { m++; if (m > 11) { m = 0; y++; } }
+        r.dueAt = build();
+    } while (new Date(r.dueAt + 'T' + (r.dueTime || '09:00') + ':00') <= now && ++guard < 240);
+    r.repeatAnchorDay = anchorDay;
+    r.dueAckFor = null;
+    return true;
+}
+
+// A reminder that has been seen either rolls on to its next occurrence or is
+// simply marked seen. Either way the tray notification goes: read in the app
+// means it has no business still sitting in the status bar.
+function settleSeenReminder(r) {
+    if (advanceReminderOccurrence(r)) {
+        cancelReminderNotification(r.id);
+        scheduleReminderNotification(r);
+    } else {
+        r.dueAckFor = reminderOccurrenceKey(r);
+        cancelReminderNotification(r.id);
+    }
+}
+
+function isReminderLive(r, now) {
+    if (!r.dueAt) return false;
+    const today = new Date(now || new Date()); today.setHours(0, 0, 0, 0);
+    const due = new Date(r.dueAt + 'T00:00:00');
+    return !isNaN(due.getTime()) && due <= today;
+}
+function isReminderLiveUnseen(r, now) {
+    return isReminderLive(r, now) && r.dueAckFor !== reminderOccurrenceKey(r);
+}
+
+function isReminderDue(r, now) {
+    if (!r.dueAt) return false;
+    return new Date(reminderOccurrenceKey(r) + ':00') <= (now || new Date());
+}
+// Called when the panel is opened: everything already due has now been seen.
+// "Already due" means the minute has actually passed -- isReminderLiveUnseen
+// was used here once, and it counts a reminder as live from the start of its
+// day, so opening the panel at 12:05 marked a 12:18 reminder as seen before
+// it had ever alerted. The alert then fired at 12:18 and the app had nothing
+// to show for it: no launch dialog, no bar. Seeing a reminder in a list is
+// not the same as having been told about it.
+function acknowledgeDueReminders() {
+    const now = new Date();
+    let changed = false;
+    for (const r of reminders) {
+        if (isReminderDue(r, now) && r.dueAckFor !== reminderOccurrenceKey(r)) {
+            settleSeenReminder(r);
+            changed = true;
+        }
+    }
+    if (changed) saveReminders();
+}
+
 function saveReminders() {
     localStorage.setItem(REMINDERS_KEY, JSON.stringify(reminders));
 }
@@ -1556,6 +2464,46 @@ function uniqueNameFor(name, existingNames, label = 'restored') {
     return candidate;
 }
 
+// A scheduled alert outlives whatever it was about unless something cancels
+// it. Deleting a file left its expiry alarm armed: it fired days later and
+// opening it landed on a document that was no longer there. These four run on
+// the way into the Recycle Bin and on the way back out, so an alert exists
+// exactly as long as its subject does.
+async function cancelFileAlerts(folderPath, file) {
+    if (file && file.expiryDate) await imgScheduleExpiryNotification(folderPath, file.name, null);
+}
+async function restoreFileAlerts(folderPath, file) {
+    if (!file || !file.expiryDate) return;
+    // A document that was already acknowledged before it was deleted should
+    // not start alerting again just because it came back.
+    await imgScheduleExpiryNotification(folderPath, file.name, file.expiryDate,
+        { acknowledged: isExpiryAcknowledged(file) });
+}
+// An expiry alarm is keyed on folder path + file name, so anything that
+// changes either one leaves the alarm armed against a key no document answers
+// to any more. It still fires, and tapping it lands on a document that is not
+// there -- which is what "the reminder comes for a file I removed" actually
+// was. The old key is cleared and the new one armed, in that order.
+async function reKeyFileAlerts(oldFolderPath, oldName, newFolderPath, file) {
+    if (!file || !file.expiryDate) return;
+    if (oldFolderPath === newFolderPath && oldName === file.name) return;
+    await imgScheduleExpiryNotification(oldFolderPath, oldName, null);
+    await imgScheduleExpiryNotification(newFolderPath, file.name, file.expiryDate,
+        { acknowledged: isExpiryAcknowledged(file) });
+}
+// A note's alerts live on the reminders that point at it. The reminder itself
+// is left alone -- only the alarm goes, so restoring the note brings its
+// reminder back to life instead of needing it re-made.
+function remindersForNote(folderPath, noteId) {
+    return reminders.filter(r => r.noteRef && r.noteRef.noteId === noteId && r.noteRef.folderPath === folderPath);
+}
+async function cancelNoteAlerts(folderPath, noteId) {
+    for (const r of remindersForNote(folderPath, noteId)) await cancelReminderNotification(r.id);
+}
+async function restoreNoteAlerts(folderPath, noteId) {
+    for (const r of remindersForNote(folderPath, noteId)) await scheduleReminderNotification(r);
+}
+
 async function moveFileToRecycleBin(folderPath, fileName) {
     const arr = allFiles[folderPath];
     if (!arr) return;
@@ -1563,6 +2511,7 @@ async function moveFileToRecycleBin(folderPath, fileName) {
     if (idx === -1) return;
     const [entry] = arr.splice(idx, 1);
     if (!arr.length) delete allFiles[folderPath];
+    await cancelFileAlerts(folderPath, entry);
     recycleBin.unshift({ id: genRecycleId(), kind: 'file', name: fileName, folderPath, deletedAt: Date.now(), payload: entry });
     await saveFilesForFolder(folderPath);
     await saveRecycleBin();
@@ -1575,6 +2524,7 @@ async function moveNoteToRecycleBin(folderPath, noteId) {
     if (idx === -1) return;
     const [entry] = arr.splice(idx, 1);
     if (!arr.length) delete allNotes[folderPath];
+    await cancelNoteAlerts(folderPath, noteId);
     recycleBin.unshift({ id: genRecycleId(), kind: 'note', name: entry.title, folderPath, deletedAt: Date.now(), payload: entry });
     await saveNotesForFolder(folderPath);
     await saveRecycleBin();
@@ -1599,6 +2549,14 @@ async function moveFolderToRecycleBin(pathArr) {
     for (const k of Object.keys(folderMeta)) {
         if (k === path || k.startsWith(prefix)) { folderMetaSnapshot[k] = folderMeta[k];
             delete folderMeta[k]; }
+    }
+    // Every document under this folder loses its alarm too, not just the
+    // folder row itself.
+    for (const k of Object.keys(filesSnapshot)) {
+        for (const f of filesSnapshot[k]) await cancelFileAlerts(k, f);
+    }
+    for (const k of Object.keys(notesSnapshot)) {
+        for (const n of notesSnapshot[k]) await cancelNoteAlerts(k, n.id);
     }
 
     const parentPathArr = pathArr.slice(0, -1);
@@ -1642,11 +2600,15 @@ async function restoreRecycleBinItem(id) {
         item.payload.name = uniqueNameFor(item.payload.name, existingNames);
         allFiles[item.folderPath].push(item.payload);
         await saveFilesForFolder(item.folderPath);
+        // Re-armed under whatever name it came back as -- uniqueNameFor may
+        // have changed it, and the alert is keyed on the name.
+        await restoreFileAlerts(item.folderPath, item.payload);
     } else if (item.kind === 'note') {
         ensureFolderPathExists(item.folderPath);
         if (!allNotes[item.folderPath]) allNotes[item.folderPath] = [];
         allNotes[item.folderPath].push(item.payload);
         await saveNotesForFolder(item.folderPath);
+        await restoreNoteAlerts(item.folderPath, item.payload.id);
     } else if (item.kind === 'folder') {
         ensureFolderPathExists(item.folderPath);
         const parent = item.folderPath ? item.folderPath.split('/').reduce((o, p) => o?.[p], fileSystem) : fileSystem;
@@ -1669,14 +2631,38 @@ async function restoreRecycleBinItem(id) {
 
         const renamed = restoredName !== item.name;
         const newFullPath = (item.folderPath ? item.folderPath + '/' : '') + restoredName;
+        const restoredFileKeys = [];
+        const restoredNoteKeys = [];
         for (const k of Object.keys(item.payload.filesSnapshot || {})) {
             const newKey = renamed ? newFullPath + k.slice(item.payload.fullPath.length) : k;
             allFiles[newKey] = item.payload.filesSnapshot[k];
+            restoredFileKeys.push([k, newKey]);
         }
         for (const k of Object.keys(item.payload.notesSnapshot || {})) {
             const newKey = renamed ? newFullPath + k.slice(item.payload.fullPath.length) : k;
             allNotes[newKey] = item.payload.notesSnapshot[k];
+            restoredNoteKeys.push([k, newKey]);
         }
+        // Re-arm what was cancelled when the folder went in. If the folder came
+        // back under a new name, a note's reminder is still pointing at the old
+        // path, so move the pointer before re-scheduling -- otherwise the alert
+        // would be re-armed for a note the reminder can no longer find.
+        for (const [, newKey] of restoredFileKeys) {
+            for (const f of allFiles[newKey] || []) await restoreFileAlerts(newKey, f);
+        }
+        for (const [oldKey, newKey] of restoredNoteKeys) {
+            for (const n of allNotes[newKey] || []) {
+                if (renamed) {
+                    reminders.forEach(r => {
+                        if (r.noteRef && r.noteRef.noteId === n.id && r.noteRef.folderPath === oldKey) {
+                            r.noteRef.folderPath = newKey;
+                        }
+                    });
+                }
+                await restoreNoteAlerts(newKey, n.id);
+            }
+        }
+        if (renamed) saveReminders();
         for (const k of Object.keys(item.payload.folderMetaSnapshot || {})) {
             const newKey = renamed ? newFullPath + k.slice(item.payload.fullPath.length) : k;
             folderMeta[newKey] = item.payload.folderMetaSnapshot[k];
@@ -1736,8 +2722,28 @@ async function permanentlyDeleteRecycleBinItem(id, { silent = false } = {}) {
         }
         await Promise.all(deletions);
     }
-    // Notes carry no separate blob -- their content lives entirely in the
-    // recycle bin entry itself, nothing extra to purge.
+    // A note carries no separate blob -- its content lives in the recycle bin
+    // entry itself. What it does carry is any reminder pointing at it, and the
+    // reminder outlives a permanent delete: the alarm went when the note was
+    // binned, but the row stayed in the Reminders list, for a note that can
+    // never be restored, with an "Open note" button leading nowhere.
+    const goneForGood = [];
+    if (item.kind === 'note') {
+        goneForGood.push([item.folderPath, item.payload.id]);
+    } else if (item.kind === 'folder') {
+        for (const k of Object.keys(item.payload.notesSnapshot || {})) {
+            for (const n of item.payload.notesSnapshot[k]) goneForGood.push([k, n.id]);
+        }
+    }
+    if (goneForGood.length) {
+        for (const [fp, nid] of goneForGood) {
+            for (const r of remindersForNote(fp, nid)) await cancelReminderNotification(r.id);
+        }
+        const before = reminders.length;
+        reminders = reminders.filter(r => !r.noteRef || !goneForGood.some(
+            ([fp, nid]) => r.noteRef.noteId === nid && r.noteRef.folderPath === fp));
+        if (reminders.length !== before) saveReminders();
+    }
 
     recycleBin.splice(idx, 1);
     await saveRecycleBin();
@@ -1784,11 +2790,13 @@ function serializeFileEntry(folderPath, f, blobStore) {
             name: f.name,
             type: f.type,
             uploadedAt: f.uploadedAt || Date.now(),
+            modifiedAt: f.modifiedAt || 0,
             favourite: f.favourite || false,
             locked: f.locked || false,
             size: f.size || 0,
             fsPath: f.fsPath,
             expiryDate: f.expiryDate || null,
+            expiryAckFor: f.expiryAckFor || null,
             note: f.note || '',
             tags: f.tags || []
         };
@@ -1800,10 +2808,12 @@ function serializeFileEntry(folderPath, f, blobStore) {
             name: f.name,
             type: f.type,
             uploadedAt: f.uploadedAt || Date.now(),
+            modifiedAt: f.modifiedAt || 0,
             favourite: f.favourite || false,
             locked: f.locked || false,
             size: f.fileData.size || 0,
             expiryDate: f.expiryDate || null,
+            expiryAckFor: f.expiryAckFor || null,
             note: f.note || '',
             tags: f.tags || []
         };
@@ -1814,10 +2824,12 @@ function serializeFileEntry(folderPath, f, blobStore) {
             type: f.type,
             dataUrl: f.dataUrl,
             uploadedAt: f.uploadedAt || Date.now(),
+            modifiedAt: f.modifiedAt || 0,
             favourite: f.favourite || false,
             locked: f.locked || false,
             size: f.size || 0,
             expiryDate: f.expiryDate || null,
+            expiryAckFor: f.expiryAckFor || null,
             note: f.note || '',
             tags: f.tags || []
         };
@@ -1826,10 +2838,12 @@ function serializeFileEntry(folderPath, f, blobStore) {
         name: f.name,
         type: f.type,
         uploadedAt: f.uploadedAt || Date.now(),
+        modifiedAt: f.modifiedAt || 0,
         favourite: f.favourite || false,
         locked: f.locked || false,
         size: f.size || 0,
         expiryDate: f.expiryDate || null,
+            expiryAckFor: f.expiryAckFor || null,
         note: f.note || '',
         tags: f.tags || []
     };
@@ -2101,6 +3115,9 @@ async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
 // IndexedDB blob cache if there's no fsPath or the native write fails.
 async function replaceFileContent(folderPath, fileName, newBlob) {
     const meta = allFiles[folderPath]?.find(f => f.name === fileName);
+    // New content under the same name: part of the thumbnail cache key, so
+    // the old thumbnail isn't shown even if the size happens to match.
+    if (meta) meta.modifiedAt = Date.now();
     if (meta?.fsPath) {
         const fsPath = await writeFileToFS(folderPath, fileName, newBlob);
         if (fsPath) {
@@ -2216,31 +3233,96 @@ function imgNotificationIdFor(folderPath, fileName, offset) {
 }
 
 // ============================================================
-// EXPIRY ALERTS (approved 2026-09-16)
-// 7 days before and 3 days before at 09:00, then the expiry day itself
-// every 30 minutes from 07:00 -- stopping at 21:00 so it never nags at
-// night, and stopping immediately once the document is acknowledged --
-// then one reminder a day while it stays overdue, for a week.
+// EXPIRY ALERTS (approved 2026-09-16, cadence revised 2026-10-11)
+// 7 days, 3 days and 1 day before at 09:00; the expiry day itself in the
+// morning and again late afternoon; then one a day while it stays overdue,
+// for a week. Every one of them stops the moment the document is
+// acknowledged.
+//
+// The expiry day used to repeat every 30 minutes from 07:00 to 21:00. Those
+// alerts did not stack -- measured on the device, one in the shade at a time,
+// the group replacing the one before it -- but each repeat is scheduled under
+// its own id, so each one arrives as a fresh banner with sound and vibration.
+// Twenty-nine interruptions in a day, for one document, and nothing to show
+// for the twenty-seven after the second: if the morning alert and an
+// afternoon one are both ignored, a thirteenth will not be the one that
+// works. It also cost 38 of the alarm slots Android allows an app, so a
+// library with more than a dozen dated documents quietly ran out and later
+// documents got no alerts at all.
 //
 // Every alert is a scheduled Android notification, so it arrives with the
 // app closed. Ids come from path + name + slot, so they are stable: a
 // reschedule cancels exactly what it replaces, with nothing orphaned.
 // ============================================================
 const EXPIRY_ALERT_HOUR = 9;        // the 7-day, 3-day and overdue alerts
-const EXPIRY_DAY_START_HOUR = 7;    // the expiry day's own repeats
-const EXPIRY_DAY_END_HOUR = 21;
-const EXPIRY_REPEAT_MINUTES = 30;
+
+// The expiry day's own alerts: every 30 minutes from 07:00 to 21:00.
+//
+// This was cut to [9, 17] after the user reported being interrupted all day.
+// That read the complaint wrong. What they objected to was the tray filling
+// with dozens of copies of the SAME document -- the repeats themselves are
+// wanted, and a document expiring today should keep asking until it is
+// answered. The stacking is handled in the plugin patch
+// (patches/@capacitor+local-notifications+6.1.3.patch): every repeat shares one
+// group, the id posted for a group is remembered, and the previous one is
+// cancelled as the next arrives. One banner, refreshed every half hour.
+//
+// Nothing at night: 21:00 is the last, 07:00 the first.
+const EXPIRY_DAY_SLOTS = (() => {
+    const slots = [];
+    for (let h = 7; h <= 21; h++) {
+        slots.push({ hour: h, minute: 0 });
+        if (h < 21) slots.push({ hour: h, minute: 30 });
+    }
+    return slots;                   // 29 of them, which is why the legacy
+})();                               // cancel range below is 29 wide
+
+// Those 29 slots are only armed for a document whose day is actually close.
+// Android caps how many alarms an app may keep pending, and arming the dense
+// day for every dated document is what once exhausted it -- past about a dozen
+// documents the rest quietly got nothing at all. The 7-day, 3-day, tomorrow and
+// overdue alerts are single and always armed; they are what brings the person
+// back into the app, and every launch re-runs the scheduler, which is where a
+// document that has come close picks its dense slots up.
+const EXPIRY_DENSE_WITHIN_DAYS = 3;
+// Ids 1000..1028 were handed out by the old every-30-minutes schedule. A phone
+// upgrading from an earlier build already has them armed, and a cancel list
+// covering only the ids now in use would leave the rest firing every half hour
+// with nothing left able to reach them. So the cancel list keeps covering the
+// old range, permanently.
+const EXPIRY_LEGACY_DAY_SLOTS = 29;
 const EXPIRY_OVERDUE_DAYS = 7;
 const EXPIRY_ACTION_TYPE = 'EXPIRY_DUE';
+// Kept only so an alert scheduled by an older build, which still carries this
+// type id, is recognised on tap; nothing new is scheduled with it.
+const REMINDER_ACTION_TYPE = 'REMINDER_DUE';
+// A reminder used to fire ONCE and that was it -- miss the notification and
+// nothing else ever came. Expiry already repeats every 30 minutes on the day
+// until acknowledged; this gives reminders the same treatment, but over a
+// short window rather than all day. Android caps how many notifications an
+// app can have pending, which is part of why expiry stopped booking 38 slots
+// per document.
+const REMINDER_REPEAT_MINUTES = 30;
+const REMINDER_REPEAT_HOURS = 3;
+// DOCMAN never defined a channel, so every alert inherited whatever the
+// default one happened to be -- sound and vibration were the OS's choice, not
+// the app's. This one asks for both explicitly, at high importance so it
+// arrives as a heads-up. The user can still override it in system settings,
+// which is as it should be.
+const ALERT_CHANNEL_ID = 'docman-alerts-v2';
+const ALERT_CHANNEL_ID_OLD = 'docman-alerts';
 
-function expiryRepeatCount() {
-    return ((EXPIRY_DAY_END_HOUR - EXPIRY_DAY_START_HOUR) * 60) / EXPIRY_REPEAT_MINUTES + 1;
+// How many of the day's slots to clear. Not how many are scheduled -- see
+// EXPIRY_LEGACY_DAY_SLOTS for why this is the larger of the two.
+function expiryDaySlotsToCancel() {
+    return Math.max(EXPIRY_DAY_SLOTS.length, EXPIRY_LEGACY_DAY_SLOTS);
 }
 
 // Every id a document can own, so a reschedule can clear the whole set.
 function expiryNotificationIds(folderPath, fileName) {
-    const ids = [imgNotificationIdFor(folderPath, fileName, 7), imgNotificationIdFor(folderPath, fileName, 3)];
-    for (let i = 0; i < expiryRepeatCount(); i++) ids.push(imgNotificationIdFor(folderPath, fileName, 1000 + i));
+    const ids = [imgNotificationIdFor(folderPath, fileName, 7), imgNotificationIdFor(folderPath, fileName, 3),
+        imgNotificationIdFor(folderPath, fileName, 1)];
+    for (let i = 0; i < expiryDaySlotsToCancel(); i++) ids.push(imgNotificationIdFor(folderPath, fileName, 1000 + i));
     for (let d = 1; d <= EXPIRY_OVERDUE_DAYS; d++) ids.push(imgNotificationIdFor(folderPath, fileName, 2000 + d));
     return ids;
 }
@@ -2262,6 +3344,27 @@ function todayIsoDate() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Documents, not yet answered with "Got it", that share this expiry date.
+function expiryDocsOnDate(dateStr) {
+    let n = 0;
+    for (const folderPath in allFiles) {
+        for (const file of allFiles[folderPath] || []) {
+            if (file.expiryDate === dateStr && !isExpiryAcknowledged(file)) n++;
+        }
+    }
+    return n;
+}
+
+// A document's wording depends on how many others share its date, so adding,
+// moving, renewing, deleting or acknowledging one changes the text on the rest.
+// Rather than chase every date a change touches, re-arm them all shortly after:
+// the scheduler is the same one that already runs at every launch.
+let expiryRefreshTimer = null;
+function queueExpiryAlertRefresh() {
+    clearTimeout(expiryRefreshTimer);
+    expiryRefreshTimer = setTimeout(() => { rescheduleAllExpiryNotifications(); }, 1500);
+}
+
 async function imgScheduleExpiryNotification(folderPath, fileName, dateStr, opts) {
     const plugin = window.Capacitor?.Plugins?.LocalNotifications;
     if (!plugin) return; // plugin not installed -- in-app reminders still work
@@ -2270,33 +3373,67 @@ async function imgScheduleExpiryNotification(folderPath, fileName, dateStr, opts
         await plugin.cancel({ notifications: expiryNotificationIds(folderPath, fileName).map(id => ({ id })) });
     } catch (e) { /* nothing scheduled yet -- fine */ }
 
+    // Other documents on the same date word their alert by how many there are,
+    // so a change here has to reach them too -- see queueExpiryAlertRefresh.
+    if (!(opts && opts.noRefresh)) queueExpiryAlertRefresh();
     if (!dateStr || (opts && opts.acknowledged)) return;
 
     const now = new Date();
-    const extra = { kind: 'expiry', folderPath, fileName, expiryDate: dateStr };
+    // How many documents share this expiry date. Their alerts fire together, so
+    // they are ONE banner that says so ("3 documents expire today") instead of
+    // three identical ones nobody can tell apart. Names stay off the lock screen.
+    const sharing = expiryDocsOnDate(dateStr);
+    const many = sharing > 1;
+    const extra = { kind: 'expiry', folderPath, fileName, expiryDate: dateStr, count: sharing };
     const notifications = [];
-    const add = (id, title, body, at, withActions) => {
+    // Every alert for this document carries the same group. Each repeat has to
+    // be scheduled under its own id -- two alarms cannot share one -- so the
+    // group is what ties them together once they fire, and the publisher uses
+    // it to drop the previous one instead of stacking another copy.
+    // One group per expiry date and kind of alert, shared by every document on
+    // that date: the plugin keeps a single banner per group, and the repeats of
+    // one slot after another still replace each other.
+    const add = (id, kind, title, body, titleMany, bodyMany, at, withActions) => {
         if (at <= now) return; // a slot already in the past is simply skipped
-        const n = { id, title, body, schedule: { at, allowWhileIdle: true }, autoCancel: true, extra };
-        if (withActions) n.actionTypeId = EXPIRY_ACTION_TYPE;
+        const n = { id, title: many ? titleMany : title, body: many ? bodyMany : body,
+            schedule: { at, allowWhileIdle: true }, autoCancel: true, extra,
+            channelId: ALERT_CHANNEL_ID, visibility: 1, group: `docman-expiry-${dateStr}-${kind}` };
+        // "Got it" and "Renew" name one document; on a banner for several they
+        // would silently pick one. Tapping opens the list instead.
+        if (withActions && !many) n.actionTypeId = EXPIRY_ACTION_TYPE;
         notifications.push(n);
     };
 
     const dayAtAlertHour = expiryAtHour(dateStr, EXPIRY_ALERT_HOUR);
-    add(imgNotificationIdFor(folderPath, fileName, 7), 'Document expiring soon',
-        `${fileName} expires in 7 days`, new Date(dayAtAlertHour.getTime() - 7 * 86400000));
-    add(imgNotificationIdFor(folderPath, fileName, 3), 'Document expiring soon',
-        `${fileName} expires in 3 days`, new Date(dayAtAlertHour.getTime() - 3 * 86400000));
+    add(imgNotificationIdFor(folderPath, fileName, 7), 'd7', 'Document expiring soon',
+        'A document expires in 7 days. Open DOCMAN to see which.', 'Documents expiring soon',
+        `${sharing} documents expire in 7 days. Open DOCMAN to see which.`, new Date(dayAtAlertHour.getTime() - 7 * 86400000));
+    add(imgNotificationIdFor(folderPath, fileName, 3), 'd3', 'Document expiring soon',
+        'A document expires in 3 days. Open DOCMAN to see which.', 'Documents expiring soon',
+        `${sharing} documents expire in 3 days. Open DOCMAN to see which.`, new Date(dayAtAlertHour.getTime() - 3 * 86400000));
+    // Nothing used to be said between "in 3 days" and "today", which are the
+    // last two days anything can still be renewed in time.
+    add(imgNotificationIdFor(folderPath, fileName, 1), 'd1', 'Document expiring tomorrow',
+        'A document expires tomorrow. Open DOCMAN to see which.', 'Documents expiring tomorrow',
+        `${sharing} documents expire tomorrow. Open DOCMAN to see which.`, new Date(dayAtAlertHour.getTime() - 86400000));
 
-    for (let i = 0; i < expiryRepeatCount(); i++) {
-        const minutes = EXPIRY_DAY_START_HOUR * 60 + i * EXPIRY_REPEAT_MINUTES;
-        add(imgNotificationIdFor(folderPath, fileName, 1000 + i), 'Document expires today',
-            `${fileName} expires today`, expiryAtHour(dateStr, Math.floor(minutes / 60), minutes % 60), true);
+    // Armed only once the day is close -- see EXPIRY_DENSE_WITHIN_DAYS. The
+    // ids stay 1000+i whatever the gap, so a reschedule clears the same set.
+    const daysOut = Math.ceil((expiryAtHour(dateStr, 0).getTime() - now.getTime()) / 86400000);
+    if (daysOut <= EXPIRY_DENSE_WITHIN_DAYS) {
+        EXPIRY_DAY_SLOTS.forEach((slot, i) => {
+            add(imgNotificationIdFor(folderPath, fileName, 1000 + i), 'today', 'Document expires today',
+                'A document expires today. Open DOCMAN to see which.', 'Documents expire today',
+                `${sharing} documents expire today. Open DOCMAN to see which.`,
+                expiryAtHour(dateStr, slot.hour, slot.minute), true);
+        });
     }
 
     for (let d = 1; d <= EXPIRY_OVERDUE_DAYS; d++) {
-        add(imgNotificationIdFor(folderPath, fileName, 2000 + d), 'Document expired',
-            `${fileName} expired ${d} day${d > 1 ? 's' : ''} ago`, new Date(dayAtAlertHour.getTime() + d * 86400000), true);
+        add(imgNotificationIdFor(folderPath, fileName, 2000 + d), 'over' + d, 'Document expired',
+            `A document expired ${d} day${d > 1 ? 's' : ''} ago. Open DOCMAN to see which.`, 'Documents expired',
+            `${sharing} documents expired ${d} day${d > 1 ? 's' : ''} ago. Open DOCMAN to see which.`,
+            new Date(dayAtAlertHour.getTime() + d * 86400000), true);
     }
 
     if (!notifications.length) return;
@@ -2319,8 +3456,45 @@ async function rescheduleAllExpiryNotifications() {
         for (const file of allFiles[folderPath] || []) {
             if (!file.expiryDate) continue;
             await imgScheduleExpiryNotification(folderPath, file.name, file.expiryDate,
-                { acknowledged: isExpiryAcknowledged(file) });
+                { acknowledged: isExpiryAcknowledged(file), noRefresh: true });
         }
+    }
+    await sweepOrphanedExpiryAlarms();
+}
+
+// Every alarm carries the folder and name it was armed for. Any that no longer
+// names a document in the library is an orphan: it will still fire, and
+// tapping it lands on a document that is not there.
+//
+// Keying alerts on folder + name meant a rename, a move or a renamed folder
+// left the old key armed, and those paths have since been fixed -- but a phone
+// that ran the earlier code already has orphans scheduled, and a build that
+// only stops making new ones would leave them firing for up to a week each,
+// with nothing left in the app able to reach them. Cancelling by id needs the
+// id, and the id came from a name nothing remembers any more; reading them
+// back out of the pending list is the only way to find them again.
+//
+// Deliberately cautious: only alarms this app recognises as expiry alarms, and
+// only when the library has genuinely loaded. An empty allFiles during a failed
+// load would otherwise look exactly like "every document is gone" and cancel
+// every alert the person has.
+async function sweepOrphanedExpiryAlarms() {
+    const plugin = window.Capacitor?.Plugins?.LocalNotifications;
+    if (!plugin) return;
+    if (!Object.keys(allFiles).length) return;
+    try {
+        const pending = (await plugin.getPending())?.notifications || [];
+        const orphans = pending.filter(n => {
+            const e = n.extra;
+            if (!e || e.kind !== 'expiry' || !e.fileName) return false;
+            const inFolder = allFiles[e.folderPath] || [];
+            return !inFolder.some(f => f.name === e.fileName && f.expiryDate);
+        });
+        if (!orphans.length) return;
+        await plugin.cancel({ notifications: orphans.map(n => ({ id: n.id })) });
+        console.log('Cleared ' + orphans.length + ' expiry alert(s) for documents no longer in the library');
+    } catch (e) {
+        console.warn('Could not sweep orphaned expiry alerts:', e);
     }
 }
 
@@ -2336,16 +3510,29 @@ async function acknowledgeExpiry(folderPath, fileName) {
 
 function renewExpiryDate(folderPath, fileName) {
     const file = (allFiles[folderPath] || []).find(f => f.name === fileName);
-    showDateModal(`New expiry date for "${fileName}":`, (file && file.expiryDate) || '', (val) => {
+    showDateModal(`New expiry date for "${escapeHtml(fileName)}":`, (file && file.expiryDate) || '', (val) => {
         if (val === null) return;
         setFileExpiryDate(folderPath, fileName, val);
-    }, { disallowPast: true });
+    }, { disallowPast: true, minTomorrow: true });
 }
 
 // Tapping the notification, or one of its two buttons, while the app runs.
 async function registerExpiryNotificationActions() {
     const plugin = window.Capacitor?.Plugins?.LocalNotifications;
     if (!plugin || !isNativePlatform()) return;
+    try {
+        await plugin.createChannel({
+            id: ALERT_CHANNEL_ID,
+            name: 'Expiry and reminder alerts',
+            description: 'Document expiry dates and reminders you have set',
+            importance: 5,
+            visibility: 1,
+            sound: 'default',
+            vibration: true,
+            lights: true,
+        });
+        try { await plugin.deleteChannel({ id: ALERT_CHANNEL_ID_OLD }); } catch (e) { /* never existed on this device */ }
+    } catch (e) { /* channels are Android-only; iOS and older builds ignore this */ }
     try {
         await plugin.registerActionTypes({
             types: [{
@@ -2355,17 +3542,218 @@ async function registerExpiryNotificationActions() {
                     { id: 'expiry-renew', title: 'Renew date' }
                 ]
             }]
+            // A reminder alert carries no buttons. It had a "Got it" that was
+            // meant to clear it without opening anything, but Android brings
+            // the app to the front for an action button whatever the handler
+            // does -- so the app opened and showed nothing at all, which reads
+            // as the button having failed. With no button there is one way to
+            // answer the alert, and it ends on the reminder itself.
         });
     } catch (e) { /* older plugin build -- the notification itself still works */ }
-    plugin.addListener('localNotificationActionPerformed', async (event) => {
-        const extra = event && event.notification && event.notification.extra;
-        if (!extra || extra.kind !== 'expiry') return;
-        if (event.actionId === 'expiry-ack') { await acknowledgeExpiry(extra.folderPath, extra.fileName); return; }
-        if (event.actionId === 'expiry-renew') { renewExpiryDate(extra.folderPath, extra.fileName); return; }
-        const file = (allFiles[extra.folderPath] || []).find(f => f.name === extra.fileName);
-        if (file) showExpiryTodayModal([{ folderPath: extra.folderPath, file }]);
+    attachNotificationTapListener();
+}
+
+// Tapping a notification delivers its event within a beat of the WebView
+// loading -- long before the file metadata comes back from IndexedDB, and
+// previously before this listener even existed, so the tap was dropped and the
+// app just opened on the home screen with nothing to show for it. The listener
+// is now attached as early as the plugin exists; an event that arrives before
+// the data is ready waits in the queue below and is handled once it is.
+let notificationTapListenerAttached = false;
+let notificationDataReady = false;
+let pendingNotificationActions = [];
+// Set the moment a tap arrives, before anything is done about it. Opening the
+// app by tapping a notification is an answer to that alert, and the launch
+// dialog is a second alert about the same kind of thing -- tapping a reminder
+// put its sticky note on screen and then, 1.2s later, the expiry dialog landed
+// on top of it (reported 2026-10-13 with a screenshot of both at once).
+// The notification has already done the telling, and the tap already chose
+// where to go.
+let launchedFromNotification = false;
+
+function attachNotificationTapListener() {
+    const plugin = window.Capacitor?.Plugins?.LocalNotifications;
+    if (!plugin || !isNativePlatform() || notificationTapListenerAttached) return;
+    notificationTapListenerAttached = true;
+    plugin.addListener('localNotificationActionPerformed', (event) => {
+        launchedFromNotification = true;
+        // The dialog can already be up if the tap reaches us late; it is about
+        // to be answered by the notification's own destination, so take it off.
+        const openConfirm = document.getElementById('customConfirm');
+        if (openConfirm) openConfirm.remove();
+        if (!notificationDataReady) { pendingNotificationActions.push(event); return; }
+        handleNotificationAction(event);
     });
 }
+
+// Called once the documents are loaded: anything the user tapped on the way in
+// is handled now, in the order it arrived.
+function flushPendingNotificationActions() {
+    notificationDataReady = true;
+    const queued = pendingNotificationActions;
+    pendingNotificationActions = [];
+    queued.forEach(handleNotificationAction);
+}
+
+async function handleNotificationAction(event) {
+        const extra = event && event.notification && event.notification.extra;
+        if (!extra) return;
+        if (extra.kind === 'reminder') {
+            // Acknowledging from the notification is the same as having seen
+            // it in the panel, and it clears the repeats still queued behind.
+            const r = reminders.find(x => x.id === extra.reminderId);
+            if (r) { r.dueAckFor = reminderOccurrenceKey(r); saveReminders(); }
+            await cancelReminderNotification(extra.reminderId);
+            // However the alert was answered, it ends on the reminder itself.
+            // There are no buttons on it any more, so there is no path through
+            // here that opens the app and then shows nothing.
+            if (r) openReminderStickyNote(r.id);
+            else showToast('That reminder has been deleted', true);
+            return;
+        }
+        if (extra.kind !== 'expiry') return;
+        if (event.actionId === 'expiry-ack') { await acknowledgeExpiry(extra.folderPath, extra.fileName); return; }
+        if (event.actionId === 'expiry-renew') { renewExpiryDate(extra.folderPath, extra.fileName); return; }
+        // A banner that spoke for several documents opens the whole set.
+        if (extra.count > 1 && extra.expiryDate) {
+            const set = [];
+            for (const fp in allFiles) {
+                for (const f of allFiles[fp] || []) {
+                    if (f.expiryDate === extra.expiryDate && !isExpiryAcknowledged(f)) set.push({ folderPath: fp, file: f });
+                }
+            }
+            if (set.length) { showExpiryTodayModal(set); return; }
+        }
+        const file = (allFiles[extra.folderPath] || []).find(f => f.name === extra.fileName);
+        if (file) { showExpiryTodayModal([{ folderPath: extra.folderPath, file }]); return; }
+        // Renamed, moved or deleted since the alert was scheduled. Saying so
+        // beats opening the app and showing nothing at all.
+        showToast(`"${extra.fileName}" is no longer in that folder`, true);
+}
+
+// Tapping a reminder notification lands on the Reminders page with the
+// reminder popped up as a sticky note over its own row -- the same paper
+// bubble a file's quick note uses (showNoteViewModal above), not a dialog in
+// the middle of the screen. Once the note is closed the row keeps a steady
+// amber banner, so what was due stays marked without anything blinking.
+let reminderBannerId = null;
+
+function reminderRowEl(id) {
+    const safe = (window.CSS && CSS.escape) ? CSS.escape(id) : id;
+    return document.querySelector('.reminder-row[data-id="' + safe + '"]');
+}
+
+function openReminderStickyNote(reminderId) {
+    const r = reminders.find(x => x.id === reminderId);
+    if (!r) { showToast('That reminder has been deleted', true); return; }
+    // The day list under the calendar only holds the selected day, so the
+    // calendar has to be moved onto the reminder's own date first -- otherwise
+    // there is no row for the note to sit on.
+    if (r.dueAt) {
+        const [y, m] = r.dueAt.split('-').map(Number);
+        if (y && m) { remindersCalYear = y; remindersCalMonth = m - 1; remindersCalSelectedIso = r.dueAt; }
+    }
+    reminderBannerId = r.id;
+    // noAck: opening the panel this way must NOT mark the reminder seen. Only
+    // the note's own X does that, so a back press out of the note leaves the
+    // bar on the main screen rather than quietly swallowing the alert.
+    showExpiringDocumentsPanel('reminders', { noAck: true });
+    // The panel is rebuilt on every open, so the row only exists a frame
+    // later -- hence the wait before looking for it.
+    setTimeout(() => {
+        const row = reminderRowEl(r.id);
+        if (!row) { showToast(r.title || 'Reminder', false); return; }
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        // Placed after the smooth scroll settles, against where the row ends
+        // up rather than where it started.
+        setTimeout(() => showReminderStickyNote(r, row), 380);
+    }, 320);
+}
+
+// The note itself. It only reads out what is due: edit and delete both stay
+// on the row behind it (a long press edits, the row's own trash deletes), so
+// nothing on the note can lose a reminder by a mis-tap.
+function showReminderStickyNote(reminder, anchorEl) {
+    const existing = document.getElementById('reminderStickyNote');
+    if (existing) existing.remove();
+
+    // Putting the note on screen IS the reminder being seen. It was once the
+    // X alone that counted, so backing out of the note put the bar straight
+    // back on the main screen -- being shown the same reminder again,
+    // moments after reading it, on the page you went back to. Nothing after
+    // this point needs to mark it: the notification goes from the status bar
+    // and the bar goes from the main screen, however the note is closed.
+    settleSeenReminder(reminder);
+    saveReminders();
+
+    const when = reminder.dueAt ? formatReminderDue(reminder.dueAt, reminder.dueTime, reminder.endTime) : '';
+    const overlay = document.createElement('div');
+    overlay.id = 'reminderStickyNote';
+    overlay.className = 'rnote-catcher';
+    overlay.innerHTML = `
+        <div class="rnote-sticky" role="dialog" aria-label="Reminder">
+            <div class="rnote-arrow"></div>
+            <div class="rnote-main">
+                <div class="rnote-label"><i class="fas fa-bell"></i>Reminder</div>
+                <div class="rnote-title">${escapeHtml(reminder.title || 'Untitled reminder')}</div>
+                ${when ? `<div class="rnote-when">${escapeHtml(when)}</div>` : ''}
+                ${reminder.place ? `<div class="rnote-place"><i class="fas fa-location-dot"></i>${escapeHtml(reminder.place)}</div>` : ''}
+                ${reminder.noteRef ? `<button type="button" class="rnote-open-note"><i class="fas fa-note-sticky"></i>Open note</button>` : ''}
+            </div>
+            <div class="rnote-side">
+                <button class="rnote-side-btn rnote-close" aria-label="Close">&#10005;</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    // Same placement rules as the quick-note bubble: below the row by
+    // default, flipped above when there is no room, always clamped inside the
+    // screen, and growing out of the row's own centre.
+    const sticky = overlay.querySelector('.rnote-sticky');
+    const arrow = overlay.querySelector('.rnote-arrow');
+    const place = () => {
+        const M = 8;
+        const r = anchorEl && anchorEl.getBoundingClientRect
+            ? anchorEl.getBoundingClientRect()
+            : { left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 3, bottom: innerHeight / 3, width: 0, height: 0 };
+        const bw = sticky.offsetWidth, bh = sticky.offsetHeight;
+        // innerHeight runs to the bottom of the SCREEN, not the bottom of what
+        // can be used: this WebView draws edge-to-edge, so the navigation bar
+        // sits inside it. Measured against innerHeight the note "fitted" below
+        // a bottom row and was drawn across the back and home keys (reported
+        // 2026-10-13 with a screenshot). Against the real bottom it does not
+        // fit, and flips above the row where it belongs. Same pair the row
+        // menu uses; see the comment there.
+        const cs = getComputedStyle(document.documentElement);
+        const navBottom = Math.max(
+            parseFloat(cs.getPropertyValue('--safe-bottom')) || 0,
+            parseFloat(cs.getPropertyValue('--nav-bottom')) || 0);
+        const usableBottom = innerHeight - navBottom;
+        let left = Math.min(Math.max(M, r.left + r.width / 2 - bw / 2), innerWidth - bw - M);
+        let top = r.bottom + 10;
+        let above = false;
+        if (top + bh > usableBottom - M) {
+            const up = r.top - bh - 10;
+            if (up > M) { top = up; above = true; } else { top = Math.max(M, usableBottom - bh - M); }
+        }
+        sticky.style.left = left + 'px';
+        sticky.style.top = top + 'px';
+        sticky.classList.toggle('rnote-above', above);
+        // the pointer tracks the row's centre, clamped to the note's ends
+        const cx = r.left + r.width / 2;
+        arrow.style.left = Math.min(Math.max(14, cx - left - 6), bw - 26) + 'px';
+        sticky.style.transformOrigin = (cx - left) + 'px ' + (above ? bh + 'px' : '0px');
+    };
+    place();
+    window.addEventListener('resize', place);
+
+    const close = () => { window.removeEventListener('resize', place); overlay.remove(); };
+    overlay.querySelector('.rnote-close').onclick = () => { haptic.toggle(); close(); };
+    const openNoteBtn = overlay.querySelector('.rnote-open-note');
+    if (openNoteBtn) openNoteBtn.onclick = () => { haptic.press(); openNoteFromReminder(reminder.noteRef); };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+}
+
 
 // The same two choices as the notification, for someone who opens the app
 // instead of tapping it: renew the date, or stop the reminders.
@@ -2381,8 +3769,28 @@ function showExpiryTodayModal(items, onDone) {
     overlay.innerHTML = `
         <div class="expiry-modal" role="dialog" aria-modal="true" aria-label="Expires today">
             <div class="expiry-modal-icon"><i class="fas fa-circle-exclamation"></i></div>
-            <h3>${items.length > 1 ? `${items.length} documents expire today` : 'Expires today'}</h3>
-            <p>${items.length > 1 ? 'These reach their expiry date today.' : 'This document reaches its expiry date today.'}</p>
+            ${(() => {
+                // The set can now be a mix of today's and older ones, so the
+                // wording has to follow what is actually in it rather than
+                // always saying "today".
+                const todayIso = todayIsoDate();
+                const past = items.filter(i => i.file.expiryDate < todayIso).length;
+                const onDay = items.length - past;
+                let h, sub;
+                if (items.length > 1) {
+                    h = past && onDay ? `${items.length} documents need attention`
+                      : past ? `${items.length} documents have expired`
+                      : `${items.length} documents expire today`;
+                    sub = past && onDay ? 'Some have expired, some reach their date today.'
+                        : past ? 'These passed their expiry date.'
+                        : 'These reach their expiry date today.';
+                } else {
+                    h = past ? 'Document expired' : 'Expires today';
+                    sub = past ? 'This document passed its expiry date.'
+                        : 'This document reaches its expiry date today.';
+                }
+                return `<h3>${h}</h3><p>${sub}</p>`;
+            })()}
             ${shown.map(({ folderPath, file }) => `
                 <div class="expiry-modal-file">
                     <i class="fas ${getFileIcon(file.name)}"></i>
@@ -2400,7 +3808,7 @@ function showExpiryTodayModal(items, onDone) {
     overlay.querySelector('.expiry-modal-renew').addEventListener('click', () => {
         haptic.press();
         close();
-        if (items.length > 1) openDashboardView();
+        if (items.length > 1) openDashboardView(true);
         else renewExpiryDate(items[0].folderPath, items[0].file.name);
     });
     overlay.querySelector('.expiry-modal-ack').addEventListener('click', async () => {
@@ -2415,11 +3823,24 @@ function showExpiryTodayModal(items, onDone) {
 }
 
 function checkExpiryTodayOnLoad(onDone) {
+    // Same reason as checkLaunchAlertsOnLoad: a launch that came from tapping
+    // a notification has already had its alert, and the tap already said where
+    // to go. Nothing is lost -- an expiry that was not acknowledged is still on
+    // the home screen's own banner and in the Expiring panel, and this modal
+    // runs again on the next ordinary launch. Tapping an EXPIRY notification
+    // opens this same modal from handleNotificationAction anyway.
+    if (launchedFromNotification) { if (onDone) onDone(); return; }
     const today = todayIsoDate();
     const items = [];
     for (const folderPath in allFiles) {
         for (const file of allFiles[folderPath] || []) {
-            if (file.expiryDate === today && !isExpiryAcknowledged(file)) items.push({ folderPath, file });
+            // Today OR already past. An overdue document had no way to be
+            // dismissed before: this modal only ran on the exact expiry day,
+            // and the summary popup that reported it afterwards has no
+            // acknowledge button, so it reappeared at every launch forever.
+            if (file.expiryDate && file.expiryDate <= today && !isExpiryAcknowledged(file)) {
+                items.push({ folderPath, file });
+            }
         }
     }
     if (!items.length) { if (onDone) onDone(); return; }
@@ -2441,20 +3862,6 @@ async function refreshAlertPermissionRow() {
     else sub.textContent = 'Alarms & reminders is off — tap to allow';
 }
 
-async function fixAlertPermissions() {
-    const notif = window.Capacitor?.Plugins?.LocalNotifications;
-    const exact = window.Capacitor?.Plugins?.ExactAlarm;
-    if (!notif || !isNativePlatform()) { showToast('Available in the app on your phone', true); return; }
-    try {
-        const perm = await notif.checkPermissions();
-        if (perm.display !== 'granted') await notif.requestPermissions();
-    } catch (e) { /* the row's own text reports the result */ }
-    try {
-        if (exact && !(await exact.canScheduleExact()).granted) await exact.openSettings();
-    } catch (e) { /* nothing more we can do from here */ }
-    await rescheduleAllExpiryNotifications();
-    refreshAlertPermissionRow();
-}
 // ============================================================
 // RATE DOCMAN (approved 2026-09-16)
 // Google Play's own in-app review card, asked for right after a document
@@ -2527,11 +3934,23 @@ async function maybeAskForReview() {
 // Reminders/To-Do -- same LocalNotifications plugin and permission flow
 // as the expiry reminders above, just one notification per reminder
 // instead of a 3-day-before/on-day pair, fired at 9am on the due date.
-function reminderNotificationIdFor(reminderId) {
+function reminderNotificationIdFor(reminderId, salt = 0) {
     let hash = 0;
-    const s = `reminder/${reminderId}`;
+    const s = `reminder/${reminderId}/${salt}`;
     for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
     return hash % 2000000000;
+}
+
+function reminderRepeatCount() {
+    return (REMINDER_REPEAT_HOURS * 60) / REMINDER_REPEAT_MINUTES + 1;
+}
+
+// Every id one reminder can own, so a reschedule or a delete clears the whole
+// set rather than leaving orphaned repeats to fire later.
+function reminderNotificationIds(reminderId) {
+    const ids = [];
+    for (let i = 0; i < reminderRepeatCount(); i++) ids.push(reminderNotificationIdFor(reminderId, i));
+    return ids;
 }
 
 // Android 12+ needs a separate "Alarms & reminders" toggle before an exact
@@ -2578,9 +3997,8 @@ async function scheduleReminderNotification(reminder) {
     const plugin = window.Capacitor?.Plugins?.LocalNotifications;
     if (!plugin) return; // plugin not installed -- in-app reminder list still works
 
-    const id = reminderNotificationIdFor(reminder.id);
     try {
-        await plugin.cancel({ notifications: [{ id }] });
+        await plugin.cancel({ notifications: reminderNotificationIds(reminder.id).map(id => ({ id })) });
     } catch (e) { /* nothing scheduled yet -- fine */ }
 
     if (!reminder.dueAt) return;
@@ -2607,25 +4025,65 @@ async function scheduleReminderNotification(reminder) {
         if (!exactOk) {
             showToast('Reminder saved, but it may arrive late until "Alarms & reminders" is turned on', true);
         }
-        await plugin.schedule({ notifications: [{
-            id,
-            title: 'Reminder',
-            body: reminder.title,
-            schedule: { at, allowWhileIdle: true },
-            autoCancel: true, // dismiss it once tapped -- it's done its job
-        }] });
+        // Repeats every REMINDER_REPEAT_MINUTES for REMINDER_REPEAT_HOURS after
+        // it falls due, each carrying a "Got it" button that stops the rest.
+        // One notification was easy to miss with nothing to follow it.
+        const now = new Date();
+        const notifications = [];
+        for (let i = 0; i < reminderRepeatCount(); i++) {
+            const at_i = new Date(at.getTime() + i * REMINDER_REPEAT_MINUTES * 60000);
+            if (at_i <= now) continue; // a slot already past is simply skipped
+            notifications.push({
+                id: reminderNotificationIdFor(reminder.id, i),
+                title: i === 0 ? 'Reminder' : 'Reminder still due',
+                body: 'You have a reminder due. Open DOCMAN to see it.',
+                schedule: { at: at_i, allowWhileIdle: true },
+                channelId: ALERT_CHANNEL_ID,
+                visibility: 1, // PUBLIC -- readable on the lock screen
+                extra: { kind: 'reminder', reminderId: reminder.id },
+                // Same grouping as the expiry alerts: every repeat of this one
+                // reminder lands in the same tray slot instead of stacking.
+                group: `docman-reminder-${reminderNotificationIdFor(reminder.id, 0)}`,
+                autoCancel: true,
+            });
+        }
+        if (!notifications.length) return;
+        await plugin.schedule({ notifications });
     } catch (e) {
         console.warn('Could not schedule reminder notification:', e);
         showToast('Could not schedule the reminder notification', true);
     }
 }
 
+// Takes this reminder's alert out of the status bar WITHOUT touching anything
+// still queued, so a repeating reminder keeps its future alarms.
+//
+// cancel() only ever drops notifications that have not fired yet. One that has
+// already arrived lives in a separate 'delivered' list, and nothing here was
+// clearing it -- so the app could show the alert and mark it read while the
+// phone still carried the same alert in the shade, waiting to be swiped away.
+//
+// Matched against the plugin's own delivered list rather than rebuilt from the
+// ids, because Android identifies a posted notification by tag as well as id,
+// and handing its objects straight back keeps whatever tag it used.
+async function removeReminderFromTray(reminderId) {
+    const plugin = window.Capacitor?.Plugins?.LocalNotifications;
+    if (!plugin || !isNativePlatform()) return;
+    try {
+        const ids = reminderNotificationIds(reminderId);
+        const delivered = await plugin.getDeliveredNotifications();
+        const mine = (delivered && delivered.notifications || []).filter(n => ids.includes(n.id));
+        if (mine.length) await plugin.removeDeliveredNotifications({ notifications: mine });
+    } catch (e) { /* nothing delivered -- fine */ }
+}
+
 async function cancelReminderNotification(reminderId) {
     const plugin = window.Capacitor?.Plugins?.LocalNotifications;
     if (!plugin) return;
     try {
-        await plugin.cancel({ notifications: [{ id: reminderNotificationIdFor(reminderId) }] });
+        await plugin.cancel({ notifications: reminderNotificationIds(reminderId).map(id => ({ id })) });
     } catch (e) { /* nothing scheduled -- fine */ }
+    await removeReminderFromTray(reminderId);
 }
 
 // "Today" / "Tomorrow" / "3d overdue" / "in 5d" / "Sep 12" -- mirrors
@@ -2656,8 +4114,8 @@ function formatTimeOfDay(timeStr) {
     return new Date(2000, 0, 1, h, m).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
-function addReminderFlow(presetDateIso) {
-    showPromptModal('Reminder title:', '', (title) => {
+function addReminderFlow(presetDateIso, noteRef, presetTitle) {
+    showPromptModal('Reminder title:', presetTitle || '', (title) => {
         if (title === null || title === undefined || !title.trim()) return;
         showDateModal('Due date & time:', presetDateIso || '', async (result) => {
             // undefined = the user hit Cancel/X/tapped outside the date step
@@ -2671,14 +4129,21 @@ function addReminderFlow(presetDateIso) {
                 dueAt: result.date,
                 dueTime: result.time,
                 endTime: result.endTime || null,
+                repeat: result.repeat || 'none',
+                repeatAnchorDay: Number(result.date.slice(8, 10)) || 1,
+                noteRef: noteRef || null,
                 place: null,
                 createdAt: Date.now()
             };
             reminders.unshift(reminder);
             saveReminders();
             await scheduleReminderNotification(reminder);
-            showExpiringDocumentsPanel('reminders');
-        }, { disallowPast: true, withTime: true, withEndTime: true, requireDate: true });
+            // Set from a note: the note is what the user is looking at, so
+            // redraw that (the bell appears straight away) instead of
+            // throwing the reminders panel over the top of it.
+            if (noteRef) { render(); showToast('⏰ Reminder set'); return; }
+            showExpiringDocumentsPanel('reminders', { rerender: true });
+        }, { disallowPast: true, withTime: true, withEndTime: true, requireDate: true, withRepeat: true });
     }, { icon: 'fa-bell', subtitle: 'What would you like to be reminded about?', placeholder: 'Reminder title' });
 }
 
@@ -2698,101 +4163,162 @@ function editReminderFlow(reminderId) {
                 reminder.dueAt = result ? result.date : null;
                 reminder.dueTime = result ? result.time : null;
                 reminder.endTime = result ? (result.endTime || null) : null;
+                reminder.repeat = result ? (result.repeat || 'none') : 'none';
+                reminder.repeatAnchorDay = result ? (Number(result.date.slice(8, 10)) || 1) : null;
             }
             saveReminders();
             await scheduleReminderNotification(reminder);
-            showExpiringDocumentsPanel('reminders');
-        }, { disallowPast: true, withTime: true, withEndTime: true, defaultTime: reminder.dueTime || '09:00', defaultEndTime: reminder.endTime || null });
+            showExpiringDocumentsPanel('reminders', { rerender: true });
+        }, { disallowPast: true, withTime: true, withEndTime: true, defaultTime: reminder.dueTime || '09:00', defaultEndTime: reminder.endTime || null, withRepeat: true, defaultRepeat: reminder.repeat || 'none' });
     }, { icon: 'fa-bell', subtitle: 'Update the reminder title', placeholder: 'Reminder title' });
+}
+
+// Tear a row off the list, the way a day comes off a desk calendar: it hinges
+// on its top edge, lifts, and goes over. Resolves when the animation ends, or
+// after a hard cap, so a row that never fires animationend -- a hidden tab, a
+// WebView that drops the event -- can never leave the caller waiting. The
+// caller has already saved the change before this runs, so the worst case is
+// that the redraw happens without the flourish.
+function tearAwayRow(row) {
+    const still = document.body.classList.contains('reduce-motion')
+        || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!row || still) return Promise.resolve();
+    return new Promise((resolve) => {
+        let done = false;
+        const finish = () => { if (!done) { done = true; resolve(); } };
+        row.addEventListener('animationend', finish, { once: true });
+        setTimeout(finish, 600);
+        row.classList.add('tear-away');
+    });
+}
+
+// A reminder made from a note carries the note's folder and id, so the
+// reminder can take you back to what it is about instead of leaving you to
+// find it. The note may have been deleted or moved since -- say so rather
+// than opening an empty editor.
+// Does any reminder point at this note? Used only to draw the little bell on
+// the card, so a miss costs nothing more than a missing indicator.
+function noteHasReminder(folderPath, noteId) {
+    return reminders.some(r => r.noteRef && r.noteRef.noteId === noteId && r.noteRef.folderPath === folderPath);
+}
+
+// Take the reminder off a note. The reminder list is the only record of the
+// link, so dropping the reminder is all there is to it -- the bell on the
+// card is derived from this list and goes on the next draw.
+function removeNoteReminder(folderPath, noteId) {
+    const linked = reminders.filter(r => r.noteRef && r.noteRef.noteId === noteId && r.noteRef.folderPath === folderPath);
+    if (!linked.length) return;
+    showConfirmModal('Remove the reminder on this note?', (confirmed) => {
+        if (!confirmed) return;
+        linked.forEach(r => cancelReminderNotification(r.id));
+        const gone = new Set(linked.map(r => r.id));
+        reminders = reminders.filter(r => !gone.has(r.id));
+        saveReminders();
+        render();
+        showToast('Reminder removed');
+    });
+}
+
+async function openNoteFromReminder(ref) {
+    if (!ref || !ref.noteId) return;
+    const list = allNotes[ref.folderPath] || [];
+    const note = list.find(n => n.id === ref.noteId);
+    if (!note) { showToast('That note no longer exists', true); return; }
+    document.getElementById('expiringDocsOverlay')?.remove();
+    document.getElementById('reminderStickyNote')?.remove();
+    currentPath = ref.folderPath ? ref.folderPath.split('/') : [];
+    setActiveTab('notes');
+    await openNote({ ...note, folder: ref.folderPath });
 }
 
 function deleteReminder(reminderId) {
     showConfirmModal('Delete this reminder?', async (confirmed) => {
         if (!confirmed) return;
+        // Save first, animate second: the record is gone from storage before
+        // anything on screen moves, so an interrupted animation cannot leave a
+        // deleted reminder behind.
         reminders = reminders.filter(x => x.id !== reminderId);
         saveReminders();
         await cancelReminderNotification(reminderId);
-        showExpiringDocumentsPanel('reminders');
+        const row = document.querySelector('.reminder-row[data-id="' + (window.CSS && CSS.escape ? CSS.escape(reminderId) : reminderId) + '"]');
+        await tearAwayRow(row);
+        showExpiringDocumentsPanel('reminders', { rerender: true });
     });
 }
 
 // Shown once per app session (see DOMContentLoaded) if any documents are
-// expiring soon/overdue and/or any reminders are already due. Both used to
-// be separate popups chained one after the other, so with one of each the
-// user had to dismiss the first before the second even appeared -- now
-// it's a single popup listing both lines. The reminder check exists because
-// the system notification only fires while the OS actually runs the
-// scheduled alarm (which battery-optimized/killed apps can delay), so this
-// is a second, in-app way to notice a reminder is due just by opening DOCMAN.
-function checkExpiringDocumentsOnLoad() {
-    const expiring = getAllExpiringFiles(EXPIRY_SOON_DAYS);
+// expiring soon or overdue, or any reminder is due. onDone (optional) fires
+// right after this modal is dismissed, or immediately if there was nothing to
+// show, so the expiry-today modal can still run before it -- only one of them
+// can use the shared confirm-modal DOM id at a time.
+// Expiry and due reminders are raised in ONE dialog. They used to be two,
+// chained so the second opened as the first closed, which meant being asked
+// the same question twice on a single launch. Same red/black confirm modal as
+// before -- only the two have been folded into one line.
+function checkLaunchAlertsOnLoad(onDone) {
+    // See launchedFromNotification: this launch already carried its own alert.
+    if (launchedFromNotification) { if (onDone) onDone(); return; }
+    // Only documents still ahead of their date. Today's and overdue ones are
+    // handled by the modal above, which can actually acknowledge them --
+    // counting them here too would put both on screen, one after the other,
+    // which is the double popup this dialog exists to avoid.
+    const expiring = getAllExpiringFiles(EXPIRY_SOON_DAYS).filter(e => e.days > 0);
+    const overdueCount = 0;
+    const soonCount = expiring.length;
+
+    // A due reminder is raised in this same dialog, exactly as an expiring
+    // document is. This dialog is the whole of it: a bar on the home screen
+    // was tried for a day and taken out again -- having read the reminder
+    // through the notification, being shown it a second time on the page you
+    // land on is nagging, not helping.
     const now = new Date();
-    const due = reminders.filter(r => r.dueAt && new Date(r.dueAt + 'T' + (r.dueTime || '09:00') + ':00') <= now);
-    if (!expiring.length && !due.length) return;
+    const due = reminders.filter(r => isReminderLiveUnseen(r, now));
 
-    const lines = [];
-    if (expiring.length) {
-        const overdueCount = expiring.filter(e => e.status === 'overdue').length;
-        const soonCount = expiring.length - overdueCount;
-        if (overdueCount && soonCount) lines.push(`⚠️ ${overdueCount} expired, ${soonCount} expiring soon`);
-        else if (overdueCount) lines.push(`⚠️ ${overdueCount} document${overdueCount > 1 ? 's' : ''} expired`);
-        else lines.push(`${soonCount} document${soonCount > 1 ? 's' : ''} expiring soon`);
+    if (!expiring.length && !due.length) { if (onDone) onDone(); return; }
+
+    // Only what is actually there gets a mention, so a launch with just
+    // reminders reads exactly as it did before.
+    const parts = [];
+    if (overdueCount && soonCount) parts.push(`⚠️ ${overdueCount} expired, ${soonCount} expiring soon`);
+    else if (overdueCount) parts.push(`⚠️ ${overdueCount} document${overdueCount > 1 ? 's' : ''} expired`);
+    else if (soonCount) parts.push(`${soonCount} document${soonCount > 1 ? 's' : ''} expiring soon`);
+    if (due.length) {
+        // "due" once the time has passed, "today" while it is still ahead of
+        // you -- both worth saying, and saying the wrong one is worse than
+        // saying nothing.
+        const anyPast = due.some(r => isReminderDue(r, now));
+        const word = anyPast ? 'due' : 'today';
+        parts.push(`⏰ ${due.length} reminder${due.length > 1 ? 's' : ''} ${word}`);
     }
-    if (due.length) lines.push(`⏰ ${due.length} reminder${due.length > 1 ? 's' : ''} due`);
 
-    // Only documents -> dashboard, as before. Only reminders -> Reminders
-    // tab. Both -> the Expiring panel, whose Reminders tab is one tap away.
-    const onView = !due.length ? () => openDashboardView()
-        : !expiring.length ? () => showExpiringDocumentsPanel('reminders')
-        : () => showExpiringDocumentsPanel('expiring');
-    const okColor = due.length
-        ? 'linear-gradient(135deg,#f97316,#ec4899)'
-        : 'linear-gradient(135deg,#f59e0b,#d97706)';
-    showLaunchAlertModal(lines, onView, okColor);
-}
+    // Saying it on this screen is saying it. Whatever is named in this box has
+    // now been read, so its alert comes out of the status bar -- only the tray
+    // copy, not the schedule, because the reminder itself is still unseen until
+    // it is actually opened and a repeat must keep its later alarms.
+    due.forEach(r => { removeReminderFromTray(r.id); });
 
-// The launch alert's own look: dark card, red swoosh down the left edge,
-// red warning badge, one line per alert. Reuses the generic confirm
-// modal's ids (#customConfirm/#modalCancel/#modalOk/#modalCloseX) so the
-// Android back button and the review-prompt busy check treat it exactly
-// like any other confirm modal.
-function showLaunchAlertModal(lines, onView, okColor) {
-    const existing = document.getElementById('customConfirm');
-    if (existing) existing.remove();
-
-    const overlay = document.createElement('div');
-    overlay.id = 'customConfirm';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:20px;';
-    overlay.innerHTML = `
-        <div role="alertdialog" aria-modal="true" aria-label="Attention" style="position:relative;overflow:hidden;width:100%;max-width:400px;background:linear-gradient(180deg,#1b2030,#11141f);border:1px solid rgba(255,255,255,0.28);border-radius:28px;padding:22px 20px 18px;box-shadow:0 20px 60px rgba(0,0,0,0.6);font-family:Inter,sans-serif;">
-            <svg viewBox="0 0 120 200" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:120px;height:100%;pointer-events:none;">
-                <path d="M0,0 L70,0 C110,40 110,90 70,130 C45,155 20,170 0,200 Z" fill="rgba(239,68,68,0.28)"/>
-                <path d="M0,0 L45,0 C85,50 80,110 40,150 C25,165 10,180 0,200 Z" fill="rgba(220,38,38,0.32)"/>
-            </svg>
-            <button id="modalCloseX" aria-label="Close" style="position:absolute;top:16px;right:16px;width:36px;height:36px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e5e7eb;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:1;">✕</button>
-            <div style="position:relative;display:flex;align-items:center;gap:16px;margin-right:40px;margin-bottom:22px;">
-                <div style="width:72px;height:72px;flex-shrink:0;border-radius:50%;background:rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:center;">
-                    <div style="width:58px;height:58px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f87171,#dc2626 60%,#b91c1c);box-shadow:0 6px 18px rgba(220,38,38,0.55);display:flex;align-items:center;justify-content:center;">
-                        <i class="fas fa-triangle-exclamation" style="color:#fff;font-size:1.5rem;"></i>
-                    </div>
-                </div>
-                <div style="min-width:0;">
-                    <div style="color:#fff;font-size:1.15rem;font-weight:800;line-height:1.3;margin-bottom:4px;">Attention</div>
-                    ${lines.map(l => `<div style="color:#aab4c8;font-size:0.95rem;line-height:1.45;">${l}</div>`).join('')}
-                </div>
-            </div>
-            <div style="position:relative;display:flex;gap:12px;">
-                <button id="modalCancel" style="flex:1;padding:14px 0;border-radius:18px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.06);color:#fff;font-weight:700;font-size:0.95rem;font-family:Inter,sans-serif;cursor:pointer;">Cancel</button>
-                <button id="modalOk" style="flex:1.4;padding:14px 0;border-radius:18px;border:none;background:${okColor};color:#fff;font-weight:700;font-size:0.95rem;font-family:Inter,sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;"><i class="fas fa-triangle-exclamation"></i> View</button>
-            </div>
-        </div>`;
-    document.body.appendChild(overlay);
-
-    const close = (view) => { overlay.remove(); if (view) onView(); };
-    overlay.querySelector('#modalOk').onclick = () => { haptic.press(); close(true); };
-    overlay.querySelector('#modalCancel').onclick = () => close(false);
-    overlay.querySelector('#modalCloseX').onclick = () => close(false);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
+    // The documents themselves, as the small pictures they have on their cards.
+    const stripItems = expiring.slice(0, 4).map(e =>
+        '<div class="dc-strip-item" data-dc-folder="' + escapeHtml(e.folderPath) + '" data-dc-file="' + escapeHtml(e.file.name) + '">' +
+        docPictureHtml(e.file) + '<div class="dc-strip-days dc-' + docExpiryTone(e.days) + '">' + (e.days === 0 ? 'Today' : e.days + 'd') + '</div></div>'
+    ).join('');
+    const strip = stripItems ? '<div class="dc-strip">' + stripItems + '</div>' : '';
+    const lines = parts.map(t =>
+        `<span style="display:block;color:#eef2f9;font-size:0.92rem;font-weight:700;line-height:1.5;">${t}</span>`
+    ).join('') + strip;
+    showConfirmModal(lines, (view) => {
+        if (view) {
+            // A reminder wins the destination, and goes all the way to the
+            // note on its own row rather than only to the list -- the same
+            // place the notification and the bar both land.
+            if (due.length) openReminderStickyNote(due[0].id);
+            else openDashboardView(true);
+        }
+        if (onDone) onDone();
+    }, { title: 'Needs your attention', okLabel: 'View',
+         okColor: 'linear-gradient(135deg,#fbab2c 0%,#f78a14 46%,#ef7009 100%)' });
+    const popup = document.getElementById('customConfirm');
+    if (popup) wireDocPictures(popup);
 }
 
 
@@ -2819,6 +4345,7 @@ async function loadAllFileMetadata() {
                 name: f.name,
                 type: f.type,
                 uploadedAt: f.uploadedAt || Date.now(),
+                modifiedAt: f.modifiedAt || 0,
                 favourite: f.favourite || false,
                 locked: f.locked || false,
                 size: size,
@@ -2826,6 +4353,7 @@ async function loadAllFileMetadata() {
                 fileData: f.fileData instanceof Blob ? f.fileData : null,
                 dataUrl: f.dataUrl || null,
                 expiryDate: f.expiryDate || null,
+            expiryAckFor: f.expiryAckFor || null,
                 note: f.note || '',
                 tags: f.tags || [],
                 _hasData: !!(f.fsPath || f.fileData instanceof Blob || f.dataUrl),
@@ -3010,6 +4538,10 @@ function isValidFolderName(name) {
     const trimmed = name.trim();
     if (trimmed.length > 100) return false;
     if (/^\.+$/.test(trimmed)) return false; // '.', '..', '...' etc -- not a meaningful name
+    // Numbers-only names ('11', '2024') are refused: JavaScript always lists
+    // integer-like object keys first, so such a folder jumped to the top of
+    // manual order (above Personal) and couldn't be moved. 'Tax 2024' is fine.
+    if (/^\d+$/.test(trimmed)) return false;
     // Allowlist, not a blocklist: English letters, digits, spaces, and a
     // small set of basic punctuation. An allowlist is safer here -- with
     // the earlier blocklist approach a single escaping slip let backslash
@@ -3021,6 +4553,40 @@ function isValidFolderName(name) {
 // Writes a blob to native storage. Returns the fsPath on success, or null
 // if unavailable/failed — callers should fall back to the IndexedDB blob
 // store when this returns null.
+// Paths of the files the native picker copied into our cache, by file name.
+// Refreshed per batch in handleFiles().
+let pickedNativePaths = {};
+async function refreshPickedNativePaths() {
+    pickedNativePaths = {};
+    const PdfNative = window.Capacitor?.Plugins?.PdfNative;
+    if (!PdfNative || !PdfNative.getPickedPaths) return;
+    try {
+        const r = await PdfNative.getPickedPaths();
+        if (r && r.json) pickedNativePaths = JSON.parse(r.json) || {};
+    } catch (e) { /* the slow path still works */ }
+}
+
+// Returns the written path, or null to mean "use the normal write".
+async function copyPickedFileToFS(folderPath, fileName, file) {
+    const from = pickedNativePaths[file.name];
+    if (!from) return null;
+    const PdfNative = window.Capacitor?.Plugins?.PdfNative;
+    if (!PdfNative || !PdfNative.copyPickedFile) return null;
+    const path = fsPathFor(folderPath, fileName);
+    try {
+        const res = await PdfNative.copyPickedFile({ from, to: path });
+        // Same rule as writeFileToFS: never trust a write that has not been
+        // read back at the right size.
+        if (!res || Number(res.size) !== file.size) return null;
+        const verifyBlob = await readBlobFromFS(path);
+        if (!(verifyBlob instanceof Blob) || verifyBlob.size !== file.size) return null;
+        return path;
+    } catch (e) {
+        console.warn('Native picked-file copy failed, using the chunked write:', e);
+        return null;
+    }
+}
+
 async function writeFileToFS(folderPath, fileName, blob) {
     const Filesystem = getFilesystemPlugin();
     if (!Filesystem) return null;
@@ -3042,6 +4608,9 @@ async function writeFileToFS(folderPath, fileName, blob) {
             await Filesystem.writeFile({ path, data: base64, directory: 'DATA', recursive: true, append: !first });
             first = false;
             offset += CHUNK_BYTES;
+            // This loop is the slow part of a large import and used to run
+            // behind a card that said nothing at all.
+            reportSaveProgress(Math.min(offset, blob.size), blob.size);
         }
         if (blob.size === 0) {
             await Filesystem.writeFile({ path, data: '', directory: 'DATA', recursive: true });
@@ -3138,6 +4707,7 @@ async function migrateFilesToNativeStorage() {
                     size: blob.size,
                     fsPath,
                     expiryDate: f.expiryDate || null,
+            expiryAckFor: f.expiryAckFor || null,
                     note: f.note || '',
                     tags: f.tags || []
                 };
@@ -3290,27 +4860,55 @@ function getSearchSuggestions(query, limit = 8) {
     return out;
 }
 
+// The suggestion list lives inside .top-panel, which clips its children
+// (overflow:hidden gives the panel its rounded edge). With the keyboard up
+// the panel is only a few rows tall, so the list was cut off after about
+// three results and the rest could not be reached. Moving the element to
+// <body> and placing it by hand frees it from that clip; the height is then
+// capped to whatever room is left above the keyboard, so it scrolls inside
+// itself instead of disappearing behind it.
+function positionSearchSuggestions() {
+    const box = document.getElementById('searchSuggestions');
+    const input = document.getElementById('searchInput');
+    if (!box || !input || box.classList.contains('hidden')) return;
+    if (box.parentElement !== document.body) document.body.appendChild(box);
+    const rect = input.getBoundingClientRect();
+    // visualViewport shrinks when the keyboard opens; innerHeight often does not.
+    const viewportH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const room = viewportH - rect.bottom - 12;
+    box.style.position = 'fixed';
+    box.style.left = Math.round(rect.left) + 'px';
+    box.style.width = Math.round(rect.width) + 'px';
+    box.style.top = Math.round(rect.bottom + 6) + 'px';
+    box.style.right = 'auto';
+    box.style.maxHeight = Math.round(Math.max(120, Math.min(320, room))) + 'px';
+}
+
 function renderSearchSuggestions() {
     const box = document.getElementById('searchSuggestions');
     if (!box) return;
+
+    // The dropdown is off. It listed, word for word, the same matches the
+    // result cards were already rendering underneath it as you typed -- two
+    // lists of one thing -- and it floated over the Recent / Sort / Dashboard /
+    // Recycle Bin row to do it. The cards win: they are tappable, they carry
+    // the row menu, and they do not cover anything.
+    // Everything below is left intact so this is one line away from coming
+    // back. The one thing the dropdown showed and the cards do not is each
+    // match's folder path.
+    box.classList.add('hidden');
+    return;
+
     const input = document.getElementById('searchInput');
     const query = input.value.trim();
 
     let itemsHtml = '';
     if (!query) {
-        const history = loadSearchHistory();
-        if (!history.length) { box.classList.add('hidden');
-            return; }
-        itemsHtml = '<div class="search-suggest-heading search-history-heading">' +
-                '<span>Recent searches</span>' +
-                '<button type="button" class="search-history-clear" id="searchHistoryClearBtn" aria-label="Clear recent searches">Clear</button>' +
-            '</div>' +
-            history.map(term => `
-                <div class="search-suggest-item search-history-item" data-fill="${escapeHtml(term)}">
-                    <i class="fas fa-clock-rotate-left"></i>
-                    <span>${escapeHtml(term)}</span>
-                </div>
-            `).join('');
+        // Nothing is shown until something is typed. The old "Recent searches"
+        // panel opened the moment the field was tapped and covered the buttons
+        // underneath it (Dashboard, Recycle Bin) for no real gain.
+        box.classList.add('hidden');
+        return;
     } else {
         const suggestions = getSearchSuggestions(query);
         if (!suggestions.length) { box.classList.add('hidden');
@@ -3326,6 +4924,7 @@ function renderSearchSuggestions() {
 
     box.innerHTML = itemsHtml;
     box.classList.remove('hidden');
+    positionSearchSuggestions();
     box.querySelectorAll('.search-suggest-item').forEach(el => {
         el.addEventListener('mousedown', (e) => {
             // mousedown (not click) fires before the input's blur, so the
@@ -3379,6 +4978,7 @@ function countDepartmentFiles(obj, path = []) {
 // ============================================================
 
 function selectDepartment(d) {
+    clearNavReturn();
     guardFolderEntry([d], () => {
         navigateWithPageTurn(() => {
             currentPath = [d];
@@ -3438,6 +5038,18 @@ function guardFolderDeletion(pathArr, onAllowed) {
 }
 
 function goBack() {
+    // Arrived here from somewhere that is not the folder above: go back to
+    // that, exactly as it was, rather than up one level.
+    if (navReturn && !isSearchMode) {
+        const { path, restore } = navReturn;
+        navReturn = null;
+        navigateWithPageTurn(() => {
+            currentPath = path;
+            render();
+            restore();
+        }, 'back');
+        return;
+    }
     if (currentPath.length && !isSearchMode) {
         navigateWithPageTurn(() => {
             currentPath.pop();
@@ -3449,6 +5061,7 @@ function goBack() {
 }
 
 function goHome() {
+    clearNavReturn();
     if (currentPath.length === 0 && !isSearchMode) return;
     if (isSearchMode) { clearSearch(); return; }
     navigateWithPageTurn(() => {
@@ -3458,6 +5071,7 @@ function goHome() {
 }
 
 function navigateToBreadcrumb(idx) {
+    clearNavReturn();
     if (idx === -1 && currentPath.length === 0) return;
     if (idx >= 0 && idx === currentPath.length - 1) return;
     const isGoingBack = idx < currentPath.length - 1;
@@ -3502,6 +5116,7 @@ let lastNavigationAt = 0;
 function navigateWithPageTurn(navigationFn, direction = 'forward') {
     lastNavigationAt = Date.now();
     const isForward = direction !== 'back';
+
     const appEl = document.querySelector('.app');
     if (!appEl) { navigationFn(); return; }
 
@@ -3540,9 +5155,48 @@ function navigateWithPageTurn(navigationFn, direction = 'forward') {
     if (newBreadcrumb && newBreadcrumb.offsetParent !== null && newBreadcrumb.innerHTML.trim()) newDynamicEls.push(newBreadcrumb);
     if (newSearchInfo && newSearchInfo.offsetParent !== null && !newSearchInfo.classList.contains('hidden')) newDynamicEls.push(newSearchInfo);
 
+    // Animation 4: a cross-fade and scale instead of the horizontal slide.
+    // Going deeper the new list settles in from slightly larger; coming back
+    // it grows in from slightly smaller, so the direction still reads.
+    // Landing on the department hub: its pills and the white connector lines
+    // between them are rebuilt from scratch by render(), so fading/scaling the
+    // container on top of that made the redraw itself visible. The hub gets no
+    // page-turn at all -- it simply appears. Checked AFTER navigationFn(),
+    // since currentPath is only correct once it has run.
+    if (!currentPath.length) {
+        originalStyles.forEach(item => { item.el.style.transition = item.transition; });
+        newDynamicEls.forEach(el => {
+            el.style.animation = '';
+            el.style.transition = '';
+            el.style.transform = '';
+            el.style.opacity = '';
+        });
+        return;
+    }
+
     newDynamicEls.forEach(el => {
+        // THE reason this whole helper never animated: #content (and the other
+        // dynamic elements) carry "animation: childReveal ... both" from
+        // .app.app-visible. A running OR filling CSS animation beats inline
+        // styles, and fill-mode:both keeps its grip on opacity/transform for
+        // good -- so every transform set below was silently discarded.
+        // Cancelling it here hands control back. Deliberately NOT restored in
+        // the cleanup: childReveal is a one-off launch reveal that has long
+        // since played, and re-applying it would restart a 0.65s reveal on
+        // every single navigation.
+        el.style.animation = 'none';
+        // Promote to its own layer and warn the compositor what is about to
+        // change, so the subtree is rasterised once instead of every frame.
+        el.style.willChange = 'transform, opacity';
+        el.classList.add('page-turning');
         el.style.transition = 'none';
-        el.style.transform = isForward ? 'translateX(55%)' : 'translateX(-55%)';
+        // 1.04 was imperceptible: the mockup cross-fades TWO elements (grid
+        // easing back while contents ease forward), but #content is one node
+        // whose innerHTML is swapped, so only half that effect exists here and
+        // it has to travel further to read.
+        // 1.10 meant repainting a 10% larger area every frame; 1.06 halves
+        // that without losing the sense of depth.
+        el.style.transform = isForward ? 'scale(1.06)' : 'scale(0.94)';
         el.style.opacity = '0';
     });
 
@@ -3550,18 +5204,23 @@ function navigateWithPageTurn(navigationFn, direction = 'forward') {
 
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-            const ease = 'cubic-bezier(0.32, 0.72, 0, 1)';
-            const dur = '260ms';
+            const ease = 'cubic-bezier(0.3, 0.8, 0.3, 1)';
+            const dur = '330ms';
 
             originalStyles.forEach(item => {
                 item.el.style.transition = `transform ${dur} ${ease}, opacity ${dur} ${ease}`;
-                item.el.style.transform = isForward ? 'translateX(-30%)' : 'translateX(30%)';
+                // NOTE: #content is the same NODE before and after -- navigationFn()
+                // only replaces its innerHTML -- so this outgoing half is immediately
+                // overwritten by the incoming block below and never actually paints.
+                // Left consistent with the new direction rather than removed, since
+                // it would matter if the two views ever became separate elements.
+                item.el.style.transform = isForward ? 'scale(0.93)' : 'scale(1.07)';
                 item.el.style.opacity = '0';
             });
 
             newDynamicEls.forEach(el => {
                 el.style.transition = `transform ${dur} ${ease}, opacity ${dur} ${ease}`;
-                el.style.transform = 'translateX(0)';
+                el.style.transform = 'scale(1)';
                 el.style.opacity = '1';
             });
 
@@ -3575,6 +5234,8 @@ function navigateWithPageTurn(navigationFn, direction = 'forward') {
                     el.style.transition = '';
                     el.style.transform = '';
                     el.style.opacity = '';
+                    el.style.willChange = '';
+                    el.classList.remove('page-turning');
                 });
             }, 300);
         });
@@ -3592,10 +5253,46 @@ async function addFileToCurrentFolder(file, targetFolder) {
     const folderPath = targetFolder !== undefined ? targetFolder : currentPath.join('/');
     if (!allFiles[folderPath]) allFiles[folderPath] = [];
 
-    const fsPath = await writeFileToFS(folderPath, file.name, file);
+    // Uploading a file whose name is already in this folder used to keep that
+    // same name -- and since the native path is built from folder + name, the
+    // new upload OVERWROTE the first file's bytes while both rows stayed in
+    // the list, pointing at one file (seen on device 2026-09-18: two identical
+    // 14.11 MB rows). Deleting either one would then have taken the other's
+    // content with it. Same "find a free name, on disk and in the Recycle Bin
+    // too" rule fileCachedPdfIntoFolder already used for scanned PDFs.
+    const name = await freeFileNameInFolder(folderPath, file.name);
+
+    // The picker already streamed this file into our own cache, so its bytes
+    // are sitting on disk natively. Copying them there is a plain stream copy;
+    // writeFileToFS() instead pulls them into JS and base64s them back out 4MB
+    // at a time, which is what left the card on "Uploading 1 of 1" for minutes
+    // after a big download had already finished. Falls through to the old path
+    // whenever the fast one is unavailable or does not verify.
+    let fsPath = await copyPickedFileToFS(folderPath, name, file);
+    if (!fsPath) fsPath = await writeFileToFS(folderPath, name, file);
+
+    // The native write failing means we are about to fall back to keeping the
+    // raw File in IndexedDB -- but a File whose BYTES cannot be read (a Google
+    // Drive or other cloud item that was never downloaded locally) makes that
+    // fallback spin the main thread at 100% CPU forever, stuck on
+    // "Uploading 1 of N", with no error and no way out but force-stop.
+    // Reported and reproduced 2026-09-25.
+    //
+    // One byte is enough to tell a readable file from an unreadable handle,
+    // and slicing avoids pulling a large file into memory just to test it.
+    if (!fsPath) {
+        try {
+            await file.slice(0, 1).arrayBuffer();
+        } catch (e) {
+            throw new Error('Could not read "' + file.name + '". If it is stored in '
+                + 'Google Drive or another cloud, open it in that app once so it '
+                + 'downloads to the phone, then upload it again.');
+        }
+    }
+
     const fileObj = fsPath
         ? {
-            name: file.name,
+            name,
             type: file.type || 'application/octet-stream',
             uploadedAt: Date.now(),
             favourite: false,
@@ -3603,7 +5300,7 @@ async function addFileToCurrentFolder(file, targetFolder) {
             fsPath
         }
         : {
-            name: file.name,
+            name,
             type: file.type || 'application/octet-stream',
             fileData: file,
             uploadedAt: Date.now(),
@@ -3625,18 +5322,42 @@ async function duplicateFileInFolder(folderPath, fileName) {
     const original = files.find(f => f.name === fileName);
     if (!original) return;
 
-    const blob = await loadFileData(folderPath, fileName);
-    if (!blob) { showToast('Could not read file to copy', true); return; }
-
     const newName = uniqueNameFor(fileName, files.map(f => f.name), 'copy');
-    const fsPath = await writeFileToFS(folderPath, newName, blob);
+    const Filesystem = getFilesystemPlugin();
+    let blob = null;
+    let fsPath = null;
+    let size = original.size || 0;
+
+    // A file already on native storage is copied natively, file to file.
+    // Reading it into a Blob first put the whole file (a 285 MB PDF) in
+    // WebView memory just to write the same bytes back out.
+    if (original.fsPath && Filesystem && isNativePlatform()) {
+        const to = fsPathFor(folderPath, newName);
+        showBusyOverlay('Copying…');
+        try {
+            await Filesystem.copy({ from: original.fsPath, directory: 'DATA', to, toDirectory: 'DATA' });
+            const st = await Filesystem.stat({ path: to, directory: 'DATA' });
+            size = Number(st.size) || size;
+            fsPath = to;
+        } catch (e) {
+            console.warn('Native duplicate failed, falling back to a read/write copy:', e);
+        } finally {
+            hideBusyOverlay();
+        }
+    }
+    if (!fsPath) {
+        blob = await loadFileData(folderPath, fileName);
+        if (!blob) { showToast('Could not read file to copy', true); return; }
+        fsPath = await writeFileToFS(folderPath, newName, blob);
+        size = blob.size;
+    }
     const base = {
         name: newName,
-        type: original.type || blob.type || 'application/octet-stream',
+        type: original.type || blob?.type || 'application/octet-stream',
         uploadedAt: Date.now(),
         favourite: original.favourite || false,
         locked: original.locked || false,
-        size: blob.size,
+        size,
         expiryDate: original.expiryDate || null,
         note: original.note || '',
         tags: original.tags ? [...original.tags] : []
@@ -3652,18 +5373,25 @@ async function duplicateFileInFolder(folderPath, fileName) {
     showToast(`Copied as "${newName}"`);
 }
 
-function deleteFileFromFolder(folderPath, fileName) {
-    showConfirmModal(`Move "<b>${escapeHtml(fileName)}</b>" to Recycle Bin?`, async (confirmed) => {
+function deleteFileFromFolder(folderPath, fileName, rowEl) {
+    // Deliberately passes no title/icon/item: every delete confirm in the app
+    // uses the same compact form as bulkDelete (user's call 2026-09-24), so
+    // they cannot drift apart again.
+    showConfirmModal(`Move <b>"${escapeHtml(fileName)}"</b> to the Recycle Bin?<br><span style="opacity:.75;font-size:0.82rem">You can put it back from there, or delete it for good.</span>`, async (confirmed) => {
         if (confirmed) {
             haptic.warning();
             if (allFiles[folderPath]) {
+                // rowEl comes straight from the card that opened this menu, so the right
+                // row animates even when two files share a name. animateRowOut always
+                // resolves, so the delete can never be lost to a stalled transition.
+                await animateRowOut(rowEl, { tear: true });
                 await moveFileToRecycleBin(folderPath, fileName);
                 render();
                 updateStats();
                 showToast('Moved to Recycle Bin');
             }
         }
-    }, { okLabel: 'Move', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
+    });
 }
 
 // Renaming a file only ever changes its display name -- the underlying
@@ -3675,6 +5403,16 @@ function deleteFileFromFolder(folderPath, fileName) {
 // folderPath+name elsewhere.
 async function renameFileInFolder(folderPath, oldName, newName) {
     if (!newName?.trim()) return showToast("Name empty", true);
+    // The extension is not a part of the name the user owns -- it is how the
+    // app, and Android, decide what the file IS. Renaming "report.pdf" to
+    // "report" left a file nothing would open, which reads as the rename
+    // having corrupted it. The prompt now hides the extension and this puts
+    // it back for every caller, including any that forgets.
+    const dot = oldName.lastIndexOf('.');
+    const oldExt = dot > 0 ? oldName.slice(dot) : '';
+    if (oldExt && !newName.toLowerCase().endsWith(oldExt.toLowerCase())) {
+        newName = newName.trim() + oldExt;
+    }
     if (allFiles[folderPath]) {
         const idx = allFiles[folderPath].findIndex(f => f.name === oldName);
         if (idx !== -1) {
@@ -3684,6 +5422,7 @@ async function renameFileInFolder(folderPath, oldName, newName) {
             }
             entry.name = newName;
             await saveFilesForFolder(folderPath);
+            await reKeyFileAlerts(folderPath, oldName, folderPath, entry);
             trackActivity('modified', { name: newName, folderPath, kind: 'file' });
             render();
         }
@@ -3701,13 +5440,41 @@ function collectAllFolderPaths() {
         for (const key of Object.keys(node)) {
             if (node[key] && typeof node[key] === 'object') {
                 const newPath = [...pathArr, key];
-                paths.push({ path: newPath.join('/'), label: newPath.join(' / ') });
+                paths.push({
+                    path: newPath.join('/'),
+                    label: newPath.join(' / '),
+                    // A folder that already holds subfolders is an
+                    // organisational folder, not a place for loose files.
+                    hasSubfolders: Object.keys(node[key]).length > 0
+                });
                 walk(node[key], newPath);
             }
         }
     };
     walk(fileSystem, []);
     return paths;
+}
+
+// Rows for the Move pickers. Folders that already hold subfolders are listed
+// but not selectable: the app's rule is that a folder holds EITHER subfolders
+// OR files, and Move was the one door left open on that -- the Upload button
+// is hidden inside such a folder, but nothing stopped a file being sent there
+// from somewhere else. Greyed out rather than dropped, so a folder that is
+// missing from the list does not look like a bug.
+function moveDestRowsHtml(destinations) {
+    if (!destinations.length) {
+        return '<p style="color:#94a3b8;font-family:Inter,sans-serif;font-size:0.85rem;">No other folders to move into.</p>';
+    }
+    return destinations.map(d => d.hasSubfolders
+        ? `<div class="move-dest-blocked" style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.03);margin-bottom:8px;color:#64748b;font-family:Inter,sans-serif;font-size:0.9rem;display:flex;align-items:center;gap:10px;cursor:default;">
+                <i class="fas fa-folder" style="color:#475569;"></i>
+                <span style="flex:1;min-width:0;">${escapeHtml(d.label)}</span>
+                <span style="font-size:0.7rem;white-space:nowrap;">holds folders</span>
+            </div>`
+        : `<div class="move-dest-row" data-path="${escapeHtml(d.path)}" style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.06);margin-bottom:8px;color:#ffffff;font-family:Inter,sans-serif;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-folder" style="color:#a78bfa;"></i>
+                <span>${escapeHtml(d.label)}</span>
+            </div>`).join('');
 }
 
 // Picker modal for Move: lists every folder except the file's current one.
@@ -3723,16 +5490,10 @@ function showMoveFileModal(folderPath, fileName) {
     overlay.id = 'customMoveModal';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
 
-    const rowsHtml = destinations.length
-        ? destinations.map(d => `
-            <div class="move-dest-row" data-path="${escapeHtml(d.path)}" style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.06);margin-bottom:8px;color:#ffffff;font-family:Inter,sans-serif;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;gap:10px;">
-                <i class="fas fa-folder" style="color:#a78bfa;"></i>
-                <span>${escapeHtml(d.label)}</span>
-            </div>`).join('')
-        : `<p style="color:#94a3b8;font-family:Inter,sans-serif;font-size:0.85rem;">No other folders to move into.</p>`;
+    const rowsHtml = moveDestRowsHtml(destinations);
 
     overlay.innerHTML = `
-        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(167,139,250,0.35);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+        <div style="position:relative;background:#1a1a1a;border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="moveModalCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:16px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;">Move "<b>${escapeHtml(fileName)}</b>" to:</p>
             <div id="moveDestList">${rowsHtml}</div>
@@ -3756,12 +5517,17 @@ function showMoveFileModal(folderPath, fileName) {
 // files are left physically untouched -- same reasoning as
 // migrateFilesAndNotesPath above: fsPath is never recomputed from
 // folderPath, so only the metadata key needs to move.
-async function moveFileToFolder(oldFolderPath, fileName, newFolderPath) {
+// fileOrName: a file OBJECT (preferred -- same-name twins) or a name, which
+// is what the single-file context menu still passes.
+async function moveFileToFolder(oldFolderPath, fileOrName, newFolderPath) {
     if (oldFolderPath === newFolderPath) return;
     const files = allFiles[oldFolderPath];
     if (!files) return;
-    const idx = files.findIndex(f => f.name === fileName);
+    const idx = typeof fileOrName === 'string'
+        ? files.findIndex(f => f.name === fileOrName)
+        : files.indexOf(fileOrName);
     if (idx === -1) return;
+    const fileName = files[idx].name;
 
     if (allFiles[newFolderPath]?.some(f => f.name === fileName)) {
         showToast(`"${fileName}" already exists in that folder`, true);
@@ -3777,6 +5543,7 @@ async function moveFileToFolder(oldFolderPath, fileName, newFolderPath) {
 
     await saveFilesForFolder(oldFolderPath);
     await saveFilesForFolder(newFolderPath);
+    await reKeyFileAlerts(oldFolderPath, fileName, newFolderPath, entry);
     trackActivity('modified', { name: fileName, folderPath: newFolderPath, kind: 'file' });
     render();
     updateStats();
@@ -3791,7 +5558,177 @@ async function moveFileToFolder(oldFolderPath, fileName, newFolderPath) {
 // (the same data source as the on-load "expiring soon" popup), just with
 // no threshold so every dated file shows, not only the next 7 days.
 // ============================================================
-function showExpiringDocumentsPanel(activeTab = 'expiring') {
+// Which tab the panel was showing last time it drew. Unlike the Recent
+// subtabs, this whole panel is rebuilt on every switch, so the pill has no
+// previous position to travel from: it is put back where the old tab was,
+// then moved to the new one on the next frame. Cleared when the panel closes,
+// so reopening places the pill instead of sliding it in from a stale spot.
+let expdocLastTab = null;
+
+function applyExpdocGlider(overlay, activeTab) {
+    const row = overlay.querySelector('.expdoc-tab-row');
+    const active = overlay.querySelector('.expdoc-tab.expdoc-tab-active');
+    if (!row || !active) return;
+    const previous = (expdocLastTab && expdocLastTab !== activeTab)
+        ? overlay.querySelector('.expdoc-tab[data-tab="' + expdocLastTab + '"]')
+        : null;
+    if (previous) moveTabGlider(row, previous, false);
+    requestAnimationFrame(() => moveTabGlider(row, active, !!previous));
+    expdocLastTab = activeTab;
+}
+
+// ============================================================
+// DOCUMENT PICTURES -- the small picture on an expiry card.
+// A photo or scan shows its OWN image (the same thumbnail the file cards use).
+// A file with no picture of its own gets one that says what kind of document it
+// is: by what the name says first (passport, licence, certificate...), then by
+// file type. Inline SVG, so nothing has to load.
+// ============================================================
+const DOC_PIC_SVG = {
+    passport: '<svg viewBox="0 0 86 108"><defs><linearGradient id="dpPc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0d2a52"/><stop offset="1" stop-color="#071632"/></linearGradient><linearGradient id="dpPg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f1cf7a"/><stop offset="1" stop-color="#c79a3c"/></linearGradient></defs><rect width="86" height="108" fill="url(#dpPc)"/><rect width="6" height="108" fill="#fff" opacity=".07"/><text x="46" y="23" text-anchor="middle" font-family="Georgia,serif" font-size="11" font-weight="700" fill="url(#dpPg)">PASSPORT</text><circle cx="46" cy="52" r="15" fill="none" stroke="url(#dpPg)" stroke-width="1.6"/><ellipse cx="46" cy="52" rx="6.5" ry="15" fill="none" stroke="url(#dpPg)" stroke-width="1.2"/><path d="M31 52h30M33 44h26M33 60h26" stroke="url(#dpPg)" stroke-width="1.1"/><rect x="38" y="81" width="16" height="11" rx="1.8" fill="url(#dpPg)"/><path d="M38 86.5h16M46 81v11M42 81v11M50 81v11" stroke="#0a1f43" stroke-width=".9"/></svg>',
+    licence: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#0e1a38"/><g transform="translate(43 54) rotate(-8) translate(-38 -25)"><rect width="76" height="50" rx="5" fill="#e8f0ff"/><rect width="76" height="11" rx="5" fill="#2f5fd0"/><rect y="7" width="76" height="4" fill="#2f5fd0"/><text x="5" y="8.2" font-size="5.4" font-weight="800" fill="#fff" font-family="Arial,sans-serif">DRIVING LICENCE</text><rect x="5" y="16" width="19" height="25" rx="2" fill="#8aa0cc"/><circle cx="14.5" cy="25" r="4.8" fill="#e8f0ff"/><path d="M6 40c1-7 17-7 18 0z" fill="#e8f0ff"/><rect x="29" y="16" width="38" height="3" rx="1.5" fill="#3f5690"/><rect x="29" y="22" width="30" height="3" rx="1.5" fill="#7d90bd"/><rect x="29" y="28" width="34" height="3" rx="1.5" fill="#7d90bd"/><rect x="29" y="34" width="22" height="3" rx="1.5" fill="#7d90bd"/><rect x="29" y="41" width="14" height="4" rx="1" fill="#f59e0b"/></g></svg>',
+    idcard: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#0c2a30"/><g transform="translate(43 54) rotate(8) translate(-38 -25)"><rect width="76" height="50" rx="5" fill="#d8f4ee"/><rect width="76" height="11" rx="5" fill="#0d9488"/><rect y="7" width="76" height="4" fill="#0d9488"/><text x="5" y="8.2" font-size="5.4" font-weight="800" fill="#fff" font-family="Arial,sans-serif">IDENTITY CARD</text><rect x="5" y="16" width="19" height="25" rx="2" fill="#7fb8ae"/><circle cx="14.5" cy="25" r="4.8" fill="#d8f4ee"/><path d="M6 40c1-7 17-7 18 0z" fill="#d8f4ee"/><rect x="29" y="16" width="38" height="3" rx="1.5" fill="#2f7a70"/><rect x="29" y="22" width="30" height="3" rx="1.5" fill="#6fb0a5"/><rect x="29" y="28" width="34" height="3" rx="1.5" fill="#6fb0a5"/><rect x="58" y="38" width="12" height="8" rx="1.5" fill="#d6a63a"/></g></svg>',
+    pdf: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#f6f3ee"/><rect width="86" height="26" fill="#e5383b"/><text x="43" y="19" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="900" fill="#fff">PDF</text><g fill="#c9c5d2"><rect x="10" y="36" width="66" height="4" rx="2"/><rect x="10" y="45" width="58" height="4" rx="2"/><rect x="10" y="54" width="66" height="4" rx="2"/><rect x="10" y="63" width="48" height="4" rx="2"/><rect x="10" y="76" width="66" height="4" rx="2"/><rect x="10" y="85" width="40" height="4" rx="2"/></g></svg>',
+    word: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#f4f7fd"/><rect width="86" height="26" fill="#2b579a"/><text x="43" y="19" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" font-weight="900" fill="#fff">WORD</text><g fill="#b8c6e4"><rect x="10" y="36" width="66" height="4" rx="2"/><rect x="10" y="45" width="58" height="4" rx="2"/><rect x="10" y="54" width="66" height="4" rx="2"/><rect x="10" y="63" width="48" height="4" rx="2"/></g><rect x="46" y="74" width="30" height="24" rx="4" fill="#2b579a"/><text x="61" y="92" text-anchor="middle" font-family="Georgia,serif" font-size="19" font-weight="800" fill="#fff">W</text></svg>',
+    excel: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#f3faf5"/><rect width="86" height="26" fill="#1d6f42"/><text x="43" y="19" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" font-weight="900" fill="#fff">EXCEL</text><g stroke="#9fcdb2" stroke-width="1" fill="none"><rect x="9" y="34" width="68" height="46"/><path d="M9 45h68M9 57h68M9 69h68M31 34v46M54 34v46"/></g><rect x="9" y="34" width="68" height="11" fill="#cfe9d9"/><rect x="46" y="84" width="30" height="18" rx="4" fill="#1d6f42"/><text x="61" y="98" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="900" fill="#fff">X</text></svg>',
+    note: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#fff3b0"/><path d="M86 0v18L68 0z" fill="#e8d36a"/><g stroke="#e0c64f" stroke-width="1.2"><path d="M8 30h70M8 44h70M8 58h70M8 72h70M8 86h70M8 100h70"/></g><path d="M13 0v108" stroke="#f08a8a" stroke-width="1.2" opacity=".7"/><path d="M18 24c5-6 8 4 13-1s7 3 12-1 8 3 14 0" fill="none" stroke="#3b3a46" stroke-width="1.8" stroke-linecap="round"/><path d="M18 39c6-5 9 3 15-1s8 3 13-1" fill="none" stroke="#3b3a46" stroke-width="1.8" stroke-linecap="round"/><path d="M18 53c5-5 8 3 12-1s7 2 10-1" fill="none" stroke="#3b3a46" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    certificate: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#fbf4df"/><rect x="5" y="5" width="76" height="98" fill="none" stroke="#c79a3c" stroke-width="2"/><rect x="9" y="9" width="68" height="90" fill="none" stroke="#c79a3c" stroke-width=".8"/><text x="43" y="27" text-anchor="middle" font-family="Georgia,serif" font-size="7.2" font-weight="700" fill="#8a6a1f" letter-spacing=".2">CERTIFICATE</text><g fill="#cdb98a"><rect x="20" y="36" width="46" height="2.6" rx="1.3"/><rect x="26" y="43" width="34" height="2.6" rx="1.3"/><rect x="22" y="50" width="42" height="2.6" rx="1.3"/></g><path d="M33 86l-4 14 8-4 4 6 3-17z" fill="#d94a4a"/><path d="M53 86l4 14-8-4-4 6-3-17z" fill="#b83a3a"/><circle cx="43" cy="76" r="12" fill="#e3b94f"/><circle cx="43" cy="76" r="8.5" fill="none" stroke="#fff3c4" stroke-width="1.4"/><path d="M43 70.5l1.8 3.7 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4-2.9-2.8 4-.6z" fill="#fff3c4"/></svg>',
+    medicine: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#e8f7f6"/><rect x="22" y="22" width="42" height="14" rx="3" fill="#0f9d94"/><rect x="20" y="34" width="46" height="62" rx="8" fill="#fff" stroke="#bfe5e2" stroke-width="1.5"/><rect x="20" y="46" width="46" height="34" fill="#0f9d94" opacity=".92"/><path d="M43 52v22M32 63h22" stroke="#fff" stroke-width="6" stroke-linecap="round"/><g transform="translate(60 88) rotate(-35)"><rect x="-13" y="-5" width="26" height="10" rx="5" fill="#e5383b"/><path d="M0 -5h8a5 5 0 0 1 0 10H0z" fill="#fff"/></g></svg>',
+    insurance: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#14574b"/><path d="M43 16l26 9v20c0 20-11 33-26 40C28 78 17 65 17 45V25z" fill="#34d399" fill-opacity=".18" stroke="#6ee7b7" stroke-width="2.4"/><path d="M31 48l9 9 16-18" fill="none" stroke="#6ee7b7" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="24" y="90" width="38" height="5" rx="2.5" fill="#6ee7b7" opacity=".7"/></svg>',
+    receipt: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#2b2f4a"/><path d="M14 8h58v92l-5-4-5 4-5-4-5 4-5-4-5 4-5-4-5 4-5-4-5 4-3-3z" fill="#fbfbfd"/><rect x="22" y="17" width="30" height="5" rx="2" fill="#3b3a46"/><g fill="#c9c5d2"><rect x="22" y="30" width="42" height="3.4" rx="1.7"/><rect x="22" y="38" width="42" height="3.4" rx="1.7"/><rect x="22" y="46" width="42" height="3.4" rx="1.7"/><rect x="22" y="54" width="30" height="3.4" rx="1.7"/></g><path d="M22 68h42" stroke="#9a96ad" stroke-dasharray="3 3"/><rect x="22" y="75" width="16" height="5" rx="2" fill="#3b3a46"/><rect x="46" y="75" width="18" height="5" rx="2" fill="#0f9d94"/></svg>',
+    photo: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#8fbdf5"/><circle cx="62" cy="28" r="9" fill="#ffe08a"/><path d="M0 84l24-34 18 22 14-16 30 28v24H0z" fill="#3b6e4f"/><path d="M0 96l30-26 22 20 34-22v40H0z" fill="#2a5640"/></svg>',
+    other: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#3a3466"/><path d="M24 20h26l16 16v52H24z" fill="#fff" fill-opacity=".92"/><path d="M50 20v16h16" fill="#cfc9ee"/><g fill="#a39dcb"><rect x="32" y="48" width="26" height="3.6" rx="1.8"/><rect x="32" y="58" width="26" height="3.6" rx="1.8"/><rect x="32" y="68" width="18" height="3.6" rx="1.8"/></g></svg>'
+};
+
+// Words in a document's name that say what it is. Checked before the file
+// type, so "Passport.pdf" gets the passport and not a PDF.
+const DOC_NAME_HINTS = [
+    ['passport', /passport/i],
+    ['licence', /(driv(?:ing|er|ers)?[\s_-]*lic|licen[cs]e|\bdl\b)/i],
+    ['idcard', /(\bid[\s_-]*card\b|identity|national[\s_-]*id|aadhaar|aadhar|emirates[\s_-]*id|\bnic\b|resident[\s_-]*card)/i],
+    ['insurance', /(insurance|assurance|policy)/i],
+    ['certificate', /(certificate|certification|diploma|degree|award)/i],
+    ['medicine', /(medicine|medical|prescription|pharma|vaccin|health|\blab\b|\brx\b)/i],
+    ['receipt', /(receipt|invoice|\bbill\b)/i]
+];
+
+// 'photo' means the file is an image and shows its own picture.
+function docPictureKind(fileName) {
+    const ext = (fileName.split('.').pop() || '').toLowerCase();
+    if (getFileIconMeta(fileName).isImage) return 'photo';
+    const stem = fileName.replace(/\.[^.]+$/, '');
+    for (const [kind, re] of DOC_NAME_HINTS) if (re.test(stem)) return kind;
+    if (ext === 'pdf') return 'pdf';
+    if (ext === 'doc' || ext === 'docx') return 'word';
+    if (ext === 'xls' || ext === 'xlsx' || ext === 'csv') return 'excel';
+    if (ext === 'txt' || ext === 'md' || ext === 'rtf') return 'note';
+    return 'other';
+}
+
+// The picture's markup. For an image file it also holds the <img> that
+// wireDocPictures() fills with the real thumbnail; the drawn photo shows until
+// it arrives.
+function docPictureHtml(file) {
+    const kind = docPictureKind(file.name);
+    const img = kind === 'photo' ? '<img class="file-icon-badge-thumb dc-img" alt="">' : '';
+    // Until its own image arrives, a photo named for what it is shows that
+    // document's picture rather than a generic landscape.
+    let shown = kind;
+    if (kind === 'photo') {
+        const stem = file.name.replace(/\.[^.]+$/, '');
+        const hint = DOC_NAME_HINTS.find(h => h[1].test(stem));
+        if (hint) shown = hint[0];
+    }
+    return '<div class="dc-pic dc-pic-' + kind + '">' + DOC_PIC_SVG[shown] + img + '</div>';
+}
+
+// Finds each [data-dc-file] under root and hands its picture its own image.
+function wireDocPictures(root) {
+    root.querySelectorAll('[data-dc-file]').forEach(el => {
+        const folderPath = el.dataset.dcFolder || '';
+        const file = (allFiles[folderPath] || []).find(f => f.name === el.dataset.dcFile);
+        const img = el.querySelector('.dc-img');
+        if (!file || !img) return;
+        // A wide scan (a licence photographed flat) is shown whole, not cropped.
+        img.addEventListener('load', () => {
+            if (img.naturalWidth / (img.naturalHeight || 1) > 1.25) img.classList.add('dc-img-wide');
+        });
+        wireFileIconThumbnail(el, file, folderPath);
+    });
+}
+
+// Red inside two weeks or once expired, amber to a month, green beyond.
+function docExpiryTone(days) {
+    if (days <= 14) return 'red';
+    if (days <= 30) return 'amber';
+    return 'green';
+}
+
+function docExpiryWords(days) {
+    if (days < 0) return 'Expired ' + Math.abs(days) + (Math.abs(days) === 1 ? ' day ago' : ' days ago');
+    if (days === 0) return 'Expires today';
+    if (days === 1) return 'Expires tomorrow';
+    return 'Expires in ' + days + ' days';
+}
+
+const DOC_CARD_ICONS = {
+    cal: '<svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="18" rx="4" fill="currentColor"/><path d="M7.5 2v4M16.5 2v4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><g fill="#0a1230"><rect x="6" y="12" width="3" height="2.4" rx=".6"/><rect x="10.5" y="12" width="3" height="2.4" rx=".6"/><rect x="15" y="12" width="3" height="2.4" rx=".6"/><rect x="6" y="16" width="3" height="2.4" rx=".6"/><rect x="10.5" y="16" width="3" height="2.4" rx=".6"/><rect x="15" y="16" width="3" height="2.4" rx=".6"/></g></svg>',
+    view: '<svg viewBox="0 0 24 24"><path d="M1.8 12S5.5 5 12 5s10.2 7 10.2 7-3.7 7-10.2 7S1.8 12 1.8 12z"/><circle cx="12" cy="12" r="3.2"/></svg>',
+    edit: '<svg viewBox="0 0 24 24"><path d="M4 20l1-4.5L16.5 4a2.6 2.6 0 0 1 3.7 3.7L8.5 19.2z"/><path d="M14.5 6l3.5 3.5"/></svg>',
+    remind: '<svg viewBox="0 0 24 24"><path d="M5.5 17v-6a6 6 0 0 1 10.5-4"/><path d="M5.5 17h13v-4.5"/><path d="M3.8 17h16.4M10 20.5h4"/><path d="M19 3v5M16.5 5.5h5"/></svg>'
+};
+
+// One expiry card: the picture, the name, how long is left, and three actions.
+function docCardHtml({ file, folderPath, days }) {
+    const tone = docExpiryTone(days);
+    const pct = days < 0 ? 100 : Math.max(4, Math.min(100, Math.round((1 - days / 30) * 100)));
+    const name = file.name.replace(/\.[^.]+$/, '') || file.name;
+    const where = (folderPath || '').split('/').join(' / ') || 'Root';
+    return '<div class="dc-card expdoc-row" data-folder="' + escapeHtml(folderPath) + '" data-dc-folder="' + escapeHtml(folderPath) + '" data-dc-file="' + escapeHtml(file.name) + '">' +
+        '<div class="dc-top">' + docPictureHtml(file) +
+        '<div class="dc-mid"><div class="dc-name">' + escapeHtml(name) + '</div>' +
+        '<div class="dc-where">' + escapeHtml(where) + '</div>' +
+        '<div class="dc-exp dc-' + tone + '">' + DOC_CARD_ICONS.cal + '<span>' + docExpiryWords(days) + '</span></div>' +
+        '<div class="dc-bar dc-' + tone + '"><b style="width:' + pct + '%"></b></div></div></div>' +
+        '<div class="dc-acts">' +
+        '<button type="button" class="dc-act" data-act="view"><span>' + DOC_CARD_ICONS.view + '</span>View</button>' +
+        '<button type="button" class="dc-act" data-act="edit"><span>' + DOC_CARD_ICONS.edit + '</span>Edit</button>' +
+        '<button type="button" class="dc-act" data-act="remind"><span>' + DOC_CARD_ICONS.remind + '</span>Remind</button>' +
+        '</div></div>';
+}
+
+// Wires the three buttons on every card under root. closePanel takes the panel
+// down before View opens the file over the top of it.
+function wireDocCardActions(root, closePanel) {
+    root.querySelectorAll('.dc-card').forEach(card => {
+        const folderPath = card.dataset.dcFolder || '';
+        const fileName = card.dataset.dcFile;
+        card.querySelectorAll('.dc-act').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                haptic.press();
+                const file = (allFiles[folderPath] || []).find(f => f.name === fileName);
+                if (!file) return;
+                if (btn.dataset.act === 'view') {
+                    closePanel();
+                    openFile(fileName, folderPath);
+                } else if (btn.dataset.act === 'edit') {
+                    showDateModal('New expiry date for "' + escapeHtml(fileName) + '":', file.expiryDate || '', async (val) => {
+                        if (val === null || val === undefined) return;
+                        await setFileExpiryDate(folderPath, fileName, val);
+                        showExpiringDocumentsPanel('expiring', { rerender: true });
+                    }, { disallowPast: true, minTomorrow: true });
+                } else {
+                    const today = localTodayIso();
+                    const preset = file.expiryDate && file.expiryDate >= today ? file.expiryDate : undefined;
+                    addReminderFlow(preset, null, 'Renew ' + (fileName.replace(/\.[^.]+$/, '') || fileName));
+                }
+            });
+        });
+    });
+}
+
+function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     haptic.press();
     const existing = document.getElementById('expiringDocsOverlay');
     if (existing) existing.remove();
@@ -3830,16 +5767,33 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
     overlay.id = 'expiringDocsOverlay';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:10vh;overflow-y:auto;';
 
+    // A reminder past its time is the one thing in this panel worth chasing,
+    // so the tab itself says so -- otherwise it is only discoverable by
+    // opening the tab you are not already on.
+    const dueNow = new Date();
+    const hasDueReminder = reminders.some(r => isReminderLiveUnseen(r, dueNow));
+
+    // Two tabs in one track and an action beside it, rather than three pills
+    // in a row where the action looked like a third tab. The track makes the
+    // pair read as one control: a single lit segment inside it, the other
+    // plain. Reminders leads, because the panel is opened far more often to
+    // see what is due than to check a date that is still months off, and the
+    // action belongs to it.
     const tabRowHtml = `
-        <div style="display:flex;gap:8px;margin:0 0 14px;">
-            <button class="expdoc-tab" data-tab="expiring" style="flex:1;text-align:center;padding:7px 0;border-radius:999px;font-size:0.74rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'expiring' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'expiring' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'expiring' ? '#fff' : c.tabInactiveText};">Expiring</button>
-            <button class="expdoc-tab" data-tab="reminders" style="flex:1;text-align:center;padding:7px 0;border-radius:999px;font-size:0.74rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:1px solid ${activeTab === 'reminders' ? 'transparent' : c.tabInactiveBorder};background:${activeTab === 'reminders' ? 'linear-gradient(135deg, #f97316, #ec4899)' : c.tabInactiveBg};color:${activeTab === 'reminders' ? '#fff' : c.tabInactiveText};">Reminders</button>
+        <div style="display:flex;align-items:center;gap:8px;margin:0 0 12px;">
+            <div class="expdoc-tab-row" style="display:flex;gap:4px;flex:1 1 0;min-width:0;padding:4px;border-radius:999px;background:${c.tabInactiveBg};border:1px solid ${c.tabInactiveBorder};">
+                <button class="expdoc-tab${hasDueReminder ? ' expdoc-tab-due' : ''}${activeTab === 'reminders' ? ' expdoc-tab-active' : ''}" data-tab="reminders" style="flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 5px;border-radius:999px;font-size:0.68rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:none;background:transparent;color:${activeTab === 'reminders' ? '#fff' : c.tabInactiveText};"><i class="fas fa-calendar-days" style="font-size:0.72rem;flex:0 0 auto;"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Reminders</span></button>
+                <button class="expdoc-tab${activeTab === 'expiring' ? ' expdoc-tab-active' : ''}" data-tab="expiring" style="flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 5px;border-radius:999px;font-size:0.68rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:none;background:transparent;color:${activeTab === 'expiring' ? '#fff' : c.tabInactiveText};"><i class="fas fa-clock" style="font-size:0.72rem;flex:0 0 auto;"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Expiring</span></button>
+            </div>
+            <button id="expdocAddReminder" aria-label="Add reminder" ${activeTab === 'reminders' ? 'title="Add reminder"' : 'disabled aria-disabled="true" title="Switch to Reminders to add one"'} style="flex:0 0 auto;display:flex;align-items:center;gap:5px;padding:3px 8px 3px 3px;border-radius:999px;border:none;${activeTab === 'reminders'
+                ? 'background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;box-shadow:0 5px 14px rgba(99,62,231,0.34);'
+                : 'background:rgba(124,58,237,0.12);color:#9b89c9;box-shadow:none;pointer-events:none;'}font-size:0.68rem;font-weight:700;font-family:Inter,sans-serif;cursor:pointer;white-space:nowrap;transition:background .22s ease,color .22s ease,box-shadow .22s ease;"><span style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;flex:0 0 auto;transition:background .22s ease,color .22s ease;${activeTab === 'reminders' ? 'background:#fff;color:#6d35e0;' : 'background:rgba(167,139,250,0.26);color:#cdbcfb;'}"><i class="fas fa-plus" style="font-size:0.74rem;"></i></span><span class="expdoc-add-label">Add reminder</span></button>
         </div>`;
 
     let titleHtml, summaryHtml, bodyHtml;
 
     if (activeTab === 'reminders') {
-        const todayIso = new Date().toISOString().slice(0, 10);
+        const todayIso = localTodayIso();
         const pad2 = (n) => String(n).padStart(2, '0');
         const isoFor = (y, m, d) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
         if (remindersCalYear === null) {
@@ -3861,11 +5815,22 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
             else undated.push(r);
         });
 
+        const nowForDue = new Date();
         const renderReminderRow = (r) => {
-            const subtitle = r.dueAt ? `Due ${formatReminderDue(r.dueAt, r.dueTime, r.endTime)}` : 'No due date';
+            // Past its time: the row pulses so it is findable at a glance
+            // instead of reading like every other row in the list.
+            const isDue = isReminderLiveUnseen(r, nowForDue);
+            // Its time has passed and it has been read. There is nothing left
+            // to change about it, so the row offers the one thing still worth
+            // doing -- throwing it away. A long press still opens the editor
+            // for anyone who wants it.
+            const isSeen = isReminderDue(r, nowForDue) && r.dueAckFor === reminderOccurrenceKey(r);
+            const repeatLabel = REMINDER_REPEAT_LABELS[r.repeat] || '';
+            const subtitle = (r.dueAt ? `Due ${formatReminderDue(r.dueAt, r.dueTime, r.endTime)}` : 'No due date')
+                + (repeatLabel ? ` &middot; ${repeatLabel}` : '');
             const placeRow = r.place ? `<div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;margin-top:2px;"><i class="fas fa-location-dot" style="font-size:0.65rem;margin-right:4px;opacity:0.8;"></i>${escapeHtml(r.place)}</div>` : '';
             return `
-                <div class="reminder-row" data-id="${escapeHtml(r.id)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:${c.rowBg};border:${c.rowBorder};margin-bottom:8px;">
+                <div class="reminder-row${isDue ? ' reminder-due' : ''}${isSeen ? ' reminder-seen' : ''}${r.id === reminderBannerId ? ' reminder-banner' : ''}" data-id="${escapeHtml(r.id)}" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;background:${c.rowBg};border:${c.rowBorder};margin-bottom:8px;">
                     <div style="flex:1;min-width:0;">
                         <div style="color:${c.rowText};font-size:0.87rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Inter,sans-serif;">${escapeHtml(r.title)}</div>
                         <div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;">${subtitle}</div>
@@ -3915,14 +5880,23 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
             if (isSelected) { bg = 'linear-gradient(135deg,#8b5cf6,#7c3aed)';
                 color = '#fff'; } else if (isToday) border = '1.5px solid rgba(139,92,246,0.6)';
             else if (isDeadPast) color = c.muted;
-            return `<button class="rem-cal-day" data-iso="${cell.iso}" ${isDeadPast ? 'disabled' : ''} style="aspect-ratio:1;border:${border};background:${bg};color:${color};font-size:0.8rem;font-weight:${isToday ? '800' : '600'};font-family:Inter,sans-serif;border-radius:50%;cursor:${isDeadPast ? 'default' : 'pointer'};position:relative;display:flex;align-items:center;justify-content:center;padding:0;opacity:${isDeadPast ? '0.35' : cell.inMonth ? '1' : '0.45'};">${cell.day}${hasReminders ? `<span style="position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:${isSelected ? '#fff' : '#f97316'};"></span>` : ''}</button>`;
+            return `<button class="rem-cal-day" data-iso="${cell.iso}" ${isDeadPast ? 'disabled' : ''} style="aspect-ratio:1/0.9;border:${border};background:${bg};color:${color};font-size:0.8rem;font-weight:${isToday ? '800' : '600'};font-family:Inter,sans-serif;border-radius:50%;cursor:${isDeadPast ? 'default' : 'pointer'};position:relative;display:flex;align-items:center;justify-content:center;padding:0;opacity:${isDeadPast ? '0.35' : cell.inMonth ? '1' : '0.45'};">${cell.day}${hasReminders ? `<span style="position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:${isSelected ? '#fff' : '#f97316'};"></span>` : ''}</button>`;
         }).join('');
 
         const weekdayRow = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'].map(d => `<span style="flex:1;text-align:center;font-size:0.62rem;font-weight:700;color:${c.muted};font-family:Inter,sans-serif;">${d}</span>`).join('');
 
         const selectedDateObj = new Date(remindersCalSelectedIso + 'T00:00:00');
         const selectedDayLabel = remindersCalSelectedIso === todayIso ? 'Today' : selectedDateObj.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
-        const dayReminders = (remindersByDate[remindersCalSelectedIso] || []).slice().sort((a, b) => (a.dueTime || '').localeCompare(b.dueTime || ''));
+        // Due-and-unseen first, so the row that is flashing is the one right
+        // under the calendar rather than last in the list, where the reason
+        // for opening the panel would be the furthest thing from the eye.
+        const nowForSort = new Date();
+        const dayReminders = (remindersByDate[remindersCalSelectedIso] || []).slice().sort((a, b) => {
+            const la = isReminderLiveUnseen(a, nowForSort) ? 0 : 1;
+            const lb = isReminderLiveUnseen(b, nowForSort) ? 0 : 1;
+            if (la !== lb) return la - lb;
+            return (a.dueTime || '').localeCompare(b.dueTime || '');
+        });
         const dayListHtml = dayReminders.length ? dayReminders.map(renderReminderRow).join('') : `
             <div class="fav-empty" style="text-align:center;padding:18px 20px 4px;color:${c.muted};">
                 <p style="margin:0;font-family:Inter,sans-serif;font-size:0.85rem;">No reminders on this day.</p>
@@ -3931,9 +5905,8 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
             <div style="color:${c.muted};font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;margin:16px 0 8px;font-family:Inter,sans-serif;">No due date</div>
             ${undated.map(renderReminderRow).join('')}` : '';
 
-        bodyHtml = `
-            <div style="background:${c.rowBg};border:${c.rowBorder};border-radius:16px;padding:12px;margin-bottom:16px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        bodyHtml = `            <div style="background:${c.rowBg};border:${c.rowBorder};border-radius:16px;padding:10px;margin-bottom:11px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                     <button id="remCalPrev" aria-label="Previous month" style="width:26px;height:26px;border-radius:50%;border:${c.rowBorder};background:transparent;color:${c.rowText};cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;"><i class="fas fa-chevron-left" style="font-size:0.65rem;"></i></button>
                     <div style="color:${c.rowText};font-weight:700;font-size:0.85rem;font-family:Inter,sans-serif;">${monthNames[remindersCalMonth]} ${remindersCalYear}</div>
                     <button id="remCalNext" aria-label="Next month" style="width:26px;height:26px;border-radius:50%;border:${c.rowBorder};background:transparent;color:${c.rowText};cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;"><i class="fas fa-chevron-right" style="font-size:0.65rem;"></i></button>
@@ -3941,33 +5914,21 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
                 <div style="display:flex;margin-bottom:4px;">${weekdayRow}</div>
                 <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">${calDayCells}</div>
             </div>
+
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                 <div style="color:${c.title};font-weight:700;font-size:0.85rem;font-family:Inter,sans-serif;">${escapeHtml(selectedDayLabel)}</div>
                 <div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;">${dayReminders.length} reminder${dayReminders.length === 1 ? '' : 's'}</div>
             </div>
-            <div id="remDayList">${dayListHtml}</div>
-            ${undatedHtml}
-            <button id="expdocAddReminder" style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:10px 0;margin-top:12px;border-radius:12px;border:1px dashed ${c.dashedBorder};background:transparent;color:${c.muted};font-size:0.8rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;"><i class="fas fa-plus"></i> Add reminder</button>`;
+            <div id="remDayList" class="stagger-rows">${dayListHtml}</div>
+            ${undatedHtml}`;
         titleHtml = `<i class="fas fa-list-check" style="color:#f59e0b;margin-right:6px;"></i>Reminders`;
         summaryHtml = reminders.length ? `<p style="color:${c.muted};font-size:0.8rem;margin:0 0 14px;font-family:Inter,sans-serif;">${reminders.length} total reminder${reminders.length === 1 ? '' : 's'}</p>` : '<div style="margin-bottom:10px;"></div>';
     } else {
-        const entries = getAllExpiringFiles(Infinity);
-        bodyHtml = entries.length ? entries.map(({ file, folderPath, status, days }) => {
-            const pill = status === 'overdue'
-                ? `<span style="background:rgba(239,68,68,0.15);color:#f87171;border-radius:20px;padding:3px 10px;font-size:0.72rem;font-weight:700;white-space:nowrap;">${Math.abs(days)}d overdue</span>`
-                : status === 'soon'
-                    ? `<span style="background:rgba(245,158,11,0.15);color:#d97706;border-radius:20px;padding:3px 10px;font-size:0.72rem;font-weight:700;white-space:nowrap;">${days === 0 ? 'Today' : days + 'd left'}</span>`
-                    : `<span style="background:${c.pillNeutralBg};color:${c.pillNeutralText};border-radius:20px;padding:3px 10px;font-size:0.72rem;font-weight:600;white-space:nowrap;">${days}d left</span>`;
-            return `
-                <div class="expdoc-row" data-folder="${escapeHtml(folderPath)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:${c.rowBg};border:${c.rowBorder};margin-bottom:8px;cursor:pointer;">
-                    <i class="fas ${getFileIcon(file.name)}" style="color:${c.muted};font-size:1.1rem;flex-shrink:0;"></i>
-                    <div style="flex:1;min-width:0;">
-                        <div style="color:${c.rowText};font-size:0.87rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Inter,sans-serif;">${escapeHtml(file.name)}</div>
-                        <div style="color:${c.muted};font-size:0.74rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Inter,sans-serif;">${escapeHtml(folderPath.split('/').join(' / ') || 'Root')}</div>
-                    </div>
-                    ${pill}
-                </div>`;
-        }).join('') : `
+        const nowExp = new Date(); nowExp.setHours(0, 0, 0, 0);
+        const monthEnd = new Date(nowExp.getFullYear(), nowExp.getMonth() + 1, 0);
+        const daysLeftInMonth = Math.round((monthEnd - nowExp) / 86400000);
+        const entries = getAllExpiringFiles(daysLeftInMonth);
+        bodyHtml = entries.length ? entries.map(docCardHtml).join('') : `
             <div class="fav-empty" style="text-align:center;padding:32px 20px 20px;color:${c.muted};">
                 <i class="fas fa-calendar-check" style="font-size:2rem;margin-bottom:12px;display:block;color:${c.mutedIcon};"></i>
                 <p style="margin:0;font-family:Inter,sans-serif;font-size:0.9rem;">No documents have an expiry date set.</p>
@@ -3984,16 +5945,34 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
     }
 
     overlay.innerHTML = `
-        <div style="position:relative;background:${c.panelBg};border:1px solid ${c.panelBorder};border-radius:20px;padding:28px 24px;width:100%;max-width:400px;max-height:80vh;overflow-y:auto;box-shadow:${c.panelShadow};">
+        <div style="position:relative;background:${c.panelBg};border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:400px;max-height:80vh;overflow-y:auto;box-shadow:${c.panelShadow};">
             <button id="expiringDocsCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:${c.closeBg};color:${c.closeColor};font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:${c.title};font-size:0.98rem;font-weight:700;margin:0 0 4px;margin-right:26px;font-family:Inter,sans-serif;">${titleHtml}</p>
             ${summaryHtml}
             ${tabRowHtml}
-            <div id="expiringDocsList">${bodyHtml}</div>
+            <div id="expiringDocsList"${activeTab === 'expiring' ? ' class="stagger-rows"' : ''}>${bodyHtml}</div>
         </div>`;
     document.body.appendChild(overlay);
+    applyExpdocGlider(overlay, activeTab);
 
-    const close = () => overlay.remove();
+    // Only when the user actually opened the Reminders tab. This function is
+    // also how the panel redraws itself after an add, edit, delete or a month
+    // change, and acknowledging on those meant a reminder created here was
+    // marked "seen" the instant it was saved -- so a brand new reminder never
+    // appeared at launch. Redraws pass rerender:true and change nothing.
+    // Opening on the Expiring tab does not mark reminders either: you cannot
+    // have seen what was behind another tab.
+    if (!opts.rerender && !opts.noAck && activeTab === 'reminders') acknowledgeDueReminders();
+
+    // The sticky note floats above this panel in its own layer, so closing
+    // the panel has to take it with it -- otherwise back left the note
+    // hanging over the home screen with nothing underneath it.
+    const close = () => {
+        expdocLastTab = null;
+        reminderBannerId = null;
+        document.getElementById('reminderStickyNote')?.remove();
+        overlay.remove();
+    };
     overlay.querySelector('#expiringDocsCloseX').onclick = close;
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     overlay.querySelectorAll('.expdoc-tab').forEach(btn => {
@@ -4002,11 +5981,20 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
     overlay.querySelectorAll('.expdoc-row').forEach(row => {
         row.addEventListener('click', () => {
             const folderPath = row.dataset.folder;
+            // The panel is where this journey started, so back belongs there
+            // and not one folder up a tree nobody walked down.
+            // The tab is read NOW, not when back is pressed: close() below
+            // clears expdocLastTab, so a later read would always say
+            // Expiring and quietly lose the Reminders tab.
+            const cameFromTab = expdocLastTab || 'expiring';
+            markNavReturn(() => showExpiringDocumentsPanel(cameFromTab));
             close();
             currentPath = folderPath ? folderPath.split('/') : [];
             render();
         });
     });
+    wireDocPictures(overlay);
+    wireDocCardActions(overlay, close);
     const addBtn = overlay.querySelector('#expdocAddReminder');
     if (addBtn) addBtn.addEventListener('click', () => {
         // Pre-fill the date step with whatever day is selected on the
@@ -4014,7 +6002,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
         // still browsable there (to see what was due then), yet the date
         // modal's own disallowPast check would refuse to save it anyway, so
         // preset that in would just make Save mysteriously fail.
-        const todayIsoNow = new Date().toISOString().slice(0, 10);
+        const todayIsoNow = localTodayIso();
         const preset = remindersCalSelectedIso && remindersCalSelectedIso >= todayIsoNow ? remindersCalSelectedIso : undefined;
         addReminderFlow(preset);
     });
@@ -4023,14 +6011,14 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
         remindersCalMonth--;
         if (remindersCalMonth < 0) { remindersCalMonth = 11;
             remindersCalYear--; }
-        showExpiringDocumentsPanel('reminders');
+        showExpiringDocumentsPanel('reminders', { rerender: true });
     });
     const remCalNext = overlay.querySelector('#remCalNext');
     if (remCalNext) remCalNext.addEventListener('click', () => {
         remindersCalMonth++;
         if (remindersCalMonth > 11) { remindersCalMonth = 0;
             remindersCalYear++; }
-        showExpiringDocumentsPanel('reminders');
+        showExpiringDocumentsPanel('reminders', { rerender: true });
     });
     overlay.querySelectorAll('.rem-cal-day:not(:disabled)').forEach(btn => {
         // Same scroll-vs-tap drag guard as showDateModal's own calendar --
@@ -4053,7 +6041,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
             const [y, m] = btn.dataset.iso.split('-').map(Number);
             remindersCalYear = y;
             remindersCalMonth = m - 1;
-            showExpiringDocumentsPanel('reminders');
+            showExpiringDocumentsPanel('reminders', { rerender: true });
         });
     });
     overlay.querySelectorAll('.reminder-delete').forEach(btn => {
@@ -4064,11 +6052,14 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
     });
     overlay.querySelectorAll('.reminder-row').forEach(row => {
         let pressTimer = null;
+        let longPressed = false;
         let touchStart = { x: 0, y: 0 };
         const start = (e) => {
             const t = e.touches ? e.touches[0] : e;
             touchStart = { x: t.clientX, y: t.clientY };
+            longPressed = false;
             pressTimer = setTimeout(() => {
+                longPressed = true;
                 haptic.longPress();
                 editReminderFlow(row.dataset.id);
             }, 500);
@@ -4085,6 +6076,15 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
         row.addEventListener('mousedown', start);
         row.addEventListener('mouseup', cancelPress);
         row.addEventListener('mouseleave', cancelPress);
+        // A tap on a note's reminder goes to the note. Long press still opens
+        // the editor, so the flag below stops the press that opened the
+        // editor from also navigating when the finger comes up.
+        row.addEventListener('click', (e) => {
+            if (e.target.closest('.reminder-edit, .reminder-delete')) return;
+            if (longPressed) { longPressed = false; return; }
+            const r = reminders.find(x => x.id === row.dataset.id);
+            if (r && r.noteRef) openNoteFromReminder(r.noteRef);
+        });
     });
 }
 
@@ -4092,7 +6092,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring') {
 // NOTE OPERATIONS
 // ============================================================
 
-async function addNoteToCurrentFolder(title, content) {
+async function addNoteToCurrentFolder(title, content, color) {
     const folderPath = currentPath.join('/');
     if (!allNotes[folderPath]) allNotes[folderPath] = [];
     const note = {
@@ -4101,7 +6101,10 @@ async function addNoteToCurrentFolder(title, content) {
         content: content.trim(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        favourite: false
+        favourite: false,
+        color: color || 'violet',
+        lined: !!noteModalLined,
+        fontSize: noteFontPx(noteModalFont)
     };
     allNotes[folderPath].push(note);
     await saveNotesForFolder(folderPath);
@@ -4109,11 +6112,16 @@ async function addNoteToCurrentFolder(title, content) {
     render();
 }
 
-async function updateNote(folderPath, noteId, title, content) {
+async function updateNote(folderPath, noteId, title, content, color) {
     const idx = allNotes[folderPath]?.findIndex(n => n.id === noteId);
     if (idx !== -1) {
         allNotes[folderPath][idx].title = title.trim();
         allNotes[folderPath][idx].content = content.trim();
+        // Both of these were being passed in and then dropped on the floor:
+        // changing a note's colour in the editor never survived the save.
+        if (color) allNotes[folderPath][idx].color = color;
+        allNotes[folderPath][idx].lined = !!noteModalLined;
+        allNotes[folderPath][idx].fontSize = noteFontPx(noteModalFont);
         allNotes[folderPath][idx].updatedAt = new Date().toISOString();
         await saveNotesForFolder(folderPath);
         trackActivity('modified', { name: allNotes[folderPath][idx].title, folderPath, kind: 'note', noteId });
@@ -4134,13 +6142,542 @@ async function renameNote(folderPath, noteId, newTitle) {
     }
 }
 
-async function deleteNoteFromFolder(folderPath, noteId) {
+async function deleteNoteFromFolder(folderPath, noteId, rowEl) {
     if (allNotes[folderPath]) {
+        await animateRowOut(rowEl, { tear: true });
         await moveNoteToRecycleBin(folderPath, noteId);
         render();
         updateStats();
         showToast('Moved to Recycle Bin');
     }
+}
+
+// A note can carry one of six colours. It is a real field on the note, not
+// just a swatch in the dialog: the editor's body tints to it and so does the
+// note row in the list, which is the only reason the picker earns its space.
+//
+// Three values, because the colour has three jobs and they do not want the
+// same thing. "paper" is what the writing area becomes -- a tinted page, soft
+// enough to read dark text on, which a saturated fill never was: the body used
+// to be a full violet-to-blue gradient with the text fighting it. "from"/"to"
+// stay saturated for the 3px stripe on the row in the list, where a pastel
+// would simply disappear, in either theme. "edge" sits between them, for the
+// page's own border and the swatch's rim, so the swatch still says which hue
+// it is while showing the page you actually get.
+const NOTE_COLORS = [
+    { id: 'violet', from: '#7c3aed', to: '#2563eb', paper: '#e7e3fb', edge: '#c3b9f2' },
+    { id: 'blue',   from: '#2563eb', to: '#0ea5e9', paper: '#d9e8f9', edge: '#a9cbef' },
+    { id: 'green',  from: '#059669', to: '#10b981', paper: '#d6f1e3', edge: '#a3dcc3' },
+    { id: 'amber',  from: '#d97706', to: '#f59e0b', paper: '#fde6c4', edge: '#f3cb8c' },
+    { id: 'red',    from: '#dc2626', to: '#f43f5e', paper: '#fbd9d9', edge: '#f0b0b0' },
+    { id: 'slate',  from: '#64748b', to: '#94a3b8', paper: '#e6e9ee', edge: '#c4cad4' }
+];
+let noteModalColor = 'violet';
+let noteModalLined = false;
+
+function noteColorById(id) {
+    return NOTE_COLORS.find(c => c.id === id) || NOTE_COLORS[0];
+}
+
+// The rules are drawn on the page itself, behind the text, as one repeating
+// band the height of a line. NOTE_LINE_HEIGHT is pinned in px rather than left
+// as a ratio for exactly this reason: a ratio rounds differently as the font
+// renders, and the rules would drift away from the words down the page.
+// A size in px, picked a step at a time. The range stops where the text stops
+// being worth reading at one end and stops fitting at the other.
+const NOTE_FONT_MIN = 11;
+const NOTE_FONT_MAX = 24;
+const NOTE_FONT_DEFAULT = 15;
+let noteModalFont = NOTE_FONT_DEFAULT;
+
+function noteFontPx(v) {
+    const n = parseInt(v, 10);
+    if (!n || isNaN(n)) return NOTE_FONT_DEFAULT;
+    return Math.max(NOTE_FONT_MIN, Math.min(NOTE_FONT_MAX, n));
+}
+
+// The line box is derived rather than stored: the ruled page draws one band
+// per line, so the two must agree exactly, and rounding here once is safer
+// than a ratio that rounds differently as the font renders.
+function noteLineFor(px) {
+    return Math.round(px * 1.45);
+}
+
+// Paints the page itself: the paper colour on the field, the rules on the
+// TEXTAREA inside it.
+//
+// The rules used to be the field's own background, offset by the field's
+// padding-top so a band began where the first line of text began. That lined
+// up -- but only until the note outgrew the box. The field does not scroll;
+// the textarea inside it does. So the words slid up and the rules stayed where
+// they were, and from the second screenful on, every line sat wrong.
+//
+// Painting them on the textarea with background-attachment: local ties the
+// background to the content instead of to the box, so the rules scroll with
+// the words. The textarea carries padding:0, so there is no padding-top left
+// to correct for -- its first line starts at the top of its own content box.
+// Its line-height is set from this same noteLineFor(), which is what keeps a
+// one-line tile on a line boundary all the way down however the size stepper
+// is set.
+//
+// .note-content-input sets `background: none !important`, so these have to be
+// important to land at all, and removed by name rather than by overwriting.
+const NOTE_RULE_PROPS = ['background-image', 'background-size',
+    'background-position', 'background-repeat', 'background-attachment'];
+
+// How far the text's baseline sits below the top of its own line box, for
+// the font the writing box is actually using. An empty inline-block aligned to
+// the baseline reports exactly that; the alternative is hard-coding a ratio
+// that is wrong on every device whose default sans is not this one.
+const noteBaselineCache = new Map();
+function noteBaselineOffset(field, lh) {
+    const cs = getComputedStyle(field);
+    const key = cs.fontFamily + '|' + cs.fontSize + '|' + cs.fontWeight + '|' + lh;
+    if (noteBaselineCache.has(key)) return noteBaselineCache.get(key);
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;padding:0;border:0;';
+    probe.style.fontFamily = cs.fontFamily;
+    probe.style.fontSize = cs.fontSize;
+    probe.style.fontWeight = cs.fontWeight;
+    probe.style.fontStyle = cs.fontStyle;
+    probe.style.lineHeight = lh + 'px';
+    probe.appendChild(document.createTextNode('xhp'));
+    const marker = document.createElement('span');
+    marker.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline;';
+    probe.appendChild(marker);
+    document.body.appendChild(probe);
+    let base = marker.getBoundingClientRect().top - probe.getBoundingClientRect().top;
+    probe.remove();
+    // A font that fails to load, or a hidden ancestor, can report nonsense.
+    if (!(base > 0) || base > lh) base = lh * 0.8;
+    base = Math.round(base);
+    noteBaselineCache.set(key, base);
+    return base;
+}
+
+function paintNoteRuling(body, c) {
+    body.style.background = c.paper;
+    const field = document.getElementById('noteContent');
+    if (!field) return;
+    if (!noteModalLined) {
+        NOTE_RULE_PROPS.forEach(p => field.style.removeProperty(p));
+        return;
+    }
+    const lh = noteLineFor(noteModalFont);
+    // Where the rule goes INSIDE the line box. It used to be the box's bottom
+    // edge, which is not where writing sits: a 15px font in a 22px line is
+    // centred, so its baseline lands around 16px and the rule at 22 left the
+    // words floating five pixels above their own line (reported 2026-10-13).
+    // Ruled paper puts the line just under the baseline, with descenders
+    // crossing it. Measured rather than guessed, because the baseline's place
+    // in the line box depends on the font's own ascent.
+    const rule = Math.min(lh, noteBaselineOffset(field, lh) + 2);
+    field.style.setProperty('background-image', 'linear-gradient(to bottom,'
+        + 'transparent 0px,'
+        + 'transparent ' + (rule - 1) + 'px,'
+        + c.edge + ' ' + (rule - 1) + 'px,'
+        + c.edge + ' ' + rule + 'px,'
+        + 'transparent ' + rule + 'px,'
+        + 'transparent ' + lh + 'px)', 'important');
+    field.style.setProperty('background-size', '100% ' + lh + 'px', 'important');
+    field.style.setProperty('background-position', '0 0', 'important');
+    field.style.setProperty('background-repeat', 'repeat', 'important');
+    field.style.setProperty('background-attachment', 'local', 'important');
+}
+
+function paintNoteModalColor() {
+    const c = noteColorById(noteModalColor);
+    const body = document.querySelector('.note-field-body');
+    if (body) {
+        paintNoteRuling(body, c);
+        body.style.backgroundColor = c.paper;
+        // Plain borderColor lost to a rule further down the sheet and the page
+        // kept a white rim that belonged to the dark field it used to be.
+        body.style.setProperty('border-color', c.edge, 'important');
+        // The class, not the inline colour, is what turns the text, the
+        // placeholder, the icon and the counter dark -- they are set in CSS
+        // with !important and are easier to beat there than to fight here.
+        body.classList.add('note-paper');
+    }
+    document.querySelectorAll('.note-color-dot').forEach(d =>
+        d.classList.toggle('note-color-dot-on', d.dataset.color === noteModalColor));
+    const px = noteFontPx(noteModalFont);
+    const field = document.getElementById('noteContent');
+    if (field) {
+        // The short-screen pass sets font-size with !important, so this has to
+        // outrank it rather than merely come after it.
+        field.style.setProperty('font-size', px + 'px', 'important');
+        field.style.setProperty('line-height', noteLineFor(px) + 'px', 'important');
+    }
+    const sizeLabel = document.getElementById('noteFontValue');
+    if (sizeLabel) sizeLabel.textContent = px + 'px';
+    const minus = document.getElementById('noteFontMinus');
+    const plus = document.getElementById('noteFontPlus');
+    if (minus) minus.disabled = px <= NOTE_FONT_MIN;
+    if (plus) plus.disabled = px >= NOTE_FONT_MAX;
+
+    const ruled = document.getElementById('noteLinedBtn');
+    if (ruled) {
+        ruled.classList.toggle('note-lined-on', noteModalLined);
+        ruled.setAttribute('aria-pressed', noteModalLined ? 'true' : 'false');
+    }
+}
+
+// Ruled or plain, for people who write lists and want somewhere to write them
+// on. Wired once; paintNoteModalColor draws whichever the note asks for.
+function wireNoteFontButton() {
+    const step = (by) => {
+        const next = noteFontPx(noteFontPx(noteModalFont) + by);
+        if (next === noteModalFont) return;
+        noteModalFont = next;
+        haptic.toggle();
+        paintNoteModalColor();
+        noteStyleChanged();
+    };
+    [['noteFontMinus', -1], ['noteFontPlus', 1]].forEach(([id, by]) => {
+        const btn = document.getElementById(id);
+        if (!btn || btn.dataset.wired === '1') return;
+        btn.dataset.wired = '1';
+        // Same as the swatches: a press must not blur the field, or Android
+        // closes the keyboard and the caret goes with it.
+        btn.addEventListener('mousedown', (e) => e.preventDefault());
+        btn.onclick = () => step(by);
+    });
+}
+
+function wireNoteLinedToggle() {
+    const btn = document.getElementById('noteLinedBtn');
+    if (!btn || btn.dataset.wired === '1') return;
+    btn.dataset.wired = '1';
+    // Same reason the colour swatches do this: a press must not blur the
+    // field, or Android closes the keyboard and the caret is lost.
+    btn.addEventListener('mousedown', (e) => e.preventDefault());
+    btn.onclick = () => {
+        haptic.toggle();
+        noteModalLined = !noteModalLined;
+        paintNoteModalColor();
+        noteStyleChanged();
+    };
+}
+
+function buildNoteColorPicker() {
+    wireNoteLinedToggle();
+    wireNoteFontButton();
+    const row = document.getElementById('noteColors');
+    if (!row || row.childElementCount) return;
+    row.innerHTML = NOTE_COLORS.map(c =>
+        `<button type="button" class="note-color-dot" data-color="${c.id}" role="radio" aria-label="${c.id}"
+                 style="background:${c.paper};box-shadow:inset 0 0 0 2px ${c.edge},0 3px 8px rgba(0,0,0,0.4);"></button>`).join('');
+    // Tapping a swatch moved focus off the text field, and Android closes the
+    // keyboard with it. Remember what was focused before the press and put the
+    // caret back afterwards, so picking a colour never interrupts typing.
+    let focusBefore = null;
+    row.querySelectorAll('.note-color-dot').forEach(dot => {
+        // Only a field that is ALREADY editable is worth putting the caret
+        // back into; one still in read mode must not be focused, or picking a
+        // colour while reading opens the keyboard.
+        dot.addEventListener('pointerdown', () => {
+            const a = document.activeElement;
+            focusBefore = (a && !a.readOnly) ? a : null;
+        });
+        dot.onclick = () => {
+            haptic.toggle();
+            noteModalColor = dot.dataset.color;
+            paintNoteModalColor();
+            noteStyleChanged();
+            if (focusBefore && typeof focusBefore.focus === 'function'
+                && (focusBefore.id === 'noteTitle' || focusBefore.id === 'noteContent')) {
+                focusBefore.focus();
+            }
+        };
+    });
+}
+
+// The counters sit inside each field. Wired once: both the new-note and the
+// edit-note paths reuse these same two inputs.
+function wireNoteCounters() {
+    const t = document.getElementById('noteTitle');
+    const c = document.getElementById('noteContent');
+    const tc = document.getElementById('noteTitleCount');
+    const cc = document.getElementById('noteContentCount');
+    if (!t || t.dataset.counted) return;
+    t.dataset.counted = '1';
+    const upd = () => {
+        if (tc) tc.textContent = t.value.length + '/100';
+        if (cc) cc.textContent = c.value.length + '/1000';
+    };
+    t.addEventListener('input', upd);
+    c.addEventListener('input', upd);
+    upd();
+}
+
+// Anywhere in the dialog that is not a field or a button -- the head, the
+// space around the swatches, the footer background -- used to take focus when
+// touched, and Android closes the keyboard the moment the field loses it. The
+// caret goes back where it was, so a stray tap no longer interrupts typing.
+function keepNoteFocus() {
+    // Bound to the whole overlay, not just the card: an accidental touch on
+    // the dimmed area outside the dialog blurred the field too, and nothing is
+    // bound to that area anyway (this modal does not close on an outside tap).
+    const card = document.getElementById('noteModal');
+    if (!card || card.dataset.keepFocus) return;
+    card.dataset.keepFocus = '1';
+    // Putting focus BACK is not enough on Android: a programmatic .focus()
+    // restores the caret but does not re-open the soft keyboard, so the blur
+    // has to be stopped from happening at all. Preventing the touch's default
+    // on the dialog's own chrome does that -- the field never loses focus, so
+    // the keyboard never closes. Fields and buttons are left alone so typing,
+    // text selection and the buttons all still work, and the writing box keeps
+    // its own scrolling because the touch starts inside the textarea.
+    card.addEventListener('touchstart', (e) => {
+        if (!e.target.closest('input, textarea, button')) e.preventDefault();
+    }, { passive: false });
+}
+
+// Opening a note used to raise the keyboard straight away, which covers half
+// the note with a thing you did not ask for when all you wanted was to read
+// it. Both fields open read-only instead: no keyboard, but the text can still
+// be selected and copied, which is most of what reading a note is for. The
+// first tap on either field is the moment someone means to change something,
+// so that is when it becomes editable and the keyboard arrives.
+// When the note row is tapped, the modal opens under the finger and the tap's
+// own click then lands on the text -- which looked exactly like someone asking
+// to edit, so the keyboard came up anyway. Clicks in the first moments after
+// the editor opens are that one, not a decision.
+let noteReadModeAt = 0;
+// Which folder the note being read belongs to, so a colour or size change
+// made while reading can be saved without going back through the list.
+let editingNoteFolder = null;
+
+function setNoteReadMode(on) {
+    const t = document.getElementById('noteTitle');
+    const c = document.getElementById('noteContent');
+    [t, c].forEach(el => { if (el) el.readOnly = on; });
+    if (on) noteReadModeAt = Date.now();
+    const modal = document.getElementById('noteModal');
+    if (modal) modal.classList.toggle('note-reading', on);
+    if (on) {
+        if (document.activeElement === t || document.activeElement === c) document.activeElement.blur();
+    }
+}
+
+// Save and Cancel are hidden while a note is only being read -- there is
+// nothing to save and nothing to cancel. Anything that does change the note
+// has to bring them back, or it would be a change with no way to keep it: the
+// text, but the colour, the ruling and the size too.
+// Colour, ruling and text size, changed while the note is only being READ.
+// These used to drop read mode so Save and Cancel appeared -- which put a
+// keyboard over the note (the fields were editable again) and two buttons on
+// a screen that is meant to be for reading. Asked for 2026-10-13: no Cancel
+// and no Save while reading.
+// Nothing is lost by that, because none of the three needs a decision: they
+// are single taps with a visible result, so they are simply SAVED as they are
+// made and read mode is never left at all. The text itself is untouched, so
+// there is still nothing to cancel.
+async function noteStyleChanged() {
+    const c = document.getElementById('noteContent');
+    if (!c || !c.readOnly) return;  // already editing: Save does the saving
+    if (!editingNoteId) return;     // a new note is not saved until it is named
+    const t = document.getElementById('noteTitle');
+    await updateNote(editingNoteFolder || currentPath.join('/'), editingNoteId,
+        t ? t.value : '', c.value, noteModalColor);
+}
+
+// --- Bulleted lines -------------------------------------------------------
+// Enter continues a list, and ONLY a list. The marker appears on the next line
+// only when the line being left already carries one, so writing ordinary prose
+// is untouched -- that was the worry when this was asked for, and it is why
+// Enter is not simply made to insert a bullet every time.
+//   start  "- " or "* " at the head of a line becomes a bullet
+//   carry  Enter on a bullet line opens the next one already bulleted
+//   end    Enter on a bullet with nothing after it drops the marker
+const NOTE_BULLET = '• ';
+
+// Every edit goes through execCommand so the textarea keeps its own undo
+// stack. Assigning .value wipes it, and the middle of a note is exactly where
+// someone reaches for undo.
+function noteReplaceSelection(field, text) {
+    field.focus();
+    let ok = false;
+    try {
+        ok = text ? document.execCommand('insertText', false, text)
+                  : document.execCommand('delete');
+    } catch (e) { ok = false; }
+    if (ok) return;
+    const s = field.selectionStart, e2 = field.selectionEnd;
+    field.value = field.value.slice(0, s) + text + field.value.slice(e2);
+    const at = s + text.length;
+    try { field.setSelectionRange(at, at); } catch (e) { /* detached */ }
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function noteLineHead(value, caret) {
+    return value.lastIndexOf('\n', caret - 1) + 1;
+}
+
+function noteBulletKeydown(e) {
+    if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+    const field = e.currentTarget;
+    if (field.readOnly) return;
+    const caret = field.selectionStart;
+    if (caret !== field.selectionEnd) return;   // a selection: leave Enter alone
+    const head = noteLineHead(field.value, caret);
+    const line = field.value.slice(head, caret);
+    if (!line.startsWith(NOTE_BULLET)) return;  // a plain line: nothing to carry
+
+    e.preventDefault();
+    if (line.trim() === NOTE_BULLET.trim()) {
+        // An empty bullet means "done listing": drop the marker instead of
+        // opening one more empty bullet the person then has to delete.
+        try { field.setSelectionRange(head, caret); } catch (err) { return; }
+        noteReplaceSelection(field, '');
+        return;
+    }
+    const insert = '\n' + NOTE_BULLET;
+    // maxlength does not apply to a programmatic edit, so the cap is read here.
+    if (field.maxLength > 0 && field.value.length + insert.length > field.maxLength) {
+        noteReplaceSelection(field, '\n');
+        return;
+    }
+    noteReplaceSelection(field, insert);
+}
+
+const noteIsMarkChar = (ch) => ch === '-' || ch === '*';
+
+// Turns the head of a line into a bullet. It fires on the SECOND character,
+// not on the dash alone, because both of these have to work and converting on
+// the dash by itself breaks one of them:
+//    "- milk"  someone who types the space -- convert "- " to "• "
+//    "-milk"   someone who does not        -- convert "-m" to "• m"
+// Watched on the device: the dash is typed and then a letter, with no space
+// between, every time. Requiring the space meant the marker never appeared at
+// all, which read as "enter bullet not working".
+// Converting the moment the dash lands would instead turn "- milk" into
+// "•  milk", two spaces, since the space is still on its way.
+function noteBulletAutoStart(e) {
+    const field = e.currentTarget;
+    if (field.readOnly) return;
+    // Only a typed character starts a list -- not a paste, and not the
+    // programmatic edits above, which re-enter this handler.
+    if (e.inputType && e.inputType !== 'insertText') return;
+    const caret = field.selectionStart;
+    if (caret !== field.selectionEnd) return;
+    const head = noteLineHead(field.value, caret);
+    const line = field.value.slice(head, caret);
+    if (line.length !== 2 || !noteIsMarkChar(line[0])) return;
+    const second = line[1];
+    // "--" and "*-" are someone drawing a rule, not starting a list.
+    if (second !== ' ' && noteIsMarkChar(second)) return;
+    const replacement = second === ' ' ? NOTE_BULLET : NOTE_BULLET + second;
+    try { field.setSelectionRange(head, caret); } catch (err) { return; }
+    noteReplaceSelection(field, replacement);
+}
+
+// Typing "-" is not something anyone can be expected to guess, so the button
+// is the way in and the typing shortcut is a bonus for whoever finds it.
+// It toggles the caret's own line, and Enter carries the list from there.
+function noteToggleBulletLine() {
+    const field = document.getElementById('noteContent');
+    if (!field || field.readOnly) return;
+    const value = field.value;
+    const head = noteLineHead(value, field.selectionStart);
+    let end = value.indexOf('\n', head);
+    if (end === -1) end = value.length;
+    const line = value.slice(head, end);
+    const on = line.startsWith(NOTE_BULLET);
+    const next = on ? line.slice(NOTE_BULLET.length) : NOTE_BULLET + line;
+    try { field.setSelectionRange(head, end); } catch (e) { return; }
+    noteReplaceSelection(field, next);
+    const at = head + next.length;
+    try { field.setSelectionRange(at, at); } catch (e) { /* empty field */ }
+    syncNoteBulletBtn();
+}
+
+function syncNoteBulletBtn() {
+    const btn = document.getElementById('noteBulletBtn');
+    const field = document.getElementById('noteContent');
+    if (!btn || !field) return;
+    const head = noteLineHead(field.value, field.selectionStart);
+    const on = field.value.slice(head).startsWith(NOTE_BULLET);
+    btn.classList.toggle('note-lined-on', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
+function wireNoteBullets() {
+    const field = document.getElementById('noteContent');
+    if (!field || field.dataset.bullets === '1') return;
+    field.dataset.bullets = '1';
+    field.addEventListener('keydown', noteBulletKeydown);
+    field.addEventListener('input', noteBulletAutoStart);
+    ['input', 'keyup', 'click'].forEach(t =>
+        field.addEventListener(t, syncNoteBulletBtn));
+
+    const btn = document.getElementById('noteBulletBtn');
+    if (btn && btn.dataset.wired !== '1') {
+        btn.dataset.wired = '1';
+        // mousedown, not click: the default action moves focus off the
+        // textarea, which drops the keyboard and loses the caret the toggle
+        // needs to read.
+        btn.addEventListener('mousedown', (ev) => {
+            ev.preventDefault();
+            noteToggleBulletLine();
+        });
+    }
+}
+
+// A note opens to be READ, and a long note is read by scrolling it -- which
+// is one finger on the text, exactly the gesture that used to open the
+// keyboard. So the writing box now asks for a DOUBLE tap before it becomes
+// editable; a single tap scrolls and nothing else. The title is a single line
+// with nothing to scroll, so a plain tap still opens it.
+const NOTE_DOUBLE_TAP_MS = 400;
+function noteEnterEditAt(el) {
+    // Where the tap landed, so the caret arrives where it was asked for
+    // rather than at the start.
+    const at = el.selectionStart;
+    setNoteReadMode(false);
+    el.focus();
+    try { el.setSelectionRange(at, at); } catch (e) { /* empty field */ }
+}
+
+function wireNoteReadToEdit() {
+    ['noteTitle', 'noteContent'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el || el.dataset.readToEdit === '1') return;
+        el.dataset.readToEdit = '1';
+        const wantsDouble = id === 'noteContent';
+        let lastTapAt = 0;
+        el.addEventListener('click', () => {
+            if (!el.readOnly) return;
+            // The tap that OPENED the note must not count as the first half of
+            // a double tap, nor edit the note on its own.
+            if (Date.now() - noteReadModeAt < 600) return;
+            if (!wantsDouble) { noteEnterEditAt(el); return; }
+            const now = Date.now();
+            if (now - lastTapAt < NOTE_DOUBLE_TAP_MS) {
+                lastTapAt = 0;
+                noteEnterEditAt(el);
+            } else {
+                lastTapAt = now;
+            }
+        });
+    });
+}
+
+function prepareNoteModal(heading, sub, color) {
+    wireNoteReadToEdit();
+    wireNoteBullets();
+    keepNoteFocus();
+    buildNoteColorPicker();
+    wireNoteCounters();
+    noteModalColor = color || 'violet';
+    paintNoteModalColor();
+    const h = document.getElementById('noteModalHeading');
+    const s = document.getElementById('noteModalSub');
+    if (h) h.textContent = heading;
+    if (s) s.textContent = sub;
+    const t = document.getElementById('noteTitle');
+    if (t) t.dispatchEvent(new Event('input'));
 }
 
 async function openNote(note) {
@@ -4151,11 +6688,16 @@ async function openNote(note) {
     document.getElementById('noteTitle').value = note.title;
     document.getElementById('noteContent').value = note.content;
     editingNoteId = note.id;
+    editingNoteFolder = folderPath;
+    noteModalLined = !!note.lined;
+    noteModalFont = noteFontPx(note.fontSize);
+    prepareNoteModal('Edit Note', 'Change what you wrote', note.color);
+    setNoteReadMode(true);
     document.getElementById('saveNoteBtn').onclick = async () => {
         const newTitle = document.getElementById('noteTitle').value;
         const newContent = document.getElementById('noteContent').value;
         if (newTitle.trim()) {
-            await updateNote(note.folder || currentPath.join('/'), note.id, newTitle, newContent);
+            await updateNote(note.folder || currentPath.join('/'), note.id, newTitle, newContent, noteModalColor);
             closeNoteModal();
         } else showToast("Title empty", true);
     };
@@ -4164,12 +6706,16 @@ async function openNote(note) {
 
 function openNewNoteModal() {
     editingNoteId = null;
+    noteModalLined = false;
+    noteModalFont = NOTE_FONT_DEFAULT;
+    setNoteReadMode(false);
     document.getElementById('noteTitle').value = '';
     document.getElementById('noteContent').value = '';
+    prepareNoteModal('New Note', 'Capture your thoughts', 'violet');
     document.getElementById('saveNoteBtn').onclick = async () => {
         const title = document.getElementById('noteTitle').value;
         const content = document.getElementById('noteContent').value;
-        if (title.trim()) { await addNoteToCurrentFolder(title, content);
+        if (title.trim()) { await addNoteToCurrentFolder(title, content, noteModalColor);
             closeNoteModal(); } else showToast("Title empty", true);
     };
     document.getElementById('noteModal').classList.add('show');
@@ -4178,6 +6724,7 @@ function openNewNoteModal() {
 function closeNoteModal() {
     document.getElementById('noteModal').classList.remove('show');
     editingNoteId = null;
+    editingNoteFolder = null;
 }
 
 // ============================================================
@@ -4263,9 +6810,11 @@ function requirePinIfNoteLocked(folderPath, noteId) {
     });
 }
 
-async function openFileWithGesture(fileEntry, folderPath) {
-    if (!(await requirePinIfLocked(folderPath, fileEntry.name))) return;
-    trackRecentFile(fileEntry.name, folderPath);
+async function openFileWithGesture(fileEntry, folderPath, alreadyUnlocked) {
+    if (!alreadyUnlocked) {
+        if (!(await requirePinIfLocked(folderPath, fileEntry.name))) return;
+        trackRecentFile(fileEntry.name, folderPath);
+    }
 
     // Inside the Capacitor Android WebView, navigator.share() is unreliable —
     // on many WebView builds it either doesn't exist, or silently no-ops
@@ -4273,6 +6822,13 @@ async function openFileWithGesture(fileEntry, folderPath) {
     // plugin (Filesystem.writeFile + Share.share) is what actually works, so
     // on native platforms we go straight there and skip navigator.share().
     if (isNativePlatform()) {
+        // A stored file is shared straight from its path (nativeDownload's
+        // fsPath fast path); its bytes are only read here as a fallback.
+        const shareFsPath = fileEntry.fsPath || allFiles[folderPath]?.find(f => f.name === fileEntry.name)?.fsPath;
+        if (shareFsPath && !(fileEntry.fileData instanceof Blob)) {
+            await nativeDownload(null, fileEntry.name, shareFsPath, folderPath);
+            return;
+        }
         const fileData = fileEntry.fileData instanceof Blob
             ? fileEntry.fileData
             : await loadFileData(folderPath, fileEntry.name);
@@ -4328,13 +6884,25 @@ async function openFile(fileName, folderPath) {
     if (!(await requirePinIfLocked(folderPath, fileName))) return;
     trackRecentFile(fileName, folderPath);
 
+    const fileType = getFileType(fileName);
+
+    // A PDF already on native storage goes to the native viewer (or the
+    // external app) by path alone. Reading it into a Blob first held the
+    // whole file in WebView memory while the viewer was open: with a 285 MB
+    // PDF Android killed the WebView, and pressing back restarted the app.
+    if (fileType === 'pdf' && isNativePlatform()) {
+        const pdfMeta = allFiles[folderPath]?.find(f => f.name === fileName);
+        if (pdfMeta?.fsPath) {
+            await handlePdfFile(null, fileName, folderPath, pdfMeta.fsPath, pdfMeta.size);
+            return;
+        }
+    }
+
     const fileData = await loadFileData(folderPath, fileName);
     if (!fileData) {
         showToast('File not found or could not be loaded', true);
         return;
     }
-
-    const fileType = getFileType(fileName);
 
     if (fileType === 'image') {
         openImageViewer(fileData, fileName, folderPath);
@@ -4500,7 +7068,9 @@ const IMG_ADJUST_PROPS = [
     { prop: 'contrast',   elId: 'imgSliderContrast',   default: 0, toFilter: d => `contrast(${100 + d}%)` },
     { prop: 'exposure',   elId: 'imgSliderExposure',   default: 0, toFilter: d => `brightness(${100 + d}%)` },
     { prop: 'saturation', elId: 'imgSliderSaturation', default: 0, toFilter: d => `saturate(${100 + d}%)` },
-    { prop: 'hue',        elId: 'imgSliderHue',        default: 0, toFilter: d => `hue-rotate(${d}deg)` },
+    // 0..100 on the dial like every other tool. The whole colour wheel is
+    // still reachable; 100 is one complete turn.
+    { prop: 'hue',        elId: 'imgSliderHue',        default: 0, toFilter: d => `hue-rotate(${d * 3.6}deg)` },
     // blur/sepia/invert are one-directional CSS filters -- there's no
     // negative blur/sepia/invert to "undo" an already-baked amount, so
     // once committed, these can only be increased further, never
@@ -4510,7 +7080,11 @@ const IMG_ADJUST_PROPS = [
     // thumb's visual position, since a range input renders its thumb
     // at (value-min)/(max-min), and setting min===value always puts
     // the thumb at the very left regardless of the real number).
-    { prop: 'blur',       elId: 'imgSliderBlur',       default: 0, toFilter: d => `blur(${Math.max(0, d)}px)`, floorOnly: true },
+    // Also 0..100. The dial used to stop at 20 because 20 is the number of
+    // pixels handed to the filter, which left one tool counting in a scale of
+    // its own beside nine that read 0..100. The pixel figure is derived here
+    // instead, so 100 is the same strongest blur it has always been.
+    { prop: 'blur',       elId: 'imgSliderBlur',       default: 0, toFilter: d => `blur(${Math.max(0, d) * 0.2}px)`, floorOnly: true },
     { prop: 'sepia',      elId: 'imgSliderSepia',      default: 0, toFilter: d => `sepia(${Math.max(0, d)}%)`, floorOnly: true },
     { prop: 'opacity',    elId: 'imgSliderOpacity',    default: 100, toFilter: d => `opacity(${100 + d}%)` },
     { prop: 'invert',     elId: 'imgSliderInvert',     default: 0, toFilter: d => `invert(${Math.max(0, d)}%)`, floorOnly: true },
@@ -4609,6 +7183,10 @@ function imgEditorZeroAdjustSliders() {
     IMG_ADJUST_PROPS.forEach(p => {
         imgEditor[p.prop] = p.default;
         imgEditor.adjustBase[p.prop] = p.default;
+        // Any ceiling a previous session may have raised goes back to what the
+        // markup declared, so a fresh image always starts from the real range.
+        const el = document.getElementById(p.elId);
+        if (el && el.dataset.maxBase !== undefined) { el.max = el.dataset.maxBase; delete el.dataset.maxBase; }
         imgSetSliderDisplay(p, p.default);
     });
 }
@@ -5008,9 +7586,35 @@ const IMG_ADJUST_HINT_KEY = 'docman_img_adjust_hints';
 const imgAdjust = { built: false, tab: 'adjust', prop: 'brightness', sessionIndex: 0, filter: null, strength: 100, hintTimer: null };
 
 function imgAdjustProp(prop) { return IMG_ADJUST_PROPS.find(p => p.prop === prop); }
+// A floorOnly tool (blur, sharpen, sepia, invert) cannot be dragged back below
+// what is already baked into the pixels: blurred pixels are gone, so there is
+// nothing to restore. The floor is correct. The problem was what the dial did
+// once the floor met the ceiling.
+//
+// Blur's slider is 0..20 and sharpen's 0..100. Taking either to the end and
+// leaving the Adjust panel bakes it, which sets the floor TO the ceiling --
+// min === max, the dial could not move, and the tool read as broken. Only
+// those two were reported because they are the ones people take all the way.
+//
+// A first attempt let the ceiling climb by one span on every bake so there was
+// always somewhere to drag. That removed the dead dial but was worse: the
+// number had no meaning any more and kept growing -- blur reached 700 and
+// sharpen 1000 on the test device, neither of which describes anything.
+//
+// So the ceiling stays where the markup put it. 20px of blur is the maximum
+// this tool offers, and once it is reached it is honestly spent; imgAdjustRefresh
+// says so on the dial rather than leaving it silently immovable.
 function imgAdjustRange(p) {
     const el = document.getElementById(p.elId);
     return { min: parseFloat(el.min), max: parseFloat(el.max) };
+}
+
+// True when a floorOnly tool has been baked all the way to its ceiling, so
+// there is genuinely nothing left to drag in either direction.
+function imgAdjustAtLimit(p) {
+    if (!p.floorOnly || !imgEditor.adjustBase) return false;
+    const { min, max } = imgAdjustRange(p);
+    return Math.max(min, imgEditor.adjustBase[p.prop] || 0) >= max;
 }
 
 function imgAdjustEnsureDom() {
@@ -5196,9 +7800,14 @@ function imgAdjustRefresh() {
     const p = imgAdjustProp(imgAdjust.prop);
     const { min, max } = imgAdjustRange(p);
     const v = imgEditor[p.prop];
-    nameEl.textContent = IMG_ADJUST_LABELS[p.prop];
+    // A floorOnly tool baked all the way to its ceiling has nothing left to
+    // give and nowhere to drag. Saying so is the whole fix: the dial being
+    // immovable in silence is what read as a broken button.
+    const spent = imgAdjustAtLimit(p);
+    nameEl.textContent = IMG_ADJUST_LABELS[p.prop] + (spent ? ' · max' : '');
     valEl.textContent = imgFormatSliderValue(p, v);
-    ruler.setAttribute('aria-label', IMG_ADJUST_LABELS[p.prop]);
+    ruler.style.opacity = spent ? '0.45' : '';
+    ruler.setAttribute('aria-label', IMG_ADJUST_LABELS[p.prop] + (spent ? ', at maximum' : ''));
     imgAdjustDrawRuler(min, max, v, p.default);
     document.querySelectorAll('.img-adjust-dial').forEach(b => {
         const q = imgAdjustProp(b.dataset.prop);
@@ -6207,6 +8816,13 @@ function imgEditorExportBlob() {
 }
 
 async function imgEditorSaveAsNew() {
+    // Nothing was changed, so there is nothing to write. Saving anyway made a
+    // second copy that differed from the original only by being re-encoded at
+    // quality 0.92 -- a slightly worse duplicate, and a spent Pro try.
+    if (!imgEditorHasEdits()) {
+        showToast('Nothing to save yet -- no edits have been made', true);
+        return;
+    }
     if (!requireProTool('imageedit')) return;
     const viewer = document.getElementById('imageViewer');
     const folderPath = viewer._currentFolder;
@@ -6353,13 +8969,44 @@ async function imgEditorSaveAsPdf() {
 
 let pdfQueue = []; // array of { folderPath, fileName }
 let pdfSelectMode = false;
+// The screen the selection was started on: which folder was open and what
+// was typed in the search box. Both are part of it because a selection can
+// legitimately start from search results too -- the cards just have to still
+// be the ones on screen.
+let pdfSelectContext = null;
+
+// True only while the selection still has the screen it was made on under
+// it. Everything else (the badge, the select dots) follows from this.
+function imgPdfSelectionStillValid() {
+    if (!pdfSelectMode || !pdfQueue.length || !pdfSelectContext) return false;
+    const query = (document.getElementById('searchInput')?.value || '').trim();
+    return currentPath.join('/') === pdfSelectContext.path && query === pdfSelectContext.query;
+}
 
 function imgUpdatePdfQueueBadge() {
     const fab = document.getElementById('pdfQueueFab');
     const countEl = document.getElementById('pdfQueueCount');
     if (!fab || !countEl) return;
-    fab.classList.toggle('hidden', pdfQueue.length === 0);
+    // Shown only where the selection it belongs to actually is. Without this
+    // the badge kept floating over the home department list after a back
+    // press, still offering to combine images that weren't on screen.
+    const anyOverlayOpen = !!document.querySelector('.favourites-view.fav-view-visible');
+    fab.classList.toggle('hidden', !imgPdfSelectionStillValid() || anyOverlayOpen);
     countEl.textContent = pdfQueue.length;
+}
+
+// Drops a "Merge to PDF" selection that no longer has a screen to live on.
+// pdfQueue/pdfSelectMode are global, so leaving the folder (back button,
+// Home, breadcrumb, opening a department) or changing the search used to
+// leave both alive -- which parked the "Combine to PDF" badge on the home
+// screen and put a select dot on every image card in the next folder opened.
+function imgPruneStalePdfSelection() {
+    if (!pdfSelectMode || imgPdfSelectionStillValid()) return;
+    pdfSelectMode = false;
+    pdfQueue = [];
+    pdfSelectContext = null;
+    imgUpdatePdfQueueBadge();
+    // No render() here on purpose -- the only caller is render() itself.
 }
 
 function imgIsInPdfQueue(folderPath, fileName) {
@@ -6368,6 +9015,10 @@ function imgIsInPdfQueue(folderPath, fileName) {
 
 function imgEnterPdfSelectMode(folderPath, fileName) {
     pdfSelectMode = true;
+    pdfSelectContext = {
+        path: currentPath.join('/'),
+        query: (document.getElementById('searchInput')?.value || '').trim(),
+    };
     if (!imgIsInPdfQueue(folderPath, fileName)) {
         pdfQueue.push({ folderPath, fileName });
     }
@@ -6418,6 +9069,7 @@ function imgAddToPdfQueue(folderPath, fileName) {
 function imgExitPdfSelectMode() {
     pdfSelectMode = false;
     pdfQueue = [];
+    pdfSelectContext = null;
     imgUpdatePdfQueueBadge();
     render();
 }
@@ -6492,6 +9144,608 @@ async function imgCombinePdfQueue() {
     }, { icon: 'fa-file-pdf', subtitle: 'Name for the merged document', placeholder: 'File name' });
 }
 
+// ============================================================
+// "MERGE PDFs" SELECTION MODE (Pro tool, approved 2026-09-18)
+// ============================================================
+// The PDF counterpart of "Merge to PDF" above: long-press a PDF, pick more
+// in the order you want them, then join them into one new file. The join
+// itself happens natively (PdfNative.mergePdfs -> PDFBox streaming through
+// temp files), because doing it here would mean holding several hundred
+// pages of PDF in WebView memory at once.
+//
+// Order matters, so the card shows its position number rather than a tick,
+// and the same screen-context rule as the image selection applies (see
+// imgPdfSelectionStillValid) -- a selection dies with the screen it was
+// made on.
+
+const MERGE_MAX_FILES = 20;
+const MERGE_MAX_PAGES = 1000;
+const MERGE_MAX_BYTES = 500 * 1024 * 1024;
+const MERGE_WARN_PAGES = 200;
+
+// Entries hold the file OBJECT, not its name: a folder can genuinely
+// contain two files with the same name (seen on device 2026-09-18), and
+// matching by name selected both rows at once and would have merged the
+// same document twice.
+let pdfMergeQueue = []; // array of { folderPath, file }, in tap order
+let pdfMergeMode = false;
+let pdfMergeContext = null;
+
+function pdfMergeSelectionStillValid() {
+    if (!pdfMergeMode || !pdfMergeQueue.length || !pdfMergeContext) return false;
+    const query = (document.getElementById('searchInput')?.value || '').trim();
+    return currentPath.join('/') === pdfMergeContext.path && query === pdfMergeContext.query;
+}
+
+function updatePdfMergeBadge() {
+    const fab = document.getElementById('pdfMergeFab');
+    const countEl = document.getElementById('pdfMergeCount');
+    if (!fab || !countEl) return;
+    const anyOverlayOpen = !!document.querySelector('.favourites-view.fav-view-visible');
+    fab.classList.toggle('hidden', !pdfMergeSelectionStillValid() || anyOverlayOpen);
+    countEl.textContent = pdfMergeQueue.length;
+}
+
+// Same job as imgPruneStalePdfSelection: called from render(), the one place
+// every navigation passes through.
+function prunePdfMergeSelection() {
+    if (!pdfMergeMode || pdfMergeSelectionStillValid()) return;
+    pdfMergeMode = false;
+    pdfMergeQueue = [];
+    pdfMergeContext = null;
+    updatePdfMergeBadge();
+    // No render() here -- render() is the only caller.
+}
+
+function pdfMergeIndexOf(folderPath, file) {
+    return pdfMergeQueue.findIndex(q => q.folderPath === folderPath && q.file === file);
+}
+
+function startPdfMergeSelection(folderPath, file) {
+    if (!requireProTool('mergepdf')) return;
+    pdfMergeMode = true;
+    pdfMergeContext = {
+        path: currentPath.join('/'),
+        query: (document.getElementById('searchInput')?.value || '').trim(),
+    };
+    if (pdfMergeIndexOf(folderPath, file) === -1) {
+        pdfMergeQueue.push({ folderPath, file });
+    }
+    updatePdfMergeBadge();
+    render();
+}
+
+function togglePdfMergeSelection(folderPath, file) {
+    const idx = pdfMergeIndexOf(folderPath, file);
+    if (idx === -1) {
+        if (pdfMergeQueue.length >= MERGE_MAX_FILES) {
+            showToast(`You can merge up to ${MERGE_MAX_FILES} PDFs at a time`, true);
+            return;
+        }
+        pdfMergeQueue.push({ folderPath, file });
+    } else {
+        pdfMergeQueue.splice(idx, 1);
+    }
+    if (!pdfMergeQueue.length) { exitPdfMergeMode(); return; }
+    updatePdfMergeBadge();
+    // Unlike the image selection, a full re-render is required: removing one
+    // file renumbers every card after it.
+    render();
+}
+
+function exitPdfMergeMode() {
+    pdfMergeMode = false;
+    pdfMergeQueue = [];
+    pdfMergeContext = null;
+    updatePdfMergeBadge();
+    render();
+}
+
+// Bytes for one specific file row. loadFileData() looks its metadata up by
+// NAME, which picks the first match -- and a folder can legitimately hold two
+// files with the same name, so anything acting on a selected row must resolve
+// through that row's own fsPath first.
+async function loadFileDataFor(folderPath, file) {
+    if (file?.fsPath) {
+        const blob = await readBlobFromFS(file.fsPath);
+        if (blob instanceof Blob) return blob;
+    }
+    if (file?.fileData instanceof Blob) return file.fileData;
+    return loadFileData(folderPath, file?.name);
+}
+
+// Absolute filesystem path for a queued PDF. Files living in native storage
+// are used where they are; anything still in the IndexedDB blob store (older
+// imports, the browser build) is written to the cache first, since the native
+// merger works on real files.
+async function pdfMergeAbsolutePath(entry, stagedPaths) {
+    const Filesystem = getFilesystemPlugin();
+    if (!Filesystem) return null;
+    const meta = entry.file;
+    if (!meta) return null;
+    const toAbsolute = (uri) => uri.startsWith('file://') ? decodeURIComponent(uri.slice('file://'.length)) : uri;
+
+    if (meta.fsPath) {
+        try {
+            const { uri } = await Filesystem.getUri({ path: meta.fsPath, directory: 'DATA' });
+            return toAbsolute(uri);
+        } catch (e) {
+            console.warn('Merge: no native path for', entry.fileName, e);
+        }
+    }
+    const blob = await loadFileData(entry.folderPath, meta.name);
+    if (!blob) return null;
+    const cachePath = `merge/src-${stagedPaths.length}-${Date.now()}.pdf`;
+    await writeBlobToFSChunked(blob, cachePath, 'CACHE');
+    stagedPaths.push(cachePath);
+    const { uri } = await Filesystem.getUri({ path: cachePath, directory: 'CACHE' });
+    return toAbsolute(uri);
+}
+
+// Page counts (and "can this file even be opened") come from the native side
+// before anything is merged, so the confirm sheet tells the truth and a
+// password-protected file is caught here rather than half-way through.
+async function collectPdfMergeDetails(stagedPaths) {
+    const PdfNative = window.Capacitor?.Plugins?.PdfNative;
+    const rows = [];
+    for (const entry of pdfMergeQueue) {
+        const meta = entry.file;
+        const path = await pdfMergeAbsolutePath(entry, stagedPaths);
+        rows.push({
+            entry,
+            name: meta?.name || '',
+            size: meta?.size || 0,
+            path,
+            pages: 0,
+            readable: false,
+        });
+    }
+    const paths = rows.filter(r => r.path).map(r => r.path);
+    if (PdfNative && paths.length) {
+        try {
+            const res = await PdfNative.pdfInfo({ paths });
+            const byPath = new Map((res.files || []).map(f => [f.path, f]));
+            for (const row of rows) {
+                const info = row.path ? byPath.get(row.path) : null;
+                if (info) { row.pages = info.pages || 0; row.readable = !!info.readable; }
+            }
+        } catch (e) {
+            console.warn('Merge: page counts unavailable', e);
+        }
+    }
+    return rows;
+}
+
+async function cleanUpMergeStaging(stagedPaths) {
+    const Filesystem = getFilesystemPlugin();
+    if (!Filesystem) return;
+    for (const path of stagedPaths) {
+        try { await Filesystem.deleteFile({ path, directory: 'CACHE' }); } catch (e) { /* best effort */ }
+    }
+}
+
+// The badge's action: check the selection over, show what will be produced,
+// and merge on confirmation.
+async function confirmAndMergePdfs() {
+    if (!requireProTool('mergepdf')) return;
+    if (pdfMergeQueue.length < 2) { showToast('Pick at least two PDFs to merge', true); return; }
+    const PdfNative = window.Capacitor?.Plugins?.PdfNative;
+    if (!PdfNative || !directoryIsNative()) { showToast('Merging PDFs needs the app on Android', true); return; }
+
+    const stagedPaths = [];
+    let rows;
+    showBusyOverlay('Checking the PDFs…');
+    try {
+        rows = await collectPdfMergeDetails(stagedPaths);
+    } catch (e) {
+        console.error('Merge: could not read the selected PDFs', e);
+        hideBusyOverlay();
+        await cleanUpMergeStaging(stagedPaths);
+        showToast('Could not read the selected PDFs', true);
+        return;
+    }
+    hideBusyOverlay();
+
+    const unreadable = rows.filter(r => !r.readable);
+    if (unreadable.length) {
+        await cleanUpMergeStaging(stagedPaths);
+        showToast(
+            unreadable.length === 1
+                ? `"${unreadable[0].name}" can't be merged — it may be password-protected or damaged`
+                : `${unreadable.length} of the selected files can't be merged — they may be password-protected or damaged`,
+            true
+        );
+        return;
+    }
+
+    const totalPages = rows.reduce((n, r) => n + r.pages, 0);
+    const totalBytes = rows.reduce((n, r) => n + r.size, 0);
+    if (totalPages > MERGE_MAX_PAGES || totalBytes > MERGE_MAX_BYTES) {
+        await cleanUpMergeStaging(stagedPaths);
+        showToast(`That's too big to merge safely (${totalPages} pages, ${formatBytes(totalBytes)}). The limit is ${MERGE_MAX_PAGES} pages or ${formatBytes(MERGE_MAX_BYTES)}.`, true);
+        return;
+    }
+
+    const listHtml = rows.map((r, i) => `
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.07);font-family:Inter,sans-serif;font-size:0.82rem;color:#e6e9f2;">
+            <b style="width:18px;color:#60a5fa;">${i + 1}</b>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.name)}</span>
+            <span style="color:#8b94ab;font-size:0.72rem;">${r.pages} page${r.pages === 1 ? '' : 's'}</span>
+        </div>`).join('');
+    const warnHtml = totalPages > MERGE_WARN_PAGES
+        ? `<div style="color:#fbbf24;font-size:0.75rem;margin-top:10px;text-align:center;font-family:Inter,sans-serif;">⚠ Large merge — this may take a minute</div>`
+        : '';
+    const message =
+        `<div style="text-align:left;">` +
+        `<div style="color:#94a3b8;font-size:0.78rem;margin-bottom:10px;font-family:Inter,sans-serif;">They are joined in this order. Your original files are not changed.</div>` +
+        listHtml +
+        `<div style="display:flex;color:#cbd5e1;font-size:0.8rem;padding:10px 0 2px;font-family:Inter,sans-serif;">Merged file<b style="margin-left:auto;color:#fff;">${totalPages} pages · ${formatBytes(totalBytes)}</b></div>` +
+        warnHtml +
+        `</div>`;
+
+    const ok = await new Promise(resolve => showConfirmModal(message, resolve, {
+        okLabel: 'Merge', cancelLabel: 'Cancel', okColor: 'linear-gradient(135deg,#3b82f6,#1d4ed8)'
+    }));
+    if (!ok) { await cleanUpMergeStaging(stagedPaths); return; }
+
+    const folderPath = currentPath.join('/');
+    const outPath = `merge/merged-${Date.now()}.pdf`;
+    const Filesystem = getFilesystemPlugin();
+    showBusyOverlay(`Merging ${rows.length} PDFs…`);
+    try {
+        const { uri } = await Filesystem.getUri({ path: outPath, directory: 'CACHE' });
+        const outAbsolute = uri.startsWith('file://') ? decodeURIComponent(uri.slice('file://'.length)) : uri;
+        await PdfNative.mergePdfs({ paths: rows.map(r => r.path), out: outAbsolute });
+
+        updateBusyOverlay('Saving the merged file…');
+        const desiredName = `Merged-${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '')}.pdf`;
+        const added = await fileCachedPdfIntoFolder(Filesystem, outPath, folderPath, desiredName);
+        if (!added) throw new Error('Could not save the merged file');
+
+        await spendFreeTry('mergepdf');
+        hideBusyOverlay();
+        exitPdfMergeMode();
+        updateStats();
+        showToast(`Merged ${rows.length} PDFs into ${added.name} (${totalPages} pages)`);
+    } catch (e) {
+        console.error('Merge failed:', e);
+        hideBusyOverlay();
+        showToast('Could not merge those PDFs: ' + (e?.message || e), true);
+    } finally {
+        try { await Filesystem.deleteFile({ path: outPath, directory: 'CACHE' }); } catch (e2) { /* already filed or never created */ }
+        await cleanUpMergeStaging(stagedPaths);
+    }
+}
+
+// ============================================================
+// MULTI-SELECT (toolbar "Select", approved 2026-09-19)
+// ============================================================
+// Files and notes in the CURRENT folder only. Entered from the folder
+// toolbar's Select button, which replaces the toolbar with a count bar and
+// puts a tick box on every row; a bottom bar then acts on everything ticked.
+// Selections hold the item OBJECT, never its name -- two files in one folder
+// can share a name (see addFileToCurrentFolder), and matching by name would
+// tick both rows and delete the wrong one.
+
+let selectMode = false;
+let selectedFileObjs = [];
+let selectedNoteObjs = [];
+let selectContext = null;
+
+function selectionStillValid() {
+    if (!selectMode || !selectContext) return false;
+    const query = (document.getElementById('searchInput')?.value || '').trim();
+    return currentPath.join('/') === selectContext.path && query === selectContext.query;
+}
+
+function selectedItemCount() {
+    return selectedFileObjs.length + selectedNoteObjs.length;
+}
+
+function enterSelectMode() {
+    haptic.press();
+    selectMode = true;
+    selectedFileObjs = [];
+    selectedNoteObjs = [];
+    selectContext = {
+        path: currentPath.join('/'),
+        query: (document.getElementById('searchInput')?.value || '').trim(),
+    };
+    render();
+}
+
+function exitSelectMode() {
+    selectMode = false;
+    selectedFileObjs = [];
+    selectedNoteObjs = [];
+    selectContext = null;
+    render();
+}
+
+// Called from render(), like the two PDF selections: leaving the folder or
+// changing the search drops a selection that no longer has its screen.
+function pruneStaleSelection() {
+    if (!selectMode || selectionStillValid()) return;
+    selectMode = false;
+    selectedFileObjs = [];
+    selectedNoteObjs = [];
+    selectContext = null;
+}
+
+function isFileSelected(file) { return selectedFileObjs.includes(file); }
+function isNoteSelected(note) { return selectedNoteObjs.includes(note); }
+
+// Binds "tap this card to toggle it" for the selection modes. A bare
+// touchend fires when the finger lifts after a SCROLL too, which toggled a
+// random card -- and buzzed -- on every touch while scrolling a long list.
+// This only acts on a real tap: finger barely moved, and lifted quickly.
+function bindCardTapToggle(div, onTap) {
+    let sx = 0, sy = 0, t0 = 0, moved = false;
+    div.addEventListener('touchstart', (e) => {
+        const t = e.touches[0];
+        sx = t.clientX; sy = t.clientY; t0 = Date.now(); moved = false;
+    }, { passive: true });
+    div.addEventListener('touchmove', (e) => {
+        const t = e.touches[0];
+        if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) moved = true;
+    }, { passive: true });
+    div.addEventListener('touchend', (e) => {
+        if (moved || Date.now() - t0 > 500) return;   // a scroll, or a long hold
+        e.preventDefault();
+        onTap();
+    }, { passive: false });
+    // Mouse/desktop path; on touch the preventDefault above stops the
+    // synthetic click, so this cannot double-fire.
+    div.addEventListener('click', () => onTap());
+}
+
+function toggleFileSelection(file) {
+    const i = selectedFileObjs.indexOf(file);
+    if (i === -1) selectedFileObjs.push(file); else selectedFileObjs.splice(i, 1);
+    haptic.toggle();
+    render();
+}
+
+function toggleNoteSelection(note) {
+    const i = selectedNoteObjs.indexOf(note);
+    if (i === -1) selectedNoteObjs.push(note); else selectedNoteObjs.splice(i, 1);
+    haptic.toggle();
+    render();
+}
+
+function toggleSelectAll() {
+    const path = currentPath.join('/');
+    const files = allFiles[path] || [];
+    const notes = allNotes[path] || [];
+    const everything = files.length + notes.length;
+    haptic.toggle();
+    if (selectedItemCount() >= everything) {
+        selectedFileObjs = [];
+        selectedNoteObjs = [];
+    } else {
+        selectedFileObjs = [...files];
+        selectedNoteObjs = [...notes];
+    }
+    render();
+}
+
+// The bar that replaces the folder toolbar while selecting.
+function selectBarHtml() {
+    const path = currentPath.join('/');
+    const everything = (allFiles[path] || []).length + (allNotes[path] || []).length;
+    const count = selectedItemCount();
+    return `
+        <div class="select-bar">
+            <button class="select-bar-x" onclick="exitSelectMode()" aria-label="Leave selection"><i class="fas fa-times"></i></button>
+            <span class="select-bar-count">${count} selected</span>
+            <button class="select-bar-all" onclick="toggleSelectAll()">${count >= everything && everything ? 'Clear all' : 'Select all'}</button>
+        </div>`;
+}
+
+function updateSelectActionBar() {
+    const bar = document.getElementById('selectActionBar');
+    if (!bar) return;
+    const anyOverlayOpen = !!document.querySelector('.favourites-view.fav-view-visible');
+    bar.classList.toggle('hidden', !selectionStillValid() || !selectedItemCount() || anyOverlayOpen);
+}
+
+// ---- the four bulk actions -------------------------------------------
+
+async function bulkFavourite() {
+    const items = [...selectedFileObjs, ...selectedNoteObjs];
+    if (!items.length) return;
+    // One tap should do the same thing to everything: if they are all
+    // favourites already, it clears them; otherwise it favourites the lot.
+    const makeFavourite = !items.every(i => i.favourite);
+    items.forEach(i => { i.favourite = makeFavourite; });
+    const path = currentPath.join('/');
+    if (selectedFileObjs.length) await saveFilesForFolder(path);
+    if (selectedNoteObjs.length) await saveNotesForFolder(path);
+    haptic.success();
+    showToast(makeFavourite ? `${items.length} item(s) added to Favourites` : `${items.length} item(s) removed from Favourites`);
+    exitSelectMode();
+}
+
+// Moves one note between folders. Notes are plain objects in allNotes, with
+// no native file behind them, so this is a splice and two saves.
+async function moveNoteToFolder(oldFolderPath, noteId, newFolderPath) {
+    if (oldFolderPath === newFolderPath) return false;
+    const notes = allNotes[oldFolderPath];
+    if (!notes) return false;
+    const idx = notes.findIndex(n => n.id === noteId);
+    if (idx === -1) return false;
+    const [note] = notes.splice(idx, 1);
+    if (!notes.length) delete allNotes[oldFolderPath];
+    if (!allNotes[newFolderPath]) allNotes[newFolderPath] = [];
+    allNotes[newFolderPath].push(note);
+    await saveNotesForFolder(oldFolderPath);
+    await saveNotesForFolder(newFolderPath);
+    return true;
+}
+
+function bulkMove() {
+    if (!selectedItemCount()) return;
+    const folderPath = currentPath.join('/');
+    const destinations = collectAllFolderPaths().filter(d => d.path !== folderPath);
+    const existing = document.getElementById('customMoveModal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'customMoveModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
+    const rowsHtml = moveDestRowsHtml(destinations);
+    const parts = [];
+    if (selectedFileObjs.length) parts.push(`${selectedFileObjs.length} file(s)`);
+    if (selectedNoteObjs.length) parts.push(`${selectedNoteObjs.length} note(s)`);
+    const movingLabel = parts.join(' and ');
+    overlay.innerHTML = `
+        <div style="position:relative;background:#1a1a1a;border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <button id="moveModalCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
+            <p style="color:#ffffff;font-size:0.95rem;font-weight:600;margin-bottom:16px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.5;">Move ${movingLabel} to:</p>
+            <div id="moveDestList">${rowsHtml}</div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#moveModalCloseX').onclick = close;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelectorAll('.move-dest-row').forEach(row => {
+        row.addEventListener('click', async () => {
+            const dest = row.dataset.path;
+            close();
+            const fileObjs = [...selectedFileObjs];
+            const noteIds = selectedNoteObjs.map(n => n.id);
+            const total = fileObjs.length + noteIds.length;
+            showBusyOverlay(`Moving ${total} item(s)…`);
+            let moved = 0;
+            for (const fileObj of fileObjs) {
+                const before = (allFiles[folderPath] || []).length;
+                await moveFileToFolder(folderPath, fileObj, dest);
+                if ((allFiles[folderPath] || []).length < before) moved++;
+            }
+            for (const id of noteIds) {
+                if (await moveNoteToFolder(folderPath, id, dest)) moved++;
+            }
+            hideBusyOverlay();
+            showToast(moved === total
+                ? `Moved ${moved} item(s)`
+                : `Moved ${moved} of ${total} — the rest already existed there`);
+            exitSelectMode();
+        });
+    });
+}
+
+async function bulkShare() {
+    const Share = window.Capacitor?.Plugins?.Share;
+    const Filesystem = getFilesystemPlugin();
+    if (!Share || !Filesystem) { showToast('Sharing is not available here', true); return; }
+    const shareable = selectedFileObjs.filter(f => f.fsPath || f.fileData || f.dataUrl);
+    if (!shareable.length) { showToast('These items cannot be shared together', true); return; }
+    showBusyOverlay(`Preparing ${shareable.length} file(s)…`);
+    // Every file is copied into the app CACHE first. The FileProvider only
+    // exposes cache/ and Documents/ (see res/xml/file_paths.xml), so handing
+    // Share a URI inside files/ makes FileProvider.getUriForFile throw and the
+    // share sheet opens with nothing attached -- the same failure Drive
+    // reported as "request contained no data" for backups. nativeDownload()
+    // has always done this copy for single files; this is the bulk version.
+    const staged = [];
+    try {
+        const uris = [];
+        for (const f of shareable) {
+            // Stored files are shared from where they are: res/xml/file_paths.xml
+            // now exposes docs/, so no cache copy (and no whole-file read of a
+            // 285 MB PDF into WebView memory) is needed.
+            if (f.fsPath) {
+                try {
+                    const { uri } = await Filesystem.getUri({ path: f.fsPath, directory: 'DATA' });
+                    uris.push(uri);
+                    continue;
+                } catch (e) {
+                    console.warn('Bulk share: no native path for', f.name, e);
+                }
+            }
+            const blob = await loadFileDataFor(currentPath.join('/'), f);
+            if (!blob) continue;
+            const cachePath = `share/${Date.now()}-${uris.length}-${sanitizePathSegment(f.name)}`;
+            await writeBlobToFSChunked(blob, cachePath, 'CACHE');
+            staged.push(cachePath);
+            const { uri } = await Filesystem.getUri({ path: cachePath, directory: 'CACHE' });
+            uris.push(uri);
+        }
+        if (!uris.length) throw new Error('None of the selected files could be read');
+        hideBusyOverlay();
+        expectNativeReturn();
+        await Share.share({ title: `${uris.length} files`, files: uris });
+        exitSelectMode();
+    } catch (e) {
+        hideBusyOverlay();
+        // "Share canceled" is the plugin's own rejection when the sheet is
+        // dismissed -- not worth an error card.
+        if (!String(e?.message || e).toLowerCase().includes('cancel')) {
+            console.error('Bulk share failed:', e);
+            showToast('Could not share those files', true);
+        }
+    }
+    // Deliberately NOT deleting `staged` here: some receiving apps (Gmail is
+    // the usual one) keep the URI and only read the bytes later, when the mail
+    // is actually sent. Old copies are pruned on the NEXT share instead, and
+    // Android clears the cache dir on its own when space is needed.
+    pruneShareStaging(staged).catch(() => { /* best effort */ });
+}
+
+// Removes staging copies from earlier shares, never the ones just handed out.
+async function pruneShareStaging(keepPaths) {
+    const Filesystem = getFilesystemPlugin();
+    if (!Filesystem) return;
+    const keep = new Set(keepPaths || []);
+    let listing;
+    try {
+        listing = await Filesystem.readdir({ path: 'share', directory: 'CACHE' });
+    } catch (e) { return; } // nothing staged yet
+    for (const entry of (listing.files || [])) {
+        const name = typeof entry === 'string' ? entry : entry.name;
+        const path = `share/${name}`;
+        if (!name || keep.has(path)) continue;
+        try { await Filesystem.deleteFile({ path, directory: 'CACHE' }); } catch (e) { /* already gone */ }
+    }
+}
+
+function bulkDelete() {
+    const count = selectedItemCount();
+    if (!count) return;
+    showConfirmModal(
+        `Move <b>${count} item(s)</b> to the Recycle Bin?<br><span style="opacity:.75;font-size:0.82rem">You can put them back from there, or delete them for good.</span>`,
+        async (confirmed) => {
+            if (!confirmed) return;
+            haptic.warning();
+            const path = currentPath.join('/');
+            const files = [...selectedFileObjs];
+            const notes = [...selectedNoteObjs];
+            showBusyOverlay(`Deleting ${count} item(s)…`);
+            for (const file of files) {
+                // By name, but only after finding THIS object's current index,
+                // so a same-named twin is never the one removed.
+                const arr = allFiles[path] || [];
+                const idx = arr.indexOf(file);
+                if (idx === -1) continue;
+                const [entry] = arr.splice(idx, 1);
+                if (!arr.length) delete allFiles[path];
+                recycleBin.unshift({ id: genRecycleId(), kind: 'file', name: entry.name, folderPath: path, deletedAt: Date.now(), payload: entry });
+            }
+            if (files.length) { await saveFilesForFolder(path); }
+            for (const note of notes) {
+                await moveNoteToRecycleBin(path, note.id);
+            }
+            if (files.length) await saveRecycleBin();
+            hideBusyOverlay();
+            exitSelectMode();
+            updateStats();
+            showToast(`${count} item(s) moved to Recycle Bin`);
+        },
+        { okLabel: 'Delete', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' }
+    );
+}
+
 // "Convert to PDF" -- a single image, straight from its file card's
 // context menu, becomes its own single-page PDF immediately. No queue,
 // no editor -- distinct from "Merge to PDF" (imgAddToPdfQueue), which
@@ -6545,6 +9799,13 @@ async function imgConvertSingleFileToPdf(folderPath, fileName) {
 }
 
 async function imgEditorReplaceOriginal() {
+    // Nothing was changed, so there is nothing to write. Saving anyway made a
+    // second copy that differed from the original only by being re-encoded at
+    // quality 0.92 -- a slightly worse duplicate, and a spent Pro try.
+    if (!imgEditorHasEdits()) {
+        showToast('Nothing to save yet -- no edits have been made', true);
+        return;
+    }
     if (!requireProTool('imageedit')) return;
     const viewer = document.getElementById('imageViewer');
     const folderPath = viewer._currentFolder;
@@ -6813,18 +10074,28 @@ function closeSheetViewer() {
 let isSharing = false;
 let shareTimeout = null;
 
-async function handlePdfFile(fileData, fileName, folderPath, fsPath) {
+// fileData may be null when the PDF is already on native storage (fsPath):
+// openFile() no longer reads a large PDF into WebView memory just to hand
+// its path to the native viewer (a 285 MB file there got the WebView killed
+// while the viewer was open, and back then restarted the app). knownSize
+// comes from the file's metadata in that case.
+async function handlePdfFile(fileData, fileName, folderPath, fsPath, knownSize) {
     const openMode = docmanSettings.pdfOpen || 'docman';
     const nativeViewerEligible = openMode === 'docman' && isNativePlatform() && isAndroid() && window.Capacitor?.Plugins?.PdfNative;
 
-    // Size threshold is checked BEFORE deciding native-vs-external -- it
-    // used to only run on the fallback path below, so the native viewer
-    // branch's early return meant "PDFs larger than this use External
-    // App" was silently never enforced on Android with the native viewer
-    // enabled (the default). The setting now applies uniformly.
-    const fileSizeMB = fileData.size / (1024 * 1024);
+    // "PDFs larger than this use External App" (Settings) applies to every
+    // PDF. The native viewer copes with any size, so someone who wants big
+    // files in DOCMAN raises the threshold (up to 500 MB).
+    let size = fileData ? fileData.size : (knownSize || 0);
+    if (!size && fsPath) {
+        try {
+            const st = await getFilesystemPlugin()?.stat({ path: fsPath, directory: 'DATA' });
+            size = Number(st?.size) || 0;
+        } catch (e) { /* unknown size: treat as under the threshold */ }
+    }
+    const fileSizeMB = size / (1024 * 1024);
     const thresholdBytes = (docmanSettings.pdfThreshold || 50) * 1024 * 1024;
-    const overThreshold = fileData.size >= thresholdBytes;
+    const overThreshold = size >= thresholdBytes;
 
     // NATIVE ANDROID: hand off to the native PdfiumAndroid viewer. Renders
     // outside the WebView — smooth zoom, no lag, no WASM memory ceiling.
@@ -6847,12 +10118,49 @@ function isAndroid() {
     return /android/i.test(navigator.userAgent);
 }
 
+// "Open with" another app for a file already on native storage: a real
+// ACTION_VIEW with a FileProvider content URI and a read grant (see
+// PdfNativePlugin.openExternal). Returns false when that isn't possible here,
+// so the caller can fall back to the share sheet.
+async function openExternallyNative(fsPath, fileName) {
+    const PdfNative = window.Capacitor?.Plugins?.PdfNative;
+    const Filesystem = getFilesystemPlugin();
+    if (!fsPath || !PdfNative?.openExternal || !Filesystem || !isAndroid()) return false;
+    try {
+        const { uri } = await Filesystem.getUri({ path: fsPath, directory: 'DATA' });
+        const mimeType = getFileType(fileName) === 'pdf' ? 'application/pdf' : '*/*';
+        expectNativeReturn();
+        await PdfNative.openExternal({ path: uri, mimeType });
+        return true;
+    } catch (e) {
+        if (e?.code === 'NO_APP') {
+            showToast('No app on this phone can open this file', true);
+            return true;
+        }
+        console.warn('Open with another app failed, falling back to share:', e);
+        return false;
+    }
+}
+
+// External-app mode tap on a PDF row (Settings > PDF Open > External App).
+async function openPdfInExternalApp(fileEntry, folderPath) {
+    if (!(await requirePinIfLocked(folderPath, fileEntry.name))) return;
+    trackRecentFile(fileEntry.name, folderPath);
+    const meta = allFiles[folderPath]?.find(f => f.name === fileEntry.name);
+    const fsPath = fileEntry.fsPath || meta?.fsPath;
+    if (isNativePlatform() && await openExternallyNative(fsPath, fileEntry.name)) return;
+    await openFileWithGesture(fileEntry, folderPath, true);
+}
+
 async function sharePdfExternally(fileData, fileName, fsPath) {
     // On native (Capacitor) Android, the WebView's navigator.share() is
     // unreliable — it can silently no-op instead of throwing. The native
     // Capacitor Share plugin reliably triggers the OS chooser, so use that
     // directly whenever we're actually running as a native app.
     if (isNativePlatform()) {
+        if (await openExternallyNative(fsPath, fileName)) return;
+        if (!fileData && fsPath) fileData = await readBlobFromFS(fsPath);
+        if (!fileData) { showToast('File not found or could not be loaded', true); return; }
         await nativeDownload(fileData, fileName, fsPath);
         return;
     }
@@ -6960,7 +10268,9 @@ function blobChunkToBase64(chunk) {
     });
 }
 
-async function nativeDownload(blob, fileName, fsPath) {
+// blob may be null when fsPath is given; it is then read only if sharing
+// straight from the path fails.
+async function nativeDownload(blob, fileName, fsPath, folderPath) {
     const Filesystem = window.Capacitor?.Plugins?.Filesystem;
     const Share = window.Capacitor?.Plugins?.Share;
 
@@ -6981,8 +10291,15 @@ async function nativeDownload(blob, fileName, fsPath) {
                     await Share.share({ title: fileName, url: uri });
                     return;
                 } catch (e) {
+                    // Closing the share sheet rejects too. That is not a
+                    // failure: copying the file and reopening the sheet
+                    // would be.
+                    if (/cancel/i.test(String(e?.message || e))) return;
                     console.warn('fsPath share fast path failed, falling back to chunked copy:', e);
                 }
+                if (!blob) blob = await readBlobFromFS(fsPath);
+                if (!blob && folderPath !== undefined) blob = await loadFileData(folderPath, fileName);
+                if (!blob) { showToast('File not found or could not be loaded', true); return; }
             }
             // Written in bounded-size chunks rather than one base64 encode
             // of the WHOLE file -- the Capacitor JS<->native bridge JSON-
@@ -7012,11 +10329,13 @@ async function nativeDownload(blob, fileName, fsPath) {
             await Share.share({ title: fileName, url: result.uri });
             return;
         } catch (e) {
+            if (/cancel/i.test(String(e?.message || e))) return;
             console.warn('Capacitor download failed, falling back:', e);
         }
     }
 
     // PWA / browser fallback
+    if (!blob) { showToast('Could not share this file', true); return; }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -7219,7 +10538,7 @@ function ensurePinExistsForLock(onReady) {
     });
 }
 
-function showCardContextMenu({ title, isFav, onFav, onRename, onMove, onDelete, isLocked, onLock, onShare, onConvertToPdf, onAddToPdf, onSetExpiry, onEdit, onCopy, onAddNote, onEditTags, onDetail, onChangeIcon, triggerEl }) {
+function showCardContextMenu({ title, isFav, onFav, onRename, onMove, onDelete, isLocked, onLock, onShare, onConvertToPdf, onAddToPdf, onMergePdfs, onSetExpiry, onEdit, onCopy, onAddNote, onRemind, remindLabel, onEditTags, onDetail, onChangeIcon, triggerEl }) {
     const existing = document.getElementById('ctxMenuOverlay');
     if (existing) existing.remove();
 
@@ -7281,10 +10600,20 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onMove, onDelete, 
             <i class="fas fa-layer-group ctx-item-icon ctx-icon-share"></i>
             <span class="ctx-menu-item-label">Merge to PDF</span>${tryBadgeHtml(canUseProTool('topdf'))}
         </div>` : ''}
+        ${onMergePdfs ? `
+        <div class="ctx-menu-item" id="ctxMergePdfs">
+            <i class="fas fa-object-group ctx-item-icon ctx-icon-share"></i>
+            <span class="ctx-menu-item-label">Merge PDFs</span>${tryBadgeHtml(canUseProTool('mergepdf'))}
+        </div>` : ''}
         ${onAddNote ? `
         <div class="ctx-menu-item" id="ctxAddNote">
             <i class="fas fa-note-sticky ctx-item-icon ctx-icon-note"></i>
-            <span class="ctx-menu-item-label">Add Note</span>
+            <span class="ctx-menu-item-label">Quick note</span>
+        </div>` : ''}
+        ${onRemind ? `
+        <div class="ctx-menu-item" id="ctxRemind">
+            <i class="fas fa-bell ctx-item-icon ctx-icon-note"></i>
+            <span class="ctx-menu-item-label">${remindLabel || 'Remind me'}</span>
         </div>` : ''}
         ${onEditTags ? `
         <div class="ctx-menu-item" id="ctxEditTags">
@@ -7310,11 +10639,16 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onMove, onDelete, 
     `;
 
     const close = () => {
+        window.removeEventListener('scroll', close);
         menu.style.animation = 'ctxPopOut 0.15s ease forwards';
         overlay.style.opacity = '0';
         overlay.style.transition = 'opacity 0.15s ease';
         setTimeout(() => overlay.remove(), 160);
     };
+    // The menu is pinned to where its row was. Scroll the list and it is left
+    // pointing at whatever moved into that spot, so a scroll dismisses it
+    // rather than letting it hang over the wrong file.
+    window.addEventListener('scroll', close, { passive: true });
 
     overlay.appendChild(menu);
     document.body.appendChild(overlay);
@@ -7330,12 +10664,20 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onMove, onDelete, 
         const menuW = menu.offsetWidth || 200;
         const menuH = menu.offsetHeight || 180;
         const vw = window.innerWidth;
-        // Bottom bound excludes the safe-area inset (gesture nav bar) --
-        // window.innerHeight on a full-screen WebView includes that zone,
-        // so clamping to it alone still lets a tall menu's last item (e.g.
-        // Delete) land underneath the nav bar.
-        const safeBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom')) || 0;
-        const vh = window.innerHeight - safeBottom;
+        // Bottom bound excludes the navigation bar -- window.innerHeight on a
+        // full-screen WebView includes that zone, so clamping to it alone lets
+        // a tall menu's last item (Delete, as reported) land underneath the
+        // back and home keys.
+        //
+        // This read --safe-bottom alone and so did nothing: env(safe-area-
+        // inset-bottom) resolves to 0 in this WebView, because targetSdk 35+
+        // draws edge-to-edge without publishing the inset. --nav-bottom is the
+        // height MainActivity measures from the real window insets and writes
+        // onto the root; the larger of the two covers gesture bars too.
+        const cs = getComputedStyle(document.documentElement);
+        const safeBottom = parseFloat(cs.getPropertyValue('--safe-bottom')) || 0;
+        const navBottom = parseFloat(cs.getPropertyValue('--nav-bottom')) || 0;
+        const vh = window.innerHeight - Math.max(safeBottom, navBottom);
 
         let left = rect.right - menuW;
         let top = rect.top - menuH - 8;
@@ -7383,9 +10725,15 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onMove, onDelete, 
     const addToPdfEl = document.getElementById('ctxAddToPdf');
     if (addToPdfEl) addToPdfEl.addEventListener('click', () => { haptic.press(); close();
         onAddToPdf(); });
+    const mergePdfsEl = document.getElementById('ctxMergePdfs');
+    if (mergePdfsEl) mergePdfsEl.addEventListener('click', () => { haptic.press(); close();
+        onMergePdfs(); });
     const addNoteEl = document.getElementById('ctxAddNote');
     if (addNoteEl) addNoteEl.addEventListener('click', () => { haptic.press(); close();
         onAddNote(); });
+    const remindEl = document.getElementById('ctxRemind');
+    if (remindEl) remindEl.addEventListener('click', () => { haptic.press(); close();
+        onRemind(); });
     const editTagsEl = document.getElementById('ctxEditTags');
     if (editTagsEl) editTagsEl.addEventListener('click', () => { haptic.press(); close();
         onEditTags(); });
@@ -7410,7 +10758,14 @@ function createFileCard(file, folderPath, opts = {}) {
     div.dataset.folderPath = folderPath;
     const isImage = getFileType(file.name) === 'image';
     const isSelected = pdfSelectMode && isImage && imgIsInPdfQueue(folderPath, file.name);
-    div.className = 'card file-card' + (pdfSelectMode ? ' card-select-mode' : '') + (isSelected ? ' card-selected' : '') + (pdfSelectMode && !isImage ? ' card-not-selectable' : '');
+    // Merge PDFs runs the same selection idea over PDF cards, except the
+    // card shows its position number -- the order the files are joined in.
+    const isPdf = getFileType(file.name) === 'pdf';
+    const mergeIndex = pdfMergeMode && isPdf ? pdfMergeIndexOf(folderPath, file) : -1;
+    div.className = 'card file-card'
+        + (pdfSelectMode || pdfMergeMode ? ' card-select-mode' : '')
+        + (isSelected || mergeIndex !== -1 ? ' card-selected' : '')
+        + ((pdfSelectMode && !isImage) || (pdfMergeMode && !isPdf) ? ' card-not-selectable' : '');
     const sizeLabel = getFileSizeLabel(file);
     const nameHtml = opts.highlightQuery ? highlightMatch(file.name, opts.highlightQuery) : escapeHtml(file.name);
     const expiryInfo = getExpiryStatus(file);
@@ -7424,7 +10779,9 @@ function createFileCard(file, folderPath, opts = {}) {
         : '';
     const selectDot = pdfSelectMode && isImage
         ? `<div class="card-select-dot${isSelected ? ' card-select-dot-checked' : ''}">${isSelected ? '<i class="fas fa-check"></i>' : ''}</div>`
-        : '';
+        : (pdfMergeMode && isPdf
+            ? `<div class="card-select-dot${mergeIndex !== -1 ? ' card-select-dot-checked' : ''}">${mergeIndex !== -1 ? (mergeIndex + 1) : ''}</div>`
+            : '');
     div.innerHTML = `
         ${selectDot}
         ${renderFileIconBadge(file.name)}
@@ -7461,14 +10818,30 @@ function createFileCard(file, folderPath, opts = {}) {
     // In selection mode, a tap toggles the image in/out of the PDF
     // queue instead of opening it -- short-circuit before any of the
     // normal press/tap wiring below.
+    // Multi-select: a tick box on the left, and the whole row toggles it.
+    if (selectMode) {
+        const ticked = isFileSelected(file);
+        div.classList.add('card-select-mode');
+        div.classList.toggle('card-selected', ticked);
+        div.querySelector('.row-menu')?.remove();
+        div.insertAdjacentHTML('afterbegin', `<div class="bulk-check${ticked ? ' bulk-check-on' : ''}">${ticked ? '<i class="fas fa-check"></i>' : ''}</div>`);
+        bindCardTapToggle(div, () => toggleFileSelection(file));
+        return div;
+    }
+
+    // While picking PDFs to merge, a tap toggles the file in or out of the
+    // selection instead of opening it -- same short-circuit as image select
+    // mode below.
+    if (pdfMergeMode) {
+        if (isPdf) {
+            bindCardTapToggle(div, () => { haptic.toggle(); togglePdfMergeSelection(folderPath, file); });
+        }
+        return div;
+    }
+
     if (pdfSelectMode) {
         if (isImage) {
-            div.addEventListener('click', () => { haptic.toggle(); imgTogglePdfSelection(folderPath, file.name); });
-            div.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                haptic.toggle();
-                imgTogglePdfSelection(folderPath, file.name);
-            }, { passive: false });
+            bindCardTapToggle(div, () => { haptic.toggle(); imgTogglePdfSelection(folderPath, file.name); });
         }
         return div;
     }
@@ -7490,7 +10863,7 @@ function createFileCard(file, folderPath, opts = {}) {
             noteBtn.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
             noteBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                setTimeout(() => showNoteViewModal(file, folderPath), 260);
+                setTimeout(() => showNoteViewModal(file, folderPath, noteBtn), 260);
             });
         }
     }
@@ -7552,18 +10925,30 @@ function createFileCard(file, folderPath, opts = {}) {
                     render();
                     showToast(file.favourite ? '⭐ Added to favourites' : 'Removed from favourites');
                 },
-                onRename: () => showPromptModal('Rename file:', file.name, async (newName) => {
-                    if (!newName?.trim()) return;
-                    if (!(await requirePinIfLocked(folderPath, file.name))) return;
-                    renameFileInFolder(folderPath, file.name, newName.trim());
-                }, { icon: 'fa-file', subtitle: 'New name for this file', placeholder: 'File name' }),
+                onRename: () => {
+                    // Only the part the user named is offered for editing. The
+                    // extension is kept out of the box entirely, so it cannot be
+                    // dropped or mistyped; renameFileInFolder puts it back.
+                    const dot = file.name.lastIndexOf('.');
+                    const base = dot > 0 ? file.name.slice(0, dot) : file.name;
+                    const ext = dot > 0 ? file.name.slice(dot + 1).toUpperCase() : '';
+                    showPromptModal('Rename file:', base, async (newName) => {
+                        if (!newName?.trim()) return;
+                        if (!(await requirePinIfLocked(folderPath, file.name))) return;
+                        renameFileInFolder(folderPath, file.name, newName.trim());
+                    }, {
+                        icon: 'fa-file',
+                        subtitle: ext ? `New name — it stays a ${ext} file` : 'New name for this file',
+                        placeholder: 'File name'
+                    });
+                },
                 onMove: async () => {
                     if (!(await requirePinIfLocked(folderPath, file.name))) return;
                     showMoveFileModal(folderPath, file.name);
                 },
                 onDelete: async () => {
                     if (!(await requirePinIfLocked(folderPath, file.name))) return;
-                    deleteFileFromFolder(folderPath, file.name);
+                    deleteFileFromFolder(folderPath, file.name, div);
                 },
                 onShare: () => openFileWithGesture(file, folderPath),
                 onEdit: isImage ? async () => {
@@ -7576,19 +10961,20 @@ function createFileCard(file, folderPath, opts = {}) {
                 },
                 onConvertToPdf: getFileType(file.name) === 'image' ? () => imgConvertSingleFileToPdf(folderPath, file.name) : null,
                 onAddToPdf: getFileType(file.name) === 'image' ? () => imgAddToPdfQueue(folderPath, file.name) : null,
-                onAddNote: () => showTextareaPromptModal(`Note for "${file.name}":`, file.note || '', (val) => {
+                onMergePdfs: getFileType(file.name) === 'pdf' ? () => startPdfMergeSelection(folderPath, file) : null,
+                onAddNote: () => showTextareaPromptModal(`Quick note for "${escapeHtml(file.name)}":`, file.note || '', (val) => {
                     if (val === null) return; // cancelled
                     setFileNote(folderPath, file.name, val.trim());
                 }, { icon: 'fa-note-sticky', subtitle: 'Add a quick note for this file', placeholder: 'Write your note...' }),
-                onEditTags: () => showPromptModal(`Tags for "${file.name}" (comma separated):`, (file.tags || []).join(', '), (val) => {
+                onEditTags: () => showPromptModal(`Tags for "${escapeHtml(file.name)}" (comma separated):`, (file.tags || []).join(', '), (val) => {
                     if (val === null) return; // cancelled
                     const tags = val.split(',').map(t => t.trim()).filter(Boolean);
                     setFileTags(folderPath, file.name, tags);
                 }, { icon: 'fa-tags', subtitle: 'Comma-separated tags for this file', placeholder: 'e.g. invoice, 2026, urgent' }),
-                onSetExpiry: () => showDateModal(`Expiry date for "${file.name}":`, file.expiryDate || '', (val) => {
+                onSetExpiry: () => showDateModal(`Expiry date for "${escapeHtml(file.name)}":`, file.expiryDate || '', (val) => {
                     if (val === undefined) return; // cancelled, no change
                     setFileExpiryDate(folderPath, file.name, val);
-                }, { disallowPast: true }),
+                }, { disallowPast: true, minTomorrow: true }),
                 onDetail: () => showFileDetailModal(file, folderPath),
                 isLocked: !!file.locked,
                 onLock: () => {
@@ -7656,7 +11042,7 @@ function createFileCard(file, folderPath, opts = {}) {
         if (!longPressTriggered && !isScrolling && Date.now() - touchStartTime < 300) {
             tappedByTouch = true;
             if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'docman') === 'external') {
-                openFileWithGesture(file, folderPath);
+                openPdfInExternalApp(file, folderPath);
             } else {
                 openFile(file.name, folderPath);
             }
@@ -7688,7 +11074,7 @@ function createFileCard(file, folderPath, opts = {}) {
         // without blocking a genuine, deliberate fast tap afterward.
         if (Date.now() - lastNavigationAt < 400) return;
         if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'docman') === 'external') {
-            openFileWithGesture(file, folderPath);
+            openPdfInExternalApp(file, folderPath);
         } else {
             openFile(file.name, folderPath);
         }
@@ -7707,20 +11093,67 @@ function createFileCard(file, folderPath, opts = {}) {
     return div;
 }
 
+// One line of a note's body around the words that matched, or nothing when
+// the search did not reach the body -- when the title already carries the
+// match, when the note is locked, or when there is no search at all.
+function noteSearchSnippet(note, query) {
+    const q = (query || '').trim();
+    if (!q || note.locked) return '';
+    const body = note.content || '';
+    const at = body.toLowerCase().indexOf(q.toLowerCase());
+    if (at === -1) return '';
+    // Collapse the whitespace first so a note written over several lines gives
+    // one readable line here, and keep a little context before the match so it
+    // does not start mid-word.
+    const flat = body.replace(/\s+/g, ' ').trim();
+    const flatAt = flat.toLowerCase().indexOf(q.toLowerCase());
+    const from = Math.max(0, flatAt - 26);
+    const to = Math.min(flat.length, flatAt + q.length + 48);
+    const cut = flat.slice(from, to);
+    const lead = from > 0 ? '…' : '';
+    const tail = to < flat.length ? '…' : '';
+    return '<div class="card-note-snippet">' + lead + highlightMatch(cut, q) + tail + '</div>';
+}
+
 function createNoteCard(note, folderPath, opts = {}) {
     const div = document.createElement('div');
     div.className = 'card note-card';
+    // The stripe down the left edge is the colour the note was saved with.
+    const nc = noteColorById(note.color);
+    div.style.setProperty('--note-stripe', 'linear-gradient(180deg,' + nc.from + ',' + nc.to + ')');
     const titleHtml = opts.highlightQuery ? highlightMatch(note.title, opts.highlightQuery) : escapeHtml(note.title);
+    // Search has always looked inside a note's body -- it was the card that
+    // never said so. A note found by its text looked exactly like a note that
+    // had nothing to do with the search: same title, no highlight, no reason
+    // given. That is what "note contents are not searchable" turned out to
+    // mean. The matching words now show underneath, with enough either side
+    // to recognise them by.
+    //
+    // Never for a locked note: the title is already out, but the body is the
+    // thing the lock was put on.
+    const snippetHtml = noteSearchSnippet(note, opts.highlightQuery);
     div.innerHTML = `
         <div class="card-icon"><i class="fas fa-sticky-note"></i></div>
         <div class="card-info">
             <div class="card-filename" title="${escapeHtml(note.title)}">${titleHtml}</div>
+            ${snippetHtml}
         </div>
         ${note.locked ? '<i class="fas fa-lock card-lock-indicator"></i>' : ''}
         <i class="fas fa-star card-fav-indicator${note.favourite ? '' : ' card-fav-hidden'}"></i>
+        ${noteHasReminder(folderPath, note.id) ? '<i class="fas fa-bell card-remind-indicator"></i>' : ''}
         <button class="frow-menu row-menu" aria-label="Options for ${escapeHtml(note.title)}">
             <i class="fas fa-ellipsis frow-dots"></i></button>
     `;
+
+    if (selectMode) {
+        const ticked = isNoteSelected(note);
+        div.classList.add('card-select-mode');
+        div.classList.toggle('card-selected', ticked);
+        div.querySelector('.row-menu')?.remove();
+        div.insertAdjacentHTML('afterbegin', `<div class="bulk-check${ticked ? ' bulk-check-on' : ''}">${ticked ? '<i class="fas fa-check"></i>' : ''}</div>`);
+        bindCardTapToggle(div, () => toggleNoteSelection(note));
+        return div;
+    }
 
     const rowMenuBtn = div.querySelector('.row-menu');
     if (rowMenuBtn) {
@@ -7749,10 +11182,9 @@ function createNoteCard(note, folderPath, opts = {}) {
         longPressTriggered = false;
         isScrolling = false;
 
-        // Long-press removed: the row's pill button is visible and does the
-        // same job. Keeping both also double-fired, because the pill must
-        // stopPropagation (so the row does not open the item), which stopped
-        // the row's touchend from ever running cancelPress().
+        // Long press does nothing here: a tap already opens the note to be
+        // read, with no keyboard in the way, so a peek on top of that was one
+        // reading view too many. The row pill still carries the actions.
     };
 
     function openNoteMenu() {
@@ -7783,10 +11215,14 @@ function createNoteCard(note, folderPath, opts = {}) {
                     if (!(await requirePinIfNoteLocked(folderPath, note.id))) return;
                     renameNote(folderPath, note.id, newTitle.trim());
                 }, { icon: 'fa-note-sticky', subtitle: 'New title for this note', placeholder: 'Note title' }),
+                onRemind: noteHasReminder(folderPath, note.id)
+                    ? () => removeNoteReminder(folderPath, note.id)
+                    : () => addReminderFlow(null, { folderPath, noteId: note.id }, note.title),
+                remindLabel: noteHasReminder(folderPath, note.id) ? 'Remove reminder' : 'Remind me',
                 onDelete: async () => {
                     if (!(await requirePinIfNoteLocked(folderPath, note.id))) return;
                     showConfirmModal(`Delete note "<b>${escapeHtml(note.title)}</b>"?`, (confirmed) => {
-                        if (confirmed) deleteNoteFromFolder(folderPath, note.id);
+                        if (confirmed) deleteNoteFromFolder(folderPath, note.id, div);
                     });
                 },
                 onShare: async () => {
@@ -8096,7 +11532,7 @@ function createCard(title, onClick, isFolder = false, fullPath = null, fileCount
         const old = pathArr[pathArr.length - 1];
         showPromptModal('Rename folder:', old, async (newName) => {
             if (newName === null || newName === old) return;
-            if (!isValidFolderName(newName)) { showToast("Folder name can only use letters, numbers, spaces, and - _ ( ) . &", true); return; }
+            if (!isValidFolderName(newName)) { showToast("Folder name can only use letters, numbers, spaces, and - _ ( ) . &, and can't be only numbers", true); return; }
             {
                 const parentPathArr = pathArr.slice(0, -1);
                 const parent = parentPathArr.length ? parentPathArr.reduce((o, p) => o?.[p], fileSystem) : fileSystem;
@@ -8142,7 +11578,8 @@ function createCard(title, onClick, isFolder = false, fullPath = null, fileCount
     };
     const deleteThisFolderUnlocked = (pathArr) => {
         const name = pathArr[pathArr.length - 1];
-        showConfirmModal(`Move "<b>${escapeHtml(name)}</b>" and all its contents to Recycle Bin?`, async (confirmed) => {
+        const info = (() => { const c = folderContentsLine(pathArr); return { html: `Move "<b>${escapeHtml(name)}</b>" to the Recycle Bin?<br><span style="display:inline-block;margin-top:10px;font-weight:500;font-size:0.85rem;color:var(--text-secondary);">${c.empty ? c.text : 'It contains ' + c.text + '.'}</span>`, wait: c.empty ? 0 : 5 }; })();
+        showConfirmModal(info.html, async (confirmed) => {
             if (confirmed) {
                 await moveFolderToRecycleBin(pathArr);
                 // If we were browsing inside the deleted subfolder (or a
@@ -8156,7 +11593,7 @@ function createCard(title, onClick, isFolder = false, fullPath = null, fileCount
                 updateStats();
                 showToast('Moved to Recycle Bin');
             }
-        }, { okLabel: 'Move', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
+        }, { okLabel: 'Move', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)', countdown: info.wait });
     };
 
     const startPress = (e) => {
@@ -8295,6 +11732,8 @@ async function migrateFilesAndNotesPath(oldPath, newPath) {
         const files = allFiles[k];
         delete allFiles[k];
         allFiles[newKey] = files;
+        // Every expiry alarm in this folder is keyed on the old path.
+        for (const f of files) await reKeyFileAlerts(k, f.name, newKey, f);
         await Promise.all(files.map(async f => {
             if (!f.fsPath) {
                 await renameBlobInDB(k, f.name, newKey, f.name);
@@ -8305,11 +11744,25 @@ async function migrateFilesAndNotesPath(oldPath, newPath) {
     }
 
     const matchingNoteKeys = Object.keys(allNotes).filter(k => k === oldPath || k.startsWith(prefix));
+    let remindersRepointed = false;
     for (const k of matchingNoteKeys) {
         const newKey = k === oldPath ? newPath : newPath + k.slice(oldPath.length);
         allNotes[newKey] = allNotes[k];
         delete allNotes[k];
+        // A reminder finds its note by folder path and id. The alarm itself is
+        // keyed on the reminder, so it keeps firing either way -- but it would
+        // open nothing, because the path it points at is gone. Only the pointer
+        // needs moving, not the alarm.
+        for (const n of allNotes[newKey] || []) {
+            reminders.forEach(r => {
+                if (r.noteRef && r.noteRef.noteId === n.id && r.noteRef.folderPath === k) {
+                    r.noteRef.folderPath = newKey;
+                    remindersRepointed = true;
+                }
+            });
+        }
     }
+    if (remindersRepointed) saveReminders();
 }
 
 function renameCurrentFolder() {
@@ -8318,7 +11771,7 @@ function renameCurrentFolder() {
     const old = currentPath[currentPath.length - 1];
     showPromptModal('Rename folder:', old, async (newName) => {
         if (newName === null || newName === old) return;
-        if (!isValidFolderName(newName)) { showToast("Folder name can only use letters, numbers, spaces, and - _ ( ) . &", true); return; }
+        if (!isValidFolderName(newName)) { showToast("Folder name can only use letters, numbers, spaces, and - _ ( ) . &, and can't be only numbers", true); return; }
         {
             const parent = currentPath.slice(0, -1).reduce((o, p) => o[p], fileSystem);
 
@@ -8354,7 +11807,8 @@ function deleteCurrentFolder() {
     haptic.press();
     if (!currentPath.length) return;
     const name = currentPath[currentPath.length - 1];
-    showConfirmModal(`Move "<b>${escapeHtml(name)}</b>" and all its contents to Recycle Bin?`, async (confirmed) => {
+    const info = (() => { const c = folderContentsLine([...currentPath]); return { html: `Move "<b>${escapeHtml(name)}</b>" to the Recycle Bin?<br><span style="display:inline-block;margin-top:10px;font-weight:500;font-size:0.85rem;color:var(--text-secondary);">${c.empty ? c.text : 'It contains ' + c.text + '.'}</span>`, wait: c.empty ? 0 : 5 }; })();
+    showConfirmModal(info.html, async (confirmed) => {
         if (confirmed) {
             await moveFolderToRecycleBin([...currentPath]);
             currentPath.pop();
@@ -8362,7 +11816,7 @@ function deleteCurrentFolder() {
             updateStats();
             showToast('Moved to Recycle Bin');
         }
-    }, { okLabel: 'Move', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
+    }, { okLabel: 'Move', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)', countdown: info.wait });
 }
 
 // ============================================================
@@ -8417,6 +11871,7 @@ const FREE_TRIES = {
     ocr: 'Reading scanned pages',
     imageedit: 'Editing images',
     topdf: 'Converting to PDF',
+    mergepdf: 'Merging PDFs',
     lock: 'Locking items'
 };
 const FREE_TRY_COUNT = Object.keys(FREE_TRIES).length;
@@ -8425,6 +11880,25 @@ const FREE_TRY_COUNT = Object.keys(FREE_TRIES).length;
 // whole app) is never limited.
 
 let entitlement = { purchased: false, triesUsed: new Set(), loaded: false };
+let devProOverride = false;   // see the dev-build block below
+
+// TEST BUILDS ONLY: "DOCMAN dev" (package com.docman.dev) runs as if Pro were
+// bought, so features can be exercised without the paywall getting in the way.
+// The Play build has package com.docman and is never affected; the check is on
+// the real package id, not a flag anyone could set.
+(async () => {
+    try {
+        const info = await window.Capacitor?.Plugins?.App?.getInfo?.();
+        if (info && typeof info.id === 'string' && info.id.endsWith('.dev')) {
+            devProOverride = true;
+            entitlement.purchased = true;
+            updateProBadge();
+            console.warn('DOCMAN dev build: Pro unlocked for testing');
+        }
+    } catch (e) {
+        // Not a native build, or no App plugin: stay locked.
+    }
+})();
 
 function hasFreeTry(feature) {
     return !entitlement.purchased && !entitlement.triesUsed.has(feature);
@@ -8512,10 +11986,17 @@ async function refreshPurchasedState() {
     if (!billing) return;
     try {
         const r = await billing.isPurchased();
-        entitlement.purchased = !!(r && r.purchased);
+        entitlement.purchased = devProOverride || !!(r && r.purchased);   // a test build stays unlocked
     } catch (e) {
         // leave entitlement.purchased as-is
     }
+    updateProBadge();
+}
+
+// "PRO" beside the DOCMAN wordmark once Pro is bought (approved 2026-09-29).
+// Follows entitlement.purchased, so a refund removes it on the next check.
+function updateProBadge() {
+    document.body.classList.toggle('docman-pro', !!entitlement.purchased);
 }
 
 // Required by Play, and the thing that prevents "I paid and lost it" support
@@ -8724,6 +12205,7 @@ async function buyPro() {
 
 function onProUnlocked(message) {
     entitlement.purchased = true;
+    updateProBadge();
     closePaywall();
     refreshSettingsListSubtitles();
     render();
@@ -8751,6 +12233,30 @@ function folderExistsInTree(path) {
         node = node[part];
     }
     return true;
+}
+
+// A name that is free in this folder's list, in its Recycle Bin (whose files
+// still occupy their native path) and on disk. Async because the on-disk
+// check is a native call -- see addFileToCurrentFolder for why it matters.
+async function freeFileNameInFolder(folderPath, desiredName) {
+    const taken = [
+        ...(allFiles[folderPath] || []).map(f => f.name),
+        ...recycleBin.filter(i => i.kind === 'file' && i.folderPath === folderPath).map(i => i.name)
+    ];
+    let name = nextFreeFileName(desiredName, taken);
+    const Filesystem = getFilesystemPlugin();
+    if (!Filesystem) return name;
+    for (let guard = 0; guard < 50; guard++) {
+        let exists = false;
+        try {
+            await Filesystem.stat({ path: fsPathFor(folderPath, name), directory: 'DATA' });
+            exists = true;
+        } catch (e) { /* free */ }
+        if (!exists) return name;
+        taken.push(name);
+        name = nextFreeFileName(desiredName, taken);
+    }
+    return name;
 }
 
 function nextFreeFileName(name, taken) {
@@ -8882,6 +12388,25 @@ async function startDocumentScan() {
     haptic.success();
     const pages = r.pageCount || 0;
     showToast(pages > 1 ? `Scan saved · ${pages} pages` : 'Scan saved');
+
+    // The scanner screen belongs to Google and cannot be restyled, but what
+    // happens on the way back is ours. A scan arrives called "Scan
+    // 12-Oct-2026 08.30.pdf", which says when it was taken and nothing about
+    // what it is -- in a document manager that is the one thing worth
+    // knowing. Asked here, while the person still remembers what they just
+    // held up to the camera, rather than left for the row menu later.
+    //
+    // The file is already on disk under its timestamp name before this runs,
+    // so dismissing the question costs nothing: the scan is safe either way.
+    const dot = added.name.lastIndexOf('.');
+    const stem = dot > 0 ? added.name.slice(0, dot) : added.name;
+    showPromptModal('Name this scan', stem, async (chosen) => {
+        if (chosen === null) return;                 // keep the timestamp name
+        const trimmed = chosen.trim();
+        if (!trimmed || trimmed === stem) return;
+        await renameFileInFolder(folderPath, added.name, trimmed);
+        showToast('Saved as "' + trimmed + '"');
+    }, { icon: 'fa-file-pdf', subtitle: 'Or leave it as it is', placeholder: 'What is this document?' });
 }
 
 async function importEditedCopy(Filesystem, notePath, pdfPath) {
@@ -8987,7 +12512,7 @@ function addNewFolder() {
     }
     showPromptModal('New folder name:', '', (name) => {
         if (name === null) return;
-        if (!isValidFolderName(name)) { showToast("Folder name can only use letters, numbers, spaces, and - _ ( ) . &", true); return; }
+        if (!isValidFolderName(name)) { showToast("Folder name can only use letters, numbers, spaces, and - _ ( ) . &, and can't be only numbers", true); return; }
         const cur = getCurrentFolderObject();
         if (cur && !cur[name.trim()]) { cur[name.trim()] = {};
             folderMeta[[...currentPath, name.trim()].join('/')] = { createdAt: Date.now() };
@@ -9010,6 +12535,12 @@ function addNewFolder() {
 // full-screen overlay views (Favourites/Recent/Dashboard/Recycle Bin) are
 // open, since "Add Department" doesn't make sense in any of those places.
 function updateDeptAddFabVisibility() {
+    // The "Combine to PDF" badge is the other body-level FAB and lives by
+    // the same context rules, so keep the two in lockstep here rather than
+    // making all eleven callers remember to refresh both.
+    imgUpdatePdfQueueBadge();
+    updatePdfMergeBadge();
+    updateSelectActionBar();
     const fab = document.getElementById('deptAddFab');
     if (!fab) return;
     const anyOverlayOpen = !!document.querySelector('.favourites-view.fav-view-visible');
@@ -9029,7 +12560,7 @@ function onDeptAddFabTap() {
         // to just the "+" icon right away instead of leaving it expanded.
         const f = document.getElementById('deptAddFab');
         if (f) f.classList.remove('dept-add-fab-expanded');
-    }, 800);
+    }, 800);  // just past the 0.6s expand, so the pill finishes opening before the dialog covers it
 }
 
 function addNewDepartment() {
@@ -9040,7 +12571,7 @@ function addNewDepartment() {
     }
     showPromptModal('New department name:', '', (name) => {
         if (name === null) return;
-        if (!isValidFolderName(name)) { showToast("Department name can only use letters, numbers, spaces, and - _ ( ) . &", true); return; }
+        if (!isValidFolderName(name)) { showToast("Department name can only use letters, numbers, spaces, and - _ ( ) . &, and can't be only numbers", true); return; }
         {
             const trimmed = name.trim();
             if (!fileSystem[trimmed]) {
@@ -9332,6 +12863,18 @@ function render() {
     const rawQuery = document.getElementById('searchInput').value.trim();
     const query = rawQuery.toLowerCase();
 
+    // Every navigation lands here, so this is the one place that reliably
+    // sees the folder change and can end a stranded image selection.
+    imgPruneStalePdfSelection();
+    prunePdfMergeSelection();
+    pruneStaleSelection();
+
+    // Home is where a folder visit ends, so it is where the FILES / NOTES
+    // switch goes back to FILES -- otherwise the next folder opened inherits
+    // a choice made in a different one. Only the variable and the pill are
+    // touched; this runs inside render(), so it must not call it back.
+    if (!currentPath.length && currentActiveTab !== 'pdfs') applyFilesNotesChrome('pdfs');
+
     if (query) {
         isSearchMode = true;
         document.getElementById('clearSearchBtn').classList.remove('hidden');
@@ -9357,6 +12900,13 @@ function render() {
                 if (!isWithinSearchScope(path)) continue;
                 if (allNotes[path]) {
                     allNotes[path].forEach(n => {
+                        // A locked note is not searchable at all. Hiding only
+                        // the matching line was not enough: a note that
+                        // appears for one word and not another answers
+                        // questions about what is inside it, which is the
+                        // whole of what the lock is for. It is still in its
+                        // folder, under its lock, for whoever can open it.
+                        if (n.locked) return;
                         if (n.title.toLowerCase().includes(query) || n.content.toLowerCase().includes(query)) {
                             results.push({ ...n, folder: path, type: 'note' });
                         }
@@ -9402,7 +12952,9 @@ function render() {
 
         const contentDiv = document.getElementById('content');
         contentDiv.innerHTML = '';
-        document.getElementById('homeBtn').classList.remove('hidden');
+        document.getElementById('folderChrome').innerHTML = '';
+        document.getElementById('homeBtn').classList.toggle('hidden', currentPath.length === 0);  // only offer Home when there IS somewhere to go back to: searching from the
+        // hub itself used to show a Home button pointing at the current screen.
         updateDeptAddFabVisibility();
         document.getElementById('uploadBtn').classList.add('hidden');
         document.getElementById('newNoteBtn').classList.add('hidden');
@@ -9426,9 +12978,15 @@ function render() {
                 }
             });
         }
+        // Animation 3: the rows rise in one after another. A CLASS on the
+        // container, not per-row inline delays, so nothing has to be added to
+        // the four different card builders used here.
+        contentDiv.classList.add('search-stagger');
         updateStats();
         attachPressEffects();
-        scheduleSearchHistoryCapture(rawQuery);
+        // Search terms are no longer recorded: the Recent searches panel that
+        // displayed them is gone, so storing them would keep a list of what
+        // the person looked for with nothing ever reading it.
         return;
     }
 
@@ -9438,12 +12996,20 @@ function render() {
 
     const contentDiv = document.getElementById('content');
     contentDiv.innerHTML = '';
+    contentDiv.classList.remove('search-stagger');
+    // Static chrome: not slid by navigateWithPageTurn (see below).
+    const chromeDiv = document.getElementById('folderChrome');
+    if (chromeDiv) chromeDiv.innerHTML = '';
 
     const folder = getCurrentFolderObject();
     if (!folder) { currentPath = [];
         render(); return; }
 
     document.getElementById('homeBtn').classList.toggle('hidden', currentPath.length === 0);
+    // Inside a folder the panel gains a whole row (Home + FILES/NOTES), which
+    // made the DOCMAN card taller than on the home screen. The header shrinks
+    // by the same amount instead, so the card keeps one height everywhere.
+    document.body.classList.toggle('in-folder', currentPath.length > 0);
     updateDeptAddFabVisibility();
     const isRoot = currentPath.length === 0;
 
@@ -9468,11 +13034,11 @@ function render() {
                         <div class="dept-pill-body">
                             <div class="dept-pill-name">${escapeHtml(dept)}</div>
                         </div>
-                        ${isDeptLocked ? '<i class="fas fa-lock dept-lock-indicator"></i>' : ''}
                     </div>
-                    <div class="dept-pill-icon">
-                        <span class="dept-count">${total}</span>
-                        <span class="dept-count-label">Items</span>
+                    <div class="dept-pill-icon${isDeptLocked ? ' dept-pill-icon-locked' : ''}">
+                        ${isDeptLocked
+                            ? '<i class="fas fa-lock dept-count-lock"></i><span class="dept-count-label">Locked</span>'
+                            : `<span class="dept-count">${total}</span><span class="dept-count-label">Items</span>`}
                     </div>
                 </div>`;
             }
@@ -9530,6 +13096,8 @@ function render() {
     // moment a subfolder got added) never depended on allowing new mixing,
     // only on never hiding what's already there.
     const canShowOwnContent = !isRoot;
+    const selectablePath = currentPath.join('/');
+    const canSelectHere = canShowOwnContent && ((allFiles[selectablePath] || []).length + (allNotes[selectablePath] || []).length) > 0;
     const canAddOwnContent = !isRoot && !hasSubfolders;
     const canAddSubfolder = !isRoot && !hasOwnContent;
 
@@ -9544,6 +13112,11 @@ function render() {
     const showTypeSelector = !isRoot && (!hasSubfolders || hasOwnContent);
     const typeSelector = document.querySelector('.type-selector');
     if (typeSelector) typeSelector.classList.toggle('hidden', !showTypeSelector);
+    // Drives the top-bar layout: with the FILES/NOTES pill showing, Home sits
+    // beside it on its own row (the layout asked for). Without it, that row
+    // would be empty apart from Home, so Home moves down next to Search and the
+    // row disappears -- no wasted space, no taller card.
+    document.body.classList.toggle('tabs-visible', showTypeSelector);
 
     if (canAddOwnContent) {
         if (currentActiveTab === 'pdfs') {
@@ -9563,9 +13136,11 @@ function render() {
         folderCardEl.className = 'current-folder-card';
 
         const parentPath = currentPath.slice(0, -1);
-        const pathHtml = `<span class="cf-home" onclick="navigateToBreadcrumb(-1)"><i class="fas fa-home"></i> <span style="color:#ff6b4a">Home</span></span>` +
-            parentPath.map((p, i) => `<span class="cf-sep"> / </span><span class="cf-part cf-part-nav" onclick="navigateToBreadcrumb(${i})">${escapeHtml(p)}</span>`).join('') +
-            `<span class="cf-sep"> / </span><span class="cf-part cf-part-current">${escapeHtml(currentPath[currentPath.length - 1])}</span>`;
+        // Each step is its own pill with its own icon, chevrons between them,
+        // rather than one strip of slash-separated text.
+        const pathHtml = `<span class="cf-home" onclick="navigateToBreadcrumb(-1)"><i class="fas fa-house"></i><span>Home</span></span>` +
+            parentPath.map((p, i) => `<span class="cf-sep"><i class="fas fa-chevron-right"></i></span><span class="cf-part cf-part-nav" onclick="navigateToBreadcrumb(${i})"><i class="fas fa-folder"></i><span>${escapeHtml(p)}</span></span>`).join('') +
+            `<span class="cf-sep"><i class="fas fa-chevron-right"></i></span><span class="cf-part cf-part-current"><i class="fas fa-file-lines"></i><span>${escapeHtml(currentPath[currentPath.length - 1])}</span></span>`;
 
         const curFolderPath = currentPath.join('/');
         const curIsFav = !!(folderMeta[curFolderPath] && folderMeta[curFolderPath].favourite);
@@ -9576,7 +13151,7 @@ function render() {
                 <div class="cf-folder-name">${escapeHtml(currentPath[currentPath.length - 1])}</div>
                 <div class="cf-folder-icon"><i class="fas fa-star cf-star${curIsFav ? ' cf-star-active' : ''}"></i></div>
             </div>`;
-        contentDiv.appendChild(folderCardEl);
+        chromeDiv.appendChild(folderCardEl);
 
         const starEl = folderCardEl.querySelector('.cf-star');
         starEl.addEventListener('click', async (e) => {
@@ -9598,8 +13173,10 @@ function render() {
         // the old stats-bar pill's own job -- opening the full favourites
         // list -- rather than toggling just this one folder.
         const actionDiv = document.createElement('div');
-        actionDiv.className = 'folder-toolbar';
-        actionDiv.innerHTML = `
+        // While selecting, this bar's job is the count and Select all --
+        // Back/Scan/Favourite would act on the folder underneath.
+        actionDiv.className = selectMode ? 'select-bar-wrap' : 'folder-toolbar';
+        actionDiv.innerHTML = selectMode ? selectBarHtml() : `
             <div class="ft-icon-col">
                 <button class="ft-icon-btn ft-back" onclick="haptic.press(); goBack()" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
                 <span class="ft-icon-label">Back</span>
@@ -9614,6 +13191,11 @@ function render() {
                 <button class="ft-icon-btn ft-scan" onclick="haptic.press(); startDocumentScan()" aria-label="Scan Document"><i class="fas fa-expand"></i></button>
                 <span class="ft-icon-label ft-scan-label">Scan</span>
             </div>` : ''}
+            ${canSelectHere ? `
+            <div class="ft-icon-col">
+                <button class="ft-icon-btn ft-select" onclick="enterSelectMode()" aria-label="Select items"><i class="fas fa-square-check"></i></button>
+                <span class="ft-icon-label">Select</span>
+            </div>` : ''}
             <div class="ft-icon-col">
                 <button class="ft-icon-btn ft-fav-icon-btn" onclick="haptic.press(); openFavouritesView()" aria-label="Favourite">
                     <img src="Images/favorite-icon.png" alt="Favourite" class="ft-fav-icon-img" draggable="false">
@@ -9621,11 +13203,11 @@ function render() {
                 <span class="ft-icon-label">Favourite</span>
             </div>`;
 
-        const folderCardInDom = contentDiv.querySelector('.current-folder-card');
+        const folderCardInDom = chromeDiv.querySelector('.current-folder-card');
         if (folderCardInDom) {
-            contentDiv.insertBefore(actionDiv, folderCardInDom);
+            chromeDiv.insertBefore(actionDiv, folderCardInDom);
         } else {
-            contentDiv.appendChild(actionDiv);
+            chromeDiv.appendChild(actionDiv);
         }
 
     }
@@ -9637,6 +13219,7 @@ function render() {
             const folderCard = createCard(key, () => {
                 guardFolderEntry([...currentPath, key], () => {
                     navigateWithPageTurn(() => {
+                        clearNavReturn();
                         currentPath.push(key);
                         render();
                     }, 'forward');
@@ -9913,7 +13496,7 @@ function showIconPickerModal(dept) {
         </button>`).join('');
 
     overlay.innerHTML = `
-        <div style="position:relative;background:var(--panel-bg);border:1px solid rgba(255, 140, 40, 0.4);border-radius:20px;padding:28px 24px;width:100%;max-width:400px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.8), 0 1.5px 0 rgba(255,255,255,0.22) inset, 0 -4px 10px rgba(0,0,0,0.6) inset, 0 0 0 1px rgba(255, 140, 40, 0.15);">
+        <div style="position:relative;background:var(--panel-bg);border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:400px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.8), 0 1.5px 0 rgba(255,255,255,0.22) inset, 0 -4px 10px rgba(0,0,0,0.6) inset, 0 0 0 1px rgba(255, 140, 40, 0.15);">
             <button id="iconPickerCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(125,130,150,0.18);color:var(--text-primary);font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
             <p style="color:var(--text-primary);font-size:0.98rem;font-weight:700;margin:0 0 4px;margin-right:26px;font-family:Inter,sans-serif;"><i class="fas fa-icons" style="color:#f59e0b;margin-right:6px;"></i>Change Icon</p>
             <p style="color:var(--text-secondary);font-size:0.8rem;margin:0 0 16px;font-family:Inter,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(dept)}</p>
@@ -10010,7 +13593,7 @@ function attachDepartmentPressEffects() {
         function renameThisDepartmentUnlocked(old) {
             showPromptModal('Rename department:', old, async (newName) => {
                 if (newName === null || newName === old) return;
-                if (!isValidFolderName(newName)) { showToast("Department name can only use letters, numbers, spaces, and - _ ( ) . &", true); return; }
+                if (!isValidFolderName(newName)) { showToast("Department name can only use letters, numbers, spaces, and - _ ( ) . &, and can't be only numbers", true); return; }
                 if (fileSystem[newName]) { showToast('Already exists', true); return; }
 
                 const rebuilt = {};
@@ -10050,7 +13633,8 @@ function attachDepartmentPressEffects() {
         }
 
         function deleteThisDepartmentUnlocked(dept) {
-            showConfirmModal(`Move "<b>${escapeHtml(dept)}</b>" and all its contents to Recycle Bin?`, async (confirmed) => {
+            const info = (() => { const c = folderContentsLine([dept]); return { html: `Move "<b>${escapeHtml(dept)}</b>" to the Recycle Bin?<br><span style="display:inline-block;margin-top:10px;font-weight:500;font-size:0.85rem;color:var(--text-secondary);">${c.empty ? c.text : 'It contains ' + c.text + '.'}</span>`, wait: c.empty ? 0 : 5 }; })();
+            showConfirmModal(info.html, async (confirmed) => {
                 if (!confirmed) return;
                 await moveFolderToRecycleBin([dept]);
                 if (deptColors[dept]) { delete deptColors[dept];
@@ -10061,7 +13645,7 @@ function attachDepartmentPressEffects() {
                 render();
                 updateStats();
                 showToast('Moved to Recycle Bin');
-            }, { okLabel: 'Move', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
+            }, { okLabel: 'Move', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)', countdown: info.wait });
         }
 
         const startPress = (e) => {
@@ -10478,6 +14062,9 @@ function checkFavEmpty(list) {
 function closeFavouritesView() {
     closeFavMenus();
     const favView = document.getElementById('favouritesView');
+    // Drop the lift applied when it was opened from Settings, so the next
+    // open from the home screen sits at its normal layer again.
+    favView.style.zIndex = '';
     // No display toggling needed on the content underneath -- it was never
     // actually hidden (the opaque full-screen favView already covered it),
     // and restoring display:'' on that section was the real cost causing
@@ -10555,11 +14142,84 @@ function buildRecentRow({ icon, iconClass, name, folderPath, meta, onClick }) {
     return row;
 }
 
+// Slide a pill to the tab that was picked, instead of the colour jumping from
+// one button to the next. The pill carries the active gradient and the active
+// button goes transparent underneath it (see .has-glider in style.css), so the
+// look is unchanged once it settles -- only the way it gets there is new.
+// Measured from the live layout rather than assumed widths, because the tab
+// labels differ in length and the row scrolls sideways on a narrow screen.
+function moveTabGlider(row, activeBtn, animate) {
+    if (!row || !activeBtn) return;
+    // A hidden row measures zero; wait for the frame where it has been laid out.
+    if (!activeBtn.offsetWidth) {
+        requestAnimationFrame(() => moveTabGlider(row, activeBtn, false));
+        return;
+    }
+    let glider = row.querySelector(':scope > .tab-glider');
+    if (!glider) {
+        glider = document.createElement('span');
+        glider.className = 'tab-glider';
+        row.insertBefore(glider, row.firstChild);
+        row.classList.add('has-glider');
+        animate = false;            // first placement should not fly in from 0
+    }
+    // offsetLeft/offsetTop/offsetWidth, not getBoundingClientRect.
+    //
+    // A rect is where the element is PAINTED, so a transform anywhere above it
+    // is baked into the answer. These rows live inside a card that scales as
+    // it opens, and the pill was being placed from a rect measured while that
+    // scale was still running: it got a position and a width belonging to a
+    // smaller card and kept them, which is how the pill came to sit beside its
+    // tab after Recent was closed and opened again. Re-placing it afterwards
+    // only turned the error into a visible jump.
+    //
+    // The offset family reports LAYOUT, which no transform touches, so the
+    // answer is the same whenever it is asked. The row carries
+    // .has-glider { position: relative }, so it is the offset parent of both
+    // the tabs and the pill -- the two share an origin, and no scrollLeft
+    // correction is needed either, since both travel with the content.
+    glider.style.transition = animate ? '' : 'none';
+    glider.style.width = activeBtn.offsetWidth + 'px';
+    glider.style.height = activeBtn.offsetHeight + 'px';
+    glider.style.top = activeBtn.offsetTop + 'px';
+    glider.style.transform = 'translateX(' + activeBtn.offsetLeft + 'px)';
+    if (!animate) {
+        void glider.offsetWidth;    // commit the jump before transitions resume
+        glider.style.transition = '';
+    }
+    scrollTabIntoView(row, activeBtn);
+}
+
+// Bring the picked tab fully into the row. The last tab sat half off the right
+// edge with nothing to scroll it in, so picking it left it unreadable.
+function scrollTabIntoView(row, btn) {
+    if (row.scrollWidth <= row.clientWidth) return;
+    const edge = 14;                        // breathing room, not flush to the edge
+    // Layout, not rects -- for the same reason the pill is placed from layout.
+    // These rows sit in a card that scales as it opens, and a rect taken while
+    // that is running is a scaled rect: the row was being scrolled to a
+    // position worked out for a smaller card, which left the last tab cut off
+    // at the edge. offsetLeft is already relative to the row's own box, so it
+    // needs no scrollLeft correction.
+    const start = btn.offsetLeft;
+    const end = start + btn.offsetWidth;
+    const still = document.body.classList.contains('reduce-motion')
+        || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const behavior = still ? 'auto' : 'smooth';
+    if (end + edge > row.scrollLeft + row.clientWidth) {
+        row.scrollTo({ left: end + edge - row.clientWidth, behavior: behavior });
+    } else if (start - edge < row.scrollLeft) {
+        row.scrollTo({ left: Math.max(0, start - edge), behavior: behavior });
+    }
+}
+
 async function renderRecentsTab(tab) {
     currentRecentsTab = tab;
+    const subtabRow = document.getElementById('recentsSubtabRow');
     document.querySelectorAll('#recentsSubtabRow .subtab-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.recentsTab === tab);
     });
+    moveTabGlider(subtabRow, subtabRow ? subtabRow.querySelector('.subtab-btn.active') : null, true);
 
     const list = document.getElementById('recentsViewList');
     list.innerHTML = '<div class="fav-empty"><i class="fas fa-spinner fa-spin"></i></div>';
@@ -10676,11 +14336,27 @@ function openRecentsView() {
     requestAnimationFrame(() => {
         view.classList.add('fav-view-visible');
         updateDeptAddFabVisibility();
+        // The pill that marks the active tab is placed while the view is
+        // still hidden, so it is measured a frame before the row has its
+        // final size -- on a cold start it came out 8px short of its tab
+        // and stayed there. Placed once more on the frame after the view
+        // becomes visible: about 32ms, too soon to see, where doing it on
+        // transitionend was late enough to read as a jump.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            const row = document.getElementById('recentsSubtabRow');
+            if (row) moveTabGlider(row, row.querySelector('.subtab-btn.active'), false);
+        }));
     });
 
     document.querySelectorAll('#recentsSubtabRow .subtab-btn').forEach(btn => {
-        btn.onclick = () => { haptic.press();
-            renderRecentsTab(btn.dataset.recentsTab); };
+        btn.onclick = async () => {
+            haptic.press();
+            await renderRecentsTab(btn.dataset.recentsTab);
+            // remove -> reflow -> add: the same trick setActiveTab() uses to
+            // restart an animation on an element that is not itself replaced.
+            const l = document.getElementById('recentsViewList');
+            if (l) { l.classList.remove('recents-revealing'); void l.offsetWidth; l.classList.add('recents-revealing'); }
+        };
     });
 
     const backBtn = document.getElementById('recentsViewBackBtn');
@@ -10721,6 +14397,35 @@ function dashDeptHue(dept) {
     let hash = 0;
     for (let i = 0; i < dept.length; i++) hash = (hash * 31 + dept.charCodeAt(i)) >>> 0;
     return DASH_HUE_FALLBACKS[hash % DASH_HUE_FALLBACKS.length];
+}
+
+// Departments holding nothing collapse to a single line. A run of "Empty"
+// rows breaks the very comparison the bars exist to make, and on a library
+// where six of eight are untouched that run is most of the section.
+function bareDeptLine(deptSizes) {
+    const bare = deptSizes.filter(d => !d.bytes).length;
+    if (!bare || bare === deptSizes.length) return '';
+    return `<div class="dash-dep dash-dep-bare">${bare} more department${bare > 1 ? 's' : ''} &middot; empty</div>`;
+}
+
+// A share rounded to a whole number contradicts itself at the two ends:
+// 618.63 MB of PDFs beside 1.66 MB of images came out as "100%" and "0%" --
+// the images are listed with a real size on the line that says they take up
+// none of it, and the two add up to 100% with a row left over. Near the ends
+// the number carries one decimal instead (99.7% / 0.3%), which is a figure
+// anyone reads without having to decode a "<" or a ">". Everything in the
+// ordinary middle stays a whole number, so a normal split still reads
+// 72% / 28%. Only a type that genuinely holds everything says 100%.
+function sharePctLabel(bytes, totalBytes) {
+    if (!totalBytes || !bytes) return '0%';
+    if (bytes >= totalBytes) return '100%';
+    const raw = (bytes / totalBytes) * 100;
+    // One decimal would still round to a whole 100.0% or 0.0% this close to
+    // the ends, so those two are held just short of it.
+    if (raw >= 99.9) return '99.9%';
+    if (raw < 0.1) return '0.1%';
+    if (raw < 1 || raw > 99) return raw.toFixed(1) + '%';
+    return Math.round(raw) + '%';
 }
 
 function renderDashboardView() {
@@ -10807,8 +14512,12 @@ function renderDashboardView() {
                 </div>
                 <div class="dash-hero2-counts">${fileCount} file${fileCount === 1 ? '' : 's'}<br>${folderCount} folder${folderCount === 1 ? '' : 's'}</div>
             </div>
-            ${shownBuckets.length > 1 ? `
-            <div class="dash-bar2">
+            ${shownBuckets.length ? `
+            <!-- Drawn for a single file type too: with one bucket it is a
+                 full-width bar in that type's colour. The legend below still
+                 drops to its solo form, since a percentage split needs
+                 something to split against. -->
+            <div class="dash-bar2 dash-bar2-draw">
                 ${shownBuckets.map(b => `<span style="width:${(b.bytes / totalBytes) * 100}%;background:var(--dash-${b.id});"></span>`).join('')}
             </div>` : ''}
             ${!shownBuckets.length
@@ -10826,7 +14535,7 @@ function renderDashboardView() {
                             <span class="dash-leg2-dot" style="background:var(--dash-${b.id});"></span>
                             <span class="dash-leg2-n">${b.label}</span>
                             <span class="dash-leg2-v">${formatBytes(b.bytes)}</span>
-                            <span class="dash-leg2-p">${Math.round((b.bytes / totalBytes) * 100)}%</span>
+                            <span class="dash-leg2-p">${sharePctLabel(b.bytes, totalBytes)}</span>
                         </div>`).join('')}
         </div>
         <div class="dash-backup dash-backup-${backupState}" id="dashBackupRow">
@@ -10841,8 +14550,8 @@ function renderDashboardView() {
         </div>
 
         ${expiring.length ? `
-        <div class="dash-sec"><div class="dash-sec-t">EXPIRING SOON</div></div>
-        <div class="dash-depts">
+        <div class="dash-sec" id="dashExpirySec"><div class="dash-sec-t">EXPIRING SOON</div></div>
+        <div class="dash-depts" id="dashExpiryList">
             ${expiring.map(e => `
                 <div class="dash-dep dash-expiry-row" data-folder="${escapeHtml(e.folderPath)}" data-file="${escapeHtml(e.file.name)}" style="--h:${e.status === 'overdue' ? '#f43f5e' : '#f59e0b'};--h2:${e.status === 'overdue' ? '#b91c3c' : '#b45309'}">
                     <div class="dash-dep-ico"><i class="fas ${getFileIcon(e.file.name)}"></i></div>
@@ -10869,14 +14578,14 @@ function renderDashboardView() {
             <div class="dash-sec-t">BY DEPARTMENT</div>
             <div class="dash-pill" id="dashManageDepts">Manage <i class="fas fa-chevron-right"></i></div>
         </div>
-        <div class="dash-depts">
+        <div class="dash-depts dash-dep-draw">
             ${deptSizes.length ? deptSizes.map(({ dept, bytes }) => {
                 const [h, h2] = dashDeptHue(dept);
                 return `<div class="dash-dep dash-dep-row" data-dept="${escapeHtml(dept)}" style="--h:${h};--h2:${h2}">
                         <div class="dash-dep-ico"><i class="fas ${deptIconOverrides[dept] || DEFAULT_DEPT_ICONS[dept] || 'fa-folder'}"></i></div>
                         <div class="dash-dep-mid">
                             <div class="dash-dep-n">${escapeHtml(dept)}</div>
-                            ${bytes ? `<div class="dash-dep-track"><span class="dash-dep-fill" style="width:${(bytes / deptMax) * 100}%"></span></div>` : ''}
+                            <div class="dash-dep-track"><span class="dash-dep-fill" style="width:${bytes ? (bytes / deptMax) * 100 : 0}%"></span></div>
                         </div>
                         <div class="dash-dep-v${bytes ? '' : ' is-empty'}">${bytes ? formatBytes(bytes) : 'Empty'}</div>
                         <div class="dash-go"><i class="fas fa-chevron-right"></i></div>
@@ -10886,13 +14595,17 @@ function renderDashboardView() {
     `;
 
     const backupRow = body.querySelector('#dashBackupRow');
-    if (backupRow) backupRow.onclick = () => { closeDashboardView(); exportBackupData(); };
+    // Leaves the Dashboard standing: the backup dialog is a z-index 9999
+    // overlay, so it covers the Dashboard and closing it returns here rather
+    // than dropping the user on the home screen.
+    if (backupRow) backupRow.onclick = () => { exportBackupData(); };
 
     const manageBtn = body.querySelector('#dashManageDepts');
     if (manageBtn) manageBtn.onclick = () => { closeDashboardView(); openSettingsPage(); showSettingsScreen('settingsPanel-departments'); };
 
     body.querySelectorAll('.dash-dep-row').forEach(row => {
         row.onclick = () => {
+            markNavReturn(() => openDashboardView());
             closeDashboardView();
             currentPath = [row.dataset.dept];
             render();
@@ -10905,23 +14618,82 @@ function renderDashboardView() {
             const folderPath = largestRow.dataset.folder;
             const fileName = largestRow.dataset.file;
             const file = allFiles[folderPath]?.find(f => f.name === fileName);
-            if (file) { closeDashboardView(); openFile(fileName, folderPath); }
+            // Deliberately does NOT close the Dashboard: the viewer opens on
+            // top of it, so closing the document returns here.
+            if (file) openFile(fileName, folderPath);
         };
     }
 
+    // An expiring document is something to DEAL WITH -- renew the date,
+    // replace the file, throw it out -- and every one of those lives on the
+    // file's own row menu, inside its folder. Opening the document itself
+    // landed the reader somewhere with nothing to act on, and they had to
+    // come back and hunt the folder down. This goes to the folder and flashes
+    // the file instead, which is also what the Expiring panel already did.
     body.querySelectorAll('.dash-expiry-row').forEach(row => {
         row.onclick = () => {
             const folderPath = row.dataset.folder;
             const fileName = row.dataset.file;
-            const file = allFiles[folderPath]?.find(f => f.name === fileName);
-            if (file) { closeDashboardView(); openFile(fileName, folderPath); }
+            markNavReturn(() => openDashboardView());
+            closeDashboardView();
+            currentPath = folderPath ? folderPath.split('/') : [];
+            // setActiveTab, not a bare assignment: the card only exists on the
+            // Files tab, and setting the variable alone left the FILES/NOTES
+            // switch sitting on NOTES while a file list was underneath it.
+            // setActiveTab moves the switch, swaps Upload/New note, and
+            // renders -- so no separate render() here.
+            setActiveTab('pdfs');
+            // render() rebuilds the grid, so the card is only there a frame
+            // later -- and on a big folder not even then. Looked up by
+            // comparing dataset values rather than with an attribute
+            // selector: CSS.escape is for identifiers, and on a name like
+            // "Passport.pdf" it produces "Passport\.pdf", which matches
+            // nothing inside a quoted selector. Retried a few times, then given
+            // up quietly.
+            let tries = 0;
+            const findAndFlash = () => {
+                let card = null;
+                const all = document.querySelectorAll('.file-card');
+                all.forEach(c => {
+                    if (!card && c.dataset.fileName === fileName && c.dataset.folderPath === folderPath) card = c;
+                });
+                if (!card) {
+                    if (++tries < 10) setTimeout(findAndFlash, 120);
+                    return;
+                }
+                card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                // After the scroll settles, so the pulse is seen where the
+                // card comes to rest rather than as it flies past.
+                setTimeout(() => {
+                    card.classList.add('file-card-flash');
+                    setTimeout(() => card.classList.remove('file-card-flash'), 2800);
+                }, 320);
+            };
+            setTimeout(findAndFlash, 160);
         };
     });
 }
 
-function openDashboardView() {
+function openDashboardView(focusExpiring) {
     document.getElementById('searchInfo').classList.add('hidden');
     renderDashboardView();
+    // Opened from an expiry alert: scroll to those documents and flash them,
+    // otherwise the reader lands on a dashboard and has to hunt for the row
+    // the alert was about.
+    if (focusExpiring) {
+        setTimeout(() => {
+            const sec = document.getElementById('dashExpirySec');
+            const list = document.getElementById('dashExpiryList');
+            if (!sec || !list) return;
+            sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // The whole box breathes, rather than each row flashing: calmer,
+            // and it stays visible for ten seconds.
+            list.classList.remove('dash-expiry-breathe');
+            void list.offsetWidth;               // restart the animation
+            list.classList.add('dash-expiry-breathe');
+            setTimeout(() => list.classList.remove('dash-expiry-breathe'), 10200);
+        }, 360);
+    }
     const view = document.getElementById('dashboardView');
     view.classList.remove('hidden');
     requestAnimationFrame(() => {
@@ -10937,6 +14709,29 @@ function openDashboardView() {
     backBtn.onclick = backAction;
 }
 
+// Set when a Dashboard row navigated away to a folder, so coming back out of
+// that folder reopens the Dashboard instead of landing on the home screen.
+// Cleared by closing the Dashboard itself, and by going home on purpose.
+// Where a folder was opened FROM, so Back puts that back instead of walking
+// up a folder tree the person never walked down. Statistics is the clearest
+// case: tapping the largest file jumps to its folder, and back then climbed
+// out of that folder and left you somewhere you never chose, with Statistics
+// nowhere in sight.
+//
+// The path is remembered as well as the screen, so back restores exactly what
+// was on display, not an approximation of it. Cleared the moment it is used,
+// and whenever the person navigates by hand -- a marker that outlives its
+// journey would fire at some unrelated moment later.
+let navReturn = null;   // { path: string[], restore: () => void }
+
+function markNavReturn(restore) {
+    navReturn = { path: currentPath.slice(), restore };
+}
+
+function clearNavReturn() {
+    navReturn = null;
+}
+
 function closeDashboardView() {
     const view = document.getElementById('dashboardView');
     view.classList.remove('fav-view-visible');
@@ -10948,7 +14743,6 @@ function closeDashboardView() {
 // RECYCLE BIN VIEW
 // ============================================================
 
-const RECYCLE_KIND_ICON = { file: 'fa-file', note: 'fa-sticky-note', folder: 'fa-folder' };
 
 function renderRecycleBinList() {
     const list = document.getElementById('recycleBinViewList');
@@ -10960,33 +14754,34 @@ function renderRecycleBinList() {
     list.innerHTML = `<div class="dm-list-card dm-list-card-bin"><div class="dm-sec"><i class="fas fa-trash-can"></i><b>IN THE BIN</b><span class="dm-sec-count">${recycleBin.length}</span></div></div>`;
     const binCard = list.querySelector('.dm-list-card');
     recycleBin.forEach(item => {
-        const icon = item.kind === 'file' ? getFileIcon(item.name) : (RECYCLE_KIND_ICON[item.kind] || 'fa-file');
         const daysLeft = Math.max(0, RECYCLE_BIN_RETENTION_DAYS - Math.floor((Date.now() - item.deletedAt) / (24 * 60 * 60 * 1000)));
         const row = document.createElement('div');
         row.className = 'fav-row';
         row.innerHTML = `
-            <div class="fav-row-icon${item.kind === 'note' ? ' fav-row-icon-note' : item.kind === 'folder' ? ' fav-row-icon-folder' : ''}"><i class="fas ${icon}"></i></div>
+            <div class="fav-row-icon fav-row-icon-bin">🗑️</div>
             <div class="fav-row-info">
                 <div class="fav-row-name">${escapeHtml(item.name)}</div>
                 <div class="fav-row-path">${escapeHtml(item.folderPath || 'Home')}</div>
                 <div class="recycle-row-meta">Deleted ${relativeTimeLabel(item.deletedAt)} · ${daysLeft}d left</div>
             </div>
             <div class="recycle-row-actions">
-                <button class="recycle-restore-btn" title="Restore"><i class="fas fa-rotate-left"></i></button>
+                <button class="recycle-restore-btn" title="Restore"><i class="fas fa-rotate-left"></i><span>Restore</span></button>
                 <button class="recycle-purge-btn" title="Delete Forever"><i class="fas fa-trash"></i></button>
             </div>
         `;
         row.querySelector('.recycle-restore-btn').addEventListener('click', async (e) => {
             e.stopPropagation();
             haptic.toggle();
+            await animateRowOut(row);
             await restoreRecycleBinItem(item.id);
             renderRecycleBinList();
         });
         row.querySelector('.recycle-purge-btn').addEventListener('click', (e) => {
             e.stopPropagation();
-            showConfirmModal(`Permanently delete "<b>${escapeHtml(item.name)}</b>"? This cannot be undone.`, async (confirmed) => {
+            showConfirmModal(`Permanently delete <b>"${escapeHtml(item.name)}"</b>?<br><span style="opacity:.75;font-size:0.82rem">This cannot be undone.</span>`, async (confirmed) => {
                 if (!confirmed) return;
                 haptic.warning();
+                await animateRowOut(row, { tear: true });
                 await permanentlyDeleteRecycleBinItem(item.id);
                 renderRecycleBinList();
             });
@@ -11036,14 +14831,18 @@ function closeRecycleBinView() {
 // TAB SWITCHING
 // ============================================================
 
-function setActiveTab(tab) {
-    haptic.toggle();
+// Which half of the pill is lit, and which of the two add buttons is offered.
+// Separate from setActiveTab because the switch also has to be put back to
+// FILES on the way home, where a re-render and a haptic tick would both be
+// wrong -- render() is what calls it.
+function applyFilesNotesChrome(tab) {
     currentActiveTab = tab;
     const pdfBtn = document.getElementById('pdfTabBtn');
     const notesBtn = document.getElementById('notesTabBtn');
     const uploadBtn = document.getElementById('uploadBtn');
     const newNoteBtn = document.getElementById('newNoteBtn');
     const toggleEl = document.getElementById('fileNoteToggle');
+    if (!pdfBtn || !notesBtn || !uploadBtn || !newNoteBtn) return;
 
     if (tab === 'pdfs') {
         pdfBtn.classList.add('active');
@@ -11058,6 +14857,11 @@ function setActiveTab(tab) {
         newNoteBtn.classList.remove('hidden');
         if (toggleEl) { toggleEl.classList.add('active-notes'); toggleEl.classList.remove('active-files'); }
     }
+}
+
+function setActiveTab(tab) {
+    haptic.toggle();
+    applyFilesNotesChrome(tab);
     render();
 
     // render() just replaced #content's cards outright with no transition
@@ -11078,12 +14882,53 @@ function setActiveTab(tab) {
 // THEME
 // ============================================================
 
-function toggleTheme() {
+// Switch the theme with a circle of the new colours opening out from the point
+// that was tapped, instead of the whole screen flipping at once. The browser
+// snapshots the old and new pages; we stop it cross-fading them and clip the
+// new one open ourselves, because only JS knows the radius needed to reach the
+// furthest corner from an arbitrary point. Falls back to the plain switch where
+// View Transitions are unavailable or less motion was asked for. applyTheme()
+// itself is untouched, so the call at start-up still paints with no animation.
+function themeReveal(apply, ev) {
+    const reduced = document.body.classList.contains('reduce-motion')
+        || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced || !document.startViewTransition) {
+        apply();
+        return;
+    }
+
+    const btn = document.getElementById('themeToggle');
+    const box = btn ? btn.getBoundingClientRect() : null;
+    const hasPoint = ev && (ev.clientX || ev.clientY);
+    const x = hasPoint ? ev.clientX : (box ? box.left + box.width / 2 : window.innerWidth - 40);
+    const y = hasPoint ? ev.clientY : (box ? box.top + box.height / 2 : 40);
+    const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+
+    const root = document.documentElement;
+    root.classList.add('theme-vt');
+    let vt;
+    try {
+        vt = document.startViewTransition(apply);
+    } catch (e) {
+        root.classList.remove('theme-vt');
+        apply();
+        return;
+    }
+    vt.ready.then(() => {
+        root.animate(
+            { clipPath: ['circle(0px at ' + x + 'px ' + y + 'px)', 'circle(' + radius + 'px at ' + x + 'px ' + y + 'px)'] },
+            { duration: 620, easing: 'cubic-bezier(.2, .8, .2, 1)', pseudoElement: '::view-transition-new(root)' }
+        );
+    }).catch(() => {});
+    vt.finished.finally(() => root.classList.remove('theme-vt'));
+}
+
+function toggleTheme(ev) {
     const isLight = document.body.classList.contains('light-mode');
     const newTheme = isLight ? 'dark' : 'light';
     docmanSettings.theme = newTheme;
     saveSettings();
-    applyTheme(newTheme);
+    themeReveal(() => applyTheme(newTheme), ev);
 }
 
 function updateThemeIcon() {
@@ -11508,6 +15353,16 @@ function showAppLockScreen(onUnlock) {
         const plugin = getBiometricPlugin();
         if (!plugin) { showPinView();
             return; }
+        // Asking for a fingerprint while DOCMAN is not the app on screen puts
+        // a system dialog over whatever the person is actually doing: Android
+        // brings DOCMAN forward to host the prompt, which is how the lock
+        // screen ended up appearing on top of another app. Locking in the
+        // background is right and stays -- the screen is already up
+        // underneath. Only the asking waits.
+        if (document.visibilityState === 'hidden') {
+            whenVisibleAgain(tryBiometric);
+            return;
+        }
         try {
             const avail = await plugin.isAvailable();
             if (!avail?.available) { showPinView();
@@ -11637,8 +15492,27 @@ function showAppLockScreen(onUnlock) {
     // fires after it, so by then the browser has genuinely drawn this
     // screen at least once.
     if (biometricReady) {
-        requestAnimationFrame(() => requestAnimationFrame(tryBiometric));
+        // A hidden page need not paint at all, so rAF alone is not a reliable
+        // "we are on screen" signal -- the visibility check is.
+        whenVisibleAgain(() => requestAnimationFrame(() => requestAnimationFrame(tryBiometric)));
     }
+}
+
+// Runs fn now if DOCMAN is on screen, otherwise the next time it is. Used to
+// keep native prompts from surfacing over another app; registered once per
+// call and removed as soon as it fires, so a lock cycle that is abandoned
+// (unlocked by PIN, say) leaves nothing behind to go off later.
+function whenVisibleAgain(fn) {
+    if (document.visibilityState !== 'hidden') { fn(); return; }
+    const onVisible = () => {
+        if (document.visibilityState === 'hidden') return;
+        document.removeEventListener('visibilitychange', onVisible);
+        // Only still wanted if the lock screen is in fact up: by the time
+        // DOCMAN comes back the person may have unlocked another way, or the
+        // screen may have been taken down entirely.
+        if (document.getElementById('appLockScreen')) fn();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 }
 
 
@@ -11654,16 +15528,16 @@ function showPinVerifyModal(title, callback) {
     // relock decision settling (e.g. reopening a locked file shortly after
     // returning from viewing another one), and it must never end up
     // rendered but hidden underneath that full-screen layer.
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px;touch-action:manipulation;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(23,10,40,0.88);z-index:100000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px;touch-action:manipulation;';
     overlay.innerHTML = `
-        <div style="background:#1a1a1a;border:1px solid rgba(239,68,68,0.4);border-radius:24px;padding:28px 24px;width:100%;max-width:320px;box-shadow:0 24px 60px rgba(0,0,0,0.7);text-align:center;">
-            <div style="width:48px;height:48px;background:linear-gradient(135deg,#ef4444,#dc2626);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.2rem;color:#fff;"><i class="fas fa-lock"></i></div>
+        <div style="background:#1d1033;border:1px solid var(--float-border);border-radius:24px;padding:28px 24px;width:100%;max-width:320px;box-shadow:0 24px 60px rgba(0,0,0,0.7);text-align:center;">
+            <div style="width:48px;height:48px;background:linear-gradient(135deg,#ff6b4a,#e91e8c);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.2rem;color:#fff;"><i class="fas fa-lock"></i></div>
             <p style="color:#e2e8f0;font-size:0.95rem;font-weight:700;margin:0 0 6px;font-family:Inter,sans-serif;">${title}</p>
             <p id="pinVerifySubtitle" style="color:#94a3b8;font-size:0.78rem;margin:0 0 20px;font-family:Inter,sans-serif;">Enter your 4-digit PIN to confirm</p>
             <div id="pinVerifyDots" style="display:flex;justify-content:center;gap:12px;margin-bottom:24px;">
                 ${[0,1,2,3].map(i => `<div id="pvDot${i}" class="pin-dot" style="background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.25);"></div>`).join('')}
             </div>
-            <div id="pinVerifyGrid" class="pin-pad" style="--pin-accent:#ef4444;margin-bottom:16px;">
+            <div id="pinVerifyGrid" class="pin-pad" style="--pin-accent:#ff6b4a;margin-bottom:16px;">
                 ${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k => `
                     <button class="pvKey pin-key${k===''?' pin-key-blank':''}${k==='⌫'?' pin-key-back':''}" data-key="${k}">${k==='⌫' ? '<i class="fas fa-delete-left"></i>' : k}</button>
                 `).join('')}
@@ -11684,8 +15558,8 @@ function showPinVerifyModal(title, callback) {
     function updateDots() {
         for (let i = 0; i < 4; i++) {
             const dot = document.getElementById(`pvDot${i}`);
-            dot.style.background = i < entered.length ? '#ef4444' : 'rgba(255,255,255,0.15)';
-            dot.style.borderColor = i < entered.length ? '#ef4444' : 'rgba(255,255,255,0.25)';
+            dot.style.background = i < entered.length ? '#ff6b4a' : 'rgba(255,255,255,0.15)';
+            dot.style.borderColor = i < entered.length ? '#ff6b4a' : 'rgba(255,255,255,0.25)';
         }
     }
 
@@ -11891,7 +15765,7 @@ function showLockedItemsDialog() {
         ].join('');
 
     overlay.innerHTML = `
-        <div style="background:#12162c;border-radius:20px 20px 0 0;width:100%;max-width:480px;max-height:70vh;overflow-y:auto;padding-bottom:20px;">
+        <div style="background:#12162c;border-radius:20px 20px 0 0;width:100%;max-width:480px;max-height:70vh;overflow-y:auto;padding-bottom:calc(20px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));">
             <div style="padding:16px 18px;font-weight:700;color:#f8fafc;font-family:Inter,sans-serif;border-bottom:1px solid rgba(255,255,255,0.08);">Locked Folders &amp; PDFs</div>
             ${rowsHtml}
         </div>`;
@@ -11950,17 +15824,17 @@ function exportBackupData() {
     overlay.id = 'backupEncChoiceModal';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
     overlay.innerHTML = `
-        <div style="position:relative;background:#1a1a1a;border:1px solid rgba(255,107,74,0.35);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+        <div style="position:relative;background:#1a1a1a;border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="encChoiceCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
-            <p style="color:#ffffff;font-size:0.98rem;font-weight:700;margin:0 0 6px;margin-right:26px;font-family:Inter,sans-serif;">Secure Your Backup</p>
-            <p style="color:#94a3b8;font-size:0.82rem;margin:0 0 18px;font-family:Inter,sans-serif;line-height:1.5;">Your backup is encrypted so only you can restore it. Choose how:</p>
+            <p style="color:#ffffff;font-size:0.98rem;font-weight:700;margin:0 0 6px;margin-right:26px;font-family:Inter,sans-serif;">Lock the backup file</p>
+            <p style="color:#94a3b8;font-size:0.82rem;margin:0 0 18px;font-family:Inter,sans-serif;line-height:1.5;">Everything in DOCMAN goes into one file. Lock it, and anyone who finds that file still cannot read your documents.<br><br>You will be asked for this <b style="color:#e2e8f0">only when restoring the backup</b> — on a new phone, say. It is not your app PIN, and <b style="color:#e2e8f0">without it the backup cannot be opened, not even by us</b>.</p>
             <button id="encChoicePassword" style="touch-action:manipulation;width:100%;text-align:left;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#ffffff;cursor:pointer;font-family:Inter,sans-serif;margin-bottom:10px;">
-                <div style="font-weight:600;font-size:0.9rem;"><i class="fas fa-key" style="color:#ff6b4a;margin-right:8px;"></i>Create a Password</div>
-                <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px;">Choose your own password — easy to remember</div>
+                <div style="font-weight:600;font-size:0.9rem;"><i class="fas fa-key" style="color:#ff6b4a;margin-right:8px;"></i>Choose a password for this file</div>
+                <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px;">Words of your own. Easiest to remember months from now.</div>
             </button>
             <button id="encChoiceRecoveryKey" style="touch-action:manipulation;width:100%;text-align:left;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#ffffff;cursor:pointer;font-family:Inter,sans-serif;">
-                <div style="font-weight:600;font-size:0.9rem;"><i class="fas fa-dice" style="color:#a78bfa;margin-right:8px;"></i>Generate a Recovery Key</div>
-                <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px;">DOCMAN creates a strong random key for you</div>
+                <div style="font-weight:600;font-size:0.9rem;"><i class="fas fa-dice" style="color:#a78bfa;margin-right:8px;"></i>Let DOCMAN make a key</div>
+                <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px;">A long random key — harder to guess, impossible to remember. Save it somewhere.</div>
             </button>
         </div>`;
     document.body.appendChild(overlay);
@@ -11973,11 +15847,11 @@ function exportBackupData() {
 }
 
 function promptBackupPassword() {
-    showPasswordPromptModal('Create a password for this backup (at least 6 characters). You\'ll need it to restore.', (pw) => {
+    showPasswordPromptModal('Type a password for this backup file. At least 6 characters, and something you will still know in a year — it is the only way back in.', (pw) => {
         if (pw === null) return;
         pw = pw.trim();
         if (pw.length < 6) { showToast('Password must be at least 6 characters', true); promptBackupPassword(); return; }
-        showPasswordPromptModal('Confirm your password:', (pw2) => {
+        showPasswordPromptModal('Type it again, to be sure.', (pw2) => {
             if (pw2 === null) return;
             if (pw2.trim() !== pw) { showToast('Passwords do not match', true); promptBackupPassword(); return; }
             doExportBackupDataEncrypted(pw);
@@ -12001,7 +15875,7 @@ function showRecoveryKeyRevealModal(formattedKey, onContinue) {
     overlay.id = 'recoveryKeyModal';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(8px);padding:20px;padding-top:10vh;overflow-y:auto;';
     overlay.innerHTML = `
-        <div style="background:#1a1a1a;border:1px solid rgba(167,139,250,0.4);border-radius:20px;padding:28px 24px;width:100%;max-width:380px;box-shadow:0 24px 60px rgba(0,0,0,0.7);">
+        <div style="background:#1a1a1a;border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:380px;box-shadow:0 24px 60px rgba(0,0,0,0.7);">
             <p style="color:#ffffff;font-size:0.98rem;font-weight:700;margin:0 0 6px;font-family:Inter,sans-serif;"><i class="fas fa-key" style="color:#a78bfa;margin-right:6px;"></i>Your Recovery Key</p>
             <p style="color:#94a3b8;font-size:0.82rem;margin:0 0 16px;font-family:Inter,sans-serif;line-height:1.5;">This is shown only once. Save this securely — <b style="color:#f87171;">it cannot be recovered if lost</b>, and without it this backup can never be restored.</p>
             <div id="recoveryKeyText" style="background:rgba(255,255,255,0.06);border:1px solid rgba(167,139,250,0.3);border-radius:12px;padding:16px;font-family:'IBM Plex Mono',monospace;font-size:1rem;letter-spacing:0.03em;color:#e2e8f0;text-align:center;word-break:break-all;margin-bottom:14px;">${formattedKey}</div>
@@ -12049,37 +15923,101 @@ function showRecoveryKeyRevealModal(formattedKey, onContinue) {
 // stays up and updates its own message for the entire export, and is only
 // ever dismissed by hideBusyOverlay() once the flow actually ends
 // (success or failure) -- never a timeout.
-function showBusyOverlay(message) {
+// The spinner it used to show said only "something is happening". A file
+// coming off a cloud drive can take a minute, and a ring going round carries
+// no news at all over that minute. The circle fills instead, like a glass
+// filling up: the level IS the progress, so the same glance that asks "is it
+// moving?" answers "and how far". Until a size is known the water just
+// breathes near the bottom, which still reads as working without pretending
+// to a number nobody has.
+function showBusyOverlay(message, icon) {
     let overlay = document.getElementById('busyOverlay');
     if (overlay) {
         overlay.querySelector('#busyOverlayText').textContent = message;
+        if (icon) {
+            const i = overlay.querySelector('.busy-ico i');
+            if (i) i.className = 'fas ' + icon;
+        }
         return;
     }
+    // A card being built from scratch is a new job: the glass starts empty
+    // and whole, whatever the last one left behind.
+    setBusyFillRange(0, 100);
+    busyCloudStageRan = false;
     overlay = document.createElement('div');
     overlay.id = 'busyOverlay';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);';
     overlay.innerHTML = `
-        <div style="background:var(--card-bg);border:1px solid var(--glass-border);border-radius:20px;padding:32px 28px;max-width:280px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
-            <div style="width:44px;height:44px;margin:0 auto 18px;border-radius:50%;border:3px solid var(--glass-border);border-top-color:#8b5cf6;animation:busySpin 0.8s linear infinite;"></div>
+        <div style="background:var(--card-bg);border:1px solid var(--float-border);border-radius:20px;padding:30px 28px;max-width:280px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <div class="busy-ring busy-ring-idle" id="busyRing">
+                <div class="busy-fill" id="busyFill">
+                    <div class="busy-surf"><svg viewBox="0 0 120 18" preserveAspectRatio="none"><path d="M0,9 Q15,1 30,9 T60,9 T90,9 T120,9 V18 H0 Z"/></svg></div>
+                </div>
+                <div class="busy-ico"><i class="fas ${icon || 'fa-file-lines'}"></i></div>
+                <div class="busy-pct" id="busyPct"></div>
+            </div>
             <div id="busyOverlayText" style="color:var(--text-primary);font-weight:600;font-size:0.92rem;font-family:Inter,sans-serif;">${escapeHtml(message)}</div>
-            <div style="color:var(--text-secondary);font-size:0.75rem;margin-top:6px;font-family:Inter,sans-serif;">Please don't close the app</div>
-        </div>
-        <style>@keyframes busySpin { to { transform: rotate(360deg); } }</style>`;
+            <div id="busySubText" style="color:var(--text-secondary);font-size:0.75rem;margin-top:6px;font-family:Inter,sans-serif;">Please don't close the app</div>
+        </div>`;
     document.body.appendChild(overlay);
 }
+
+// Getting a file in has two stages that each count 0-100 of their own work:
+// the cloud provider copying it onto the phone, then DOCMAN writing it into
+// its own storage. Shown raw, the water filled to the top and dropped back to
+// nothing, which reads as the whole thing starting over. The two are mapped
+// onto one glass instead -- the fetch fills the first three quarters, the
+// write the last -- so the level only ever rises. A local file has no fetch
+// stage, so its write gets the whole glass.
+let busyFillFrom = 0;
+let busyFillTo = 100;
+let busyCloudStageRan = false;
+function setBusyFillRange(from, to) { busyFillFrom = from; busyFillTo = to; }
+
+// Drives the water level. A null percentage means the provider never reported
+// a size, so the idle breathing stays rather than a bogus level being drawn.
+function setBusyFill(pct) {
+    const ring = document.getElementById('busyRing');
+    const fill = document.getElementById('busyFill');
+    const label = document.getElementById('busyPct');
+    if (!ring || !fill) return;
+    if (pct === null || pct === undefined || isNaN(pct)) {
+        ring.classList.add('busy-ring-idle');
+        fill.style.height = '';
+        if (label) label.textContent = '';
+        return;
+    }
+    const own = Math.max(0, Math.min(100, pct));
+    const p = Math.round(busyFillFrom + (busyFillTo - busyFillFrom) * own / 100);
+    ring.classList.remove('busy-ring-idle');
+    fill.style.height = p + '%';
+    if (label) label.textContent = p + '%';
+}
+// Shows how far a chunked save has got. Real bytes, not an estimate.
+function reportSaveProgress(written, total) {
+    const sub = document.getElementById('busySubText');
+    if (!sub || !total) return;
+    const pct = Math.min(100, Math.round((written / total) * 100));
+    sub.textContent = 'Saving  ·  ' + formatBytes(written) + ' of ' + formatBytes(total);
+    setCopyBar(pct);
+    forceOverlayRepaint();
+}
+
 function updateBusyOverlay(message) {
     const text = document.getElementById('busyOverlay')?.querySelector('#busyOverlayText');
     if (text) text.textContent = message;
 }
 function hideBusyOverlay() {
     document.getElementById('busyOverlay')?.remove();
+    // The next thing to use the card starts with a full, empty glass.
+    setBusyFillRange(0, 100);
+    busyCloudStageRan = false;
 }
 
-// Builds a full backup zip of the CURRENT in-memory state (same format
-// importBackupData() reads). Shared by the user-facing Backup & Export
-// action and the automatic pre-restore safety snapshot below, so both
-// stay byte-for-byte compatible with the one restore code path.
-async function buildBackupZipBlob(onProgress) {
+// Everything except file bytes, from the CURRENT in-memory state. Shared by
+// Backup & Export and the pre-restore Safety Snapshot, so both are read by
+// the one restore code path.
+function buildBackupManifest() {
     const manifest = {
         fileSystem,
         allNotes,
@@ -12088,7 +16026,7 @@ async function buildBackupZipBlob(onProgress) {
         folderMeta,
         exportedAt: new Date().toISOString(),
         version: APP_VERSION,
-        format: 'docman-zip-v1'
+        format: 'docman-stream-v2'
     };
 
     manifest.fileMetadata = {};
@@ -12102,67 +16040,187 @@ async function buildBackupZipBlob(onProgress) {
                 locked: f.locked || false,
                 size: f.size || 0,
                 expiryDate: f.expiryDate || null,
+            expiryAckFor: f.expiryAckFor || null,
                 note: f.note || '',
                 tags: f.tags || []
             }));
         }
     }
+    return manifest;
+}
 
-    const zip = new JSZip();
-    zip.file('manifest.json', JSON.stringify(manifest));
-    const filesFolder = zip.folder('files');
+// Streams the whole library into `sink` (see BACKUP_V2_MAGIC above).
+// secret null = unencrypted (Safety Snapshot). Only one ~4 MB piece is in
+// memory at a time. A file that can't be found is left out and counted; a
+// file that fails part-way throws, because the stream would be broken.
+async function writeBackupStream(sink, secret, onProgress) {
+    const manifest = buildBackupManifest();
+    let totalBytes = 0;
+    for (const path in allFiles) for (const f of (allFiles[path] || [])) totalBytes += f.size || 0;
 
-    // Pull every file's actual content (lazy-loading blobs as needed) into the zip.
-    // Zip entry path mirrors folderPath/fileName so import can match it back to its folder.
-    const totalFiles = Object.values(allFiles).reduce((sum, list) => sum + (list ? list.length : 0), 0);
-    let doneFiles = 0;
+    const writer = new BackupStreamWriter(sink);
+    await writer.begin(secret);
+    const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest));
+    await writer.record({ t: 'manifest', size: manifestBytes.length }, blobByteSource(new Blob([manifestBytes])));
+
+    let doneBytes = 0;
+    let skipped = 0;
+    let lastShown = 0;
+    const report = () => {
+        if (!onProgress) return;
+        const now = Date.now();
+        if (now - lastShown < 250) return;
+        lastShown = now;
+        const pct = totalBytes ? Math.min(99, Math.floor(doneBytes * 100 / totalBytes)) : 0;
+        onProgress(`Backing up… ${pct}%  (${formatBytes(doneBytes)} of ${formatBytes(totalBytes)})`);
+    };
     for (const path in allFiles) {
         for (const f of (allFiles[path] || [])) {
+            let src = null;
             try {
-                const blob = await loadFileData(path, f.name);
-                if (blob) {
-                    filesFolder.file(path + '/' + f.name, blob);
-                } else {
-                    console.warn('No data found for', path, f.name, '— skipping content, metadata only');
-                }
+                src = await libraryFileByteSource(path, f);
             } catch (e) {
-                console.warn('Failed to read file for backup:', path, f.name, e);
+                console.warn('Backup: could not open', path, f.name, e);
             }
-            doneFiles++;
-            if (onProgress) onProgress(`Reading files… (${doneFiles}/${totalFiles})`);
+            if (!src) {
+                console.warn('No data found for', path, f.name, '— left out of backup');
+                skipped++;
+                continue;
+            }
+            await writer.record({ t: 'file', path, name: f.name, size: src.size }, src, (n) => { doneBytes += n; report(); });
         }
     }
+    await writer.finish();
+    return { skipped };
+}
 
-    return zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } }, (meta) => {
-        if (onProgress) onProgress(`Compressing… ${Math.round(meta.percent)}%`);
-    });
+// Streams a backup into a native file, then checks the size on disk.
+// Removes the half-written file on any failure.
+async function writeBackupStreamToNativeFile(path, directory, secret, onProgress) {
+    const Filesystem = getFilesystemPlugin();
+    const sink = nativeFileSink(path, directory);
+    try {
+        const result = await writeBackupStream(sink, secret, onProgress);
+        await sink.flush();
+        const st = await Filesystem.stat({ path, directory });
+        if (Number(st.size) !== sink.written) throw new Error(`Backup size check failed (${st.size} vs ${sink.written})`);
+        return result;
+    } catch (e) {
+        try { await Filesystem.deleteFile({ path, directory }); } catch (e2) { /* nothing written */ }
+        throw e;
+    }
+}
+
+// Android 9 and below need WRITE_EXTERNAL_STORAGE before anything may be
+// written into the public Documents folder; Android 10+ report 'granted'
+// straight away under scoped storage. Best-effort: a refusal just means the
+// backup falls back to the cache copy plus the share sheet, which is what
+// used to happen silently on every old device.
+async function ensurePublicStoragePermission() {
+    const Filesystem = getFilesystemPlugin();
+    if (!Filesystem?.checkPermissions) return;
+    try {
+        const status = await Filesystem.checkPermissions();
+        if (status?.publicStorage === 'granted') return;
+        expectNativeReturn();
+        await Filesystem.requestPermissions();
+    } catch (e) {
+        console.warn('Storage permission check failed (continuing):', e);
+    }
+}
+
+// Hands the finished backup to the system file picker, which lists Drive,
+// OneDrive, the SD card and local folders as places to put it.
+//
+// This used to go through Share.share, and on a phone running AOSP's Sharesheet
+// rather than an OEM one that crashed outright -- "Intent Resolver keeps
+// stopping" -- leaving the backup stranded on the device. A Galaxy S23 was
+// fine, because Samsung ships its own share sheet. Getting a backup off the
+// phone is the entire reason for making one, so it cannot rest on which share
+// sheet a phone happens to have.
+//
+// ACTION_CREATE_DOCUMENT is also simply the right call: sharing means "send
+// this to someone", and this is a save.
+//
+// Share stays as the fallback for a native shell built before the plugin
+// existed, so an older install keeps whatever worked for it.
+async function saveBackupCopy(path, directory, name) {
+    const Filesystem = getFilesystemPlugin();
+    const BackupSave = window.Capacitor?.Plugins?.BackupSave;
+    if (!Filesystem) return;
+
+    if (BackupSave && BackupSave.saveCopy) {
+        const { uri } = await Filesystem.getUri({ path, directory });
+        expectNativeReturn();
+        const res = await BackupSave.saveCopy({ uri, name, mimeType: 'application/octet-stream' });
+        // A cancelled picker needs no message: the backup is still in Documents,
+        // which the dialog behind this already said.
+        if (!res || !res.saved) return;
+
+        // The picker lists this phone alongside Drive and there is no way to
+        // leave it out -- Android has no flag for "somewhere other than here".
+        // A copy saved back onto the phone is no safer than the one already in
+        // Documents: whatever takes the phone takes both. So the destination is
+        // read back and a copy that never left is said out loud, once, without
+        // blocking anything.
+        const where = String((res && res.authority) || '');
+        const stayedOnPhone = where.includes('externalstorage')
+            || where.includes('providers.downloads')
+            || where.includes('media.documents');
+        if (stayedOnPhone) {
+            showConfirmModal(
+                'That copy is on this phone, next to the one already in Documents.' +
+                '<br><br>If the phone is lost, stolen or broken, both go with it. ' +
+                'Save one to Google Drive, or another cloud, while you can.',
+                (again) => { if (again) saveBackupCopy(path, directory, name).catch(e => console.warn('Save a copy failed:', e)); },
+                { okLabel: 'Choose again', cancelLabel: 'Leave it', title: 'Still only on this phone' }
+            );
+            return;
+        }
+        showToast('Backup copy saved off this phone', false);
+        return;
+    }
+    await shareNativeFile(path, directory, name);
+}
+
+async function shareNativeFile(path, directory, title) {
+    const Filesystem = getFilesystemPlugin();
+    const Share = window.Capacitor?.Plugins?.Share;
+    if (!Filesystem || !Share) return;
+    const { uri } = await Filesystem.getUri({ path, directory });
+    expectNativeReturn();
+    await Share.share({ title, url: uri });
 }
 
 async function doExportBackupDataEncrypted(secret) {
     showBusyOverlay('Preparing backup…');
+    const backupFileName = `docman-backup-${Date.now()}.dbak`;
     try {
-        const zipBlob = await buildBackupZipBlob(showBusyOverlay);
-        updateBusyOverlay('Encrypting backup…');
-        const encBlob = await encryptBackupBlob(zipBlob, secret);
-        const backupFileName = `docman-backup-${Date.now()}.dbak`;
+        if (!directoryIsNative()) {
+            // Browser build: no native storage, so collect and download.
+            const sink = blobSink();
+            const { skipped } = await writeBackupStream(sink, secret, updateBusyOverlay);
+            hideBusyOverlay();
+            docmanSettings.lastBackupAt = Date.now();
+            saveSettings();
+            await nativeDownload(sink.toBlob(), backupFileName);
+            showToast(skipped ? `Backup exported — ${skipped} file(s) could not be read` : 'Encrypted backup exported — save it somewhere safe', true);
+            return;
+        }
 
-        // Also saved directly into the phone's own Documents folder --
-        // visible in Files/My Files with no extra step. Android's share
-        // sheet (used below) only lists apps that register to RECEIVE
-        // shared content, and a local file manager like Samsung's My Files
-        // typically doesn't, so there was previously no way to get a copy
-        // onto the device itself without routing through a cloud app first.
+        // Saved straight into the phone's own Documents folder -- visible in
+        // Files/My Files with no extra step. Android's share sheet only lists
+        // apps that RECEIVE shared content, and a local file manager like
+        // Samsung's My Files typically doesn't, so sharing alone gave no way
+        // to keep a copy on the device itself.
         let savedLocally = false;
-        updateBusyOverlay('Saving to Documents…');
+        let skipped = 0;
         try {
-            await writeBlobToFSChunked(encBlob, backupFileName, 'DOCUMENTS');
+            await ensurePublicStoragePermission();
+            ({ skipped } = await writeBackupStreamToNativeFile(backupFileName, 'DOCUMENTS', secret, updateBusyOverlay));
             savedLocally = true;
-            // The write itself succeeded, but Android's MediaStore index
-            // (what Files/My Files actually queries to list "Documents")
-            // has no idea the file exists until something scans it --
-            // without this, it's on disk but invisible until the next
-            // full device media scan, sometimes hours later. Best-effort:
-            // the file is still genuinely saved even if this part fails.
+            // Android's MediaStore index (what Files/My Files lists) doesn't
+            // know the file exists until something scans it. Best-effort.
             try {
                 const Filesystem = getFilesystemPlugin();
                 const { uri } = await Filesystem.getUri({ path: backupFileName, directory: 'DOCUMENTS' });
@@ -12172,7 +16230,13 @@ async function doExportBackupDataEncrypted(secret) {
                 console.warn('Media scan trigger failed (file still saved):', e);
             }
         } catch (e) {
-            console.warn('Could not save backup to Documents, share-only:', e);
+            console.warn('Could not save backup to Documents, trying share-only:', e);
+        }
+
+        if (!savedLocally) {
+            // No Documents copy: stream into the app cache and share that.
+            updateBusyOverlay('Preparing backup to share…');
+            ({ skipped } = await writeBackupStreamToNativeFile(backupFileName, 'CACHE', secret, updateBusyOverlay));
         }
 
         hideBusyOverlay();
@@ -12182,30 +16246,30 @@ async function doExportBackupDataEncrypted(secret) {
         docmanSettings.lastBackupAt = Date.now();
         saveSettings();
 
+        const skippedNote = skipped
+            ? `<br><br><span style="color:#f87171;font-size:0.82rem">${skipped} file(s) could not be read and were left out.</span>`
+            : '';
+
         // The share sheet used to open automatically, which made "send it to
-        // Drive" look like the actual save. If that hand-off then failed --
-        // offline, or Drive dropped it somewhere unexpected -- the backup
-        // seemed lost, even though a copy was already on the phone. So the
-        // local file is now the stated result and sharing is a second,
-        // deliberate step.
+        // Drive" look like the actual save. The local file is the stated
+        // result and sharing is a second, deliberate step.
         if (savedLocally) {
             showConfirmModal(
                 `Backup saved to <b>Documents</b><br><span style="opacity:.75;font-size:0.82rem">${escapeHtml(backupFileName)}</span>` +
-                `<br><br><span style="opacity:.75;font-size:0.82rem">Find it in Files / My Files → Documents. Keep a second copy somewhere off the phone.</span>`,
-                (share) => { if (share) nativeDownload(encBlob, backupFileName); },
-                { okLabel: 'Share a copy', cancelLabel: 'Done', okColor: 'linear-gradient(135deg,#3b82f6,#2563eb)' }
+                `<br><br><span style="opacity:.75;font-size:0.82rem">Find it in Files / My Files → Documents.</span>` +
+                `<br><span style="opacity:.75;font-size:0.82rem">This copy is only as safe as the phone. <b>Save a copy to Google Drive</b> — or any cloud — so a lost or broken phone does not take your documents with it.</span>` +
+                skippedNote,
+                (save) => { if (save) saveBackupCopy(backupFileName, 'DOCUMENTS', backupFileName).catch(e => console.warn('Save a copy failed:', e)); },
+                { okLabel: 'Save a copy', cancelLabel: 'Done', okColor: 'linear-gradient(135deg,#3b82f6,#2563eb)' }
             );
         } else {
-            // No local copy, so the share sheet is the only way out -- open it.
-            showBusyOverlay('Opening share sheet…');
-            await nativeDownload(encBlob, backupFileName);
-            hideBusyOverlay();
+            await saveBackupCopy(backupFileName, 'CACHE', backupFileName);
             showToast('Encrypted backup exported — save it somewhere safe', true);
         }
     } catch (err) {
         console.error('Backup export failed:', err);
         hideBusyOverlay();
-        showToast('Could not export backup', true);
+        showToast('Could not export backup. Check that the phone has enough free storage.', true);
     }
 }
 
@@ -12244,23 +16308,22 @@ async function writeBlobToFSChunked(blob, path, directory) {
 // Returns { ok: true } on success or { ok: false, error } — callers
 // must treat a failed snapshot as a reason to ABORT the restore rather
 // than proceed without a safety net.
-async function writeSafetySnapshot() {
+// protectPath: a snapshot being restored from right now -- never pruned.
+async function writeSafetySnapshot(protectPath) {
     const Filesystem = getFilesystemPlugin();
     if (!Filesystem) return { ok: false, error: new Error('Filesystem plugin unavailable') };
     try {
-        const zipBlob = await buildBackupZipBlob();
-        const path = `${SAFETY_SNAPSHOT_DIR}/pre-restore-${Date.now()}.zip`;
-        await writeBlobToFSChunked(zipBlob, path, 'DATA');
+        // Streamed and unencrypted (internal only, like v1's plain zip), so
+        // a large library no longer has to fit in memory to be snapshotted.
+        const path = `${SAFETY_SNAPSHOT_DIR}/pre-restore-${Date.now()}.dbak`;
+        await writeBackupStreamToNativeFile(path, 'DATA', null, (msg) => updateBusyOverlay('Safety snapshot: ' + msg));
 
         // Prune to the most recent SAFETY_SNAPSHOT_KEEP — best-effort,
         // never blocks the restore that's about to happen.
         try {
-            const listing = await Filesystem.readdir({ path: SAFETY_SNAPSHOT_DIR, directory: 'DATA' });
-            const files = (listing.files || [])
-                .map(f => (typeof f === 'string' ? f : f.name))
-                .filter(name => name && name.endsWith('.zip'))
-                .sort();
-            const toDelete = files.slice(0, Math.max(0, files.length - SAFETY_SNAPSHOT_KEEP));
+            const names = await listSafetySnapshotNames();
+            const toDelete = names.slice(0, Math.max(0, names.length - SAFETY_SNAPSHOT_KEEP))
+                .filter(name => `${SAFETY_SNAPSHOT_DIR}/${name}` !== protectPath);
             for (const name of toDelete) {
                 try { await Filesystem.deleteFile({ path: `${SAFETY_SNAPSHOT_DIR}/${name}`, directory: 'DATA' }); } catch (e) { /* best effort */ }
             }
@@ -12275,19 +16338,26 @@ async function writeSafetySnapshot() {
     }
 }
 
+// Snapshot file names, oldest first. Older builds wrote .zip, now .dbak;
+// both are sorted by the timestamp in the name.
+async function listSafetySnapshotNames() {
+    const Filesystem = getFilesystemPlugin();
+    const listing = await Filesystem.readdir({ path: SAFETY_SNAPSHOT_DIR, directory: 'DATA' });
+    const stamp = (name) => parseInt((name.match(/pre-restore-(\d+)\./) || [])[1] || '0', 10);
+    return (listing.files || [])
+        .map(f => (typeof f === 'string' ? f : f.name))
+        .filter(name => name && /^pre-restore-\d+\.(zip|dbak)$/.test(name))
+        .sort((a, b) => stamp(a) - stamp(b));
+}
+
 // Lists existing snapshots, newest first, as { name, path, whenLabel }.
 async function listSafetySnapshots() {
     const Filesystem = getFilesystemPlugin();
     if (!Filesystem) return [];
     try {
-        const listing = await Filesystem.readdir({ path: SAFETY_SNAPSHOT_DIR, directory: 'DATA' });
-        const names = (listing.files || [])
-            .map(f => (typeof f === 'string' ? f : f.name))
-            .filter(name => name && name.endsWith('.zip'))
-            .sort()
-            .reverse();
+        const names = (await listSafetySnapshotNames()).reverse();
         return names.map(name => {
-            const m = name.match(/pre-restore-(\d+)\.zip/);
+            const m = name.match(/pre-restore-(\d+)\./);
             const ts = m ? parseInt(m[1], 10) : null;
             return {
                 name,
@@ -12336,9 +16406,13 @@ function showSafetySnapshotsModal() {
                 const path = row.dataset.path;
                 close();
                 try {
-                    const blob = await readBlobFromFS(path);
-                    if (!blob) { showToast('Could not read that snapshot', true); return; }
-                    importBackupData(blob);
+                    // .dbak snapshots are read piece by piece; old .zip
+                    // snapshots load whole, as they always did.
+                    const input = path.endsWith('.dbak')
+                        ? await nativeByteSource(path, 'DATA')
+                        : await readBlobFromFS(path);
+                    if (!input) { showToast('Could not read that snapshot', true); return; }
+                    importBackupData(input);
                 } catch (e) {
                     console.error('Failed to load safety snapshot:', e);
                     showToast('Could not read that snapshot', true);
@@ -12348,14 +16422,153 @@ function showSafetySnapshotsModal() {
     });
 }
 
+// Everything restore needs besides the file bytes, rebuilt from an
+// untrusted manifest. Every folder/file name coming out of it is run
+// through the same sanitizePathSegment-based helpers the rest of the app
+// uses for user-typed names, so a '../' or a raw path separator can never
+// end up as a literal fileSystem/notes/folderMeta key. Deterministic per
+// segment, so the same raw path sanitizes to the same key everywhere,
+// keeping fileSystem/allNotes/folderMeta/allFiles cross-linked.
+function stageRestoreStructure(manifest) {
+    const staged = {
+        fileSystem: sanitizeFileSystemTree(manifest.fileSystem),
+        notes: {},
+        deptColors: {},
+        deptIconOverrides: {},
+        folderMeta: {},
+        files: {}
+    };
+    const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+    if (isObj(manifest.allNotes)) {
+        for (const path in manifest.allNotes) {
+            if (Array.isArray(manifest.allNotes[path])) staged.notes[sanitizeFolderPathKey(path)] = manifest.allNotes[path];
+        }
+    }
+    if (isObj(manifest.deptColors)) {
+        for (const dept in manifest.deptColors) staged.deptColors[sanitizePathSegment(dept)] = manifest.deptColors[dept];
+    }
+    if (isObj(manifest.deptIconOverrides)) {
+        for (const dept in manifest.deptIconOverrides) staged.deptIconOverrides[sanitizePathSegment(dept)] = manifest.deptIconOverrides[dept];
+    }
+    if (isObj(manifest.folderMeta)) {
+        for (const path in manifest.folderMeta) staged.folderMeta[sanitizeFolderPathKey(path)] = manifest.folderMeta[path];
+    }
+    return staged;
+}
+
+function stagedFileEntry(f) {
+    return {
+        name: sanitizePathSegment(f.name),
+        type: f.type || 'application/octet-stream',
+        uploadedAt: f.uploadedAt || Date.now(),
+        favourite: f.favourite || false,
+        locked: f.locked || false,
+        size: f.size || 0,
+        expiryDate: f.expiryDate || null,
+            expiryAckFor: f.expiryAckFor || null,
+        note: f.note || '',
+        tags: f.tags || [],
+        fsPath: null,
+        fileData: null,
+        _hasData: false,
+        _isBase64: false
+    };
+}
+
+function isValidBackupManifest(manifest) {
+    return manifest && manifest.fileSystem && typeof manifest.fileSystem === 'object' && !Array.isArray(manifest.fileSystem);
+}
+
+// Every native fsPath the CURRENT data (files + recycle bin, both of which
+// a restore fully replaces) still points at. They become orphans once the
+// backup's metadata is swapped in, so each must be removed after commit.
+function collectCurrentFsPaths() {
+    const oldFsPaths = new Set();
+    for (const path in allFiles) {
+        for (const f of (allFiles[path] || [])) {
+            if (f && f.fsPath) oldFsPaths.add(f.fsPath);
+        }
+    }
+    for (const item of recycleBin) {
+        if (item.kind === 'file' && item.payload?.fsPath) {
+            oldFsPaths.add(item.payload.fsPath);
+        } else if (item.kind === 'folder' && item.payload?.filesSnapshot) {
+            for (const k of Object.keys(item.payload.filesSnapshot)) {
+                for (const f of item.payload.filesSnapshot[k]) {
+                    if (f && f.fsPath) oldFsPaths.add(f.fsPath);
+                }
+            }
+        }
+    }
+    return oldFsPaths;
+}
+
+// Point of no return: swaps in the staged state, persists it, then removes
+// the native files it replaced. Shared by v1 and v2 restores.
+async function commitStagedRestore(staged, oldFsPaths, readFailures) {
+    fileSystem = staged.fileSystem;
+    allNotes = staged.notes;
+    deptColors = staged.deptColors;
+    deptIconOverrides = staged.deptIconOverrides;
+    folderMeta = staged.folderMeta;
+    allFiles = staged.files;
+    // Recycle Bin is explicitly NOT carried over -- the confirm dialog told
+    // the user everything is being replaced, so old trash entries (pointing
+    // at fsPaths about to be deleted) would be a dangling reference.
+    recycleBin = [];
+
+    await saveFolderStructure();
+    await saveDeptColors();
+    await saveDeptIconOverrides();
+    await saveFolderMeta();
+    await saveRecycleBin();
+    await saveAllNotesToDB();
+    await saveAllFilesToDB(true);
+    await loadAllFileMetadata();
+
+    // Now that the new state is safely persisted, remove the native files it
+    // replaced. Restored files live under their own docs/restore-<time>/
+    // folder, so none of these paths can be one of them.
+    let deleteFailures = 0;
+    for (const fsPath of oldFsPaths) {
+        const ok = await deleteFileFromFS(fsPath);
+        if (!ok) {
+            console.warn('Restore: failed to remove obsolete native file', fsPath);
+            deleteFailures++;
+        }
+    }
+
+    currentPath = [];
+    closeSettingsPage();
+    render();
+
+    if (readFailures || deleteFailures) {
+        showToast(
+            'Backup restored, but ' + readFailures + ' file(s) could not be read from the backup and ' +
+            deleteFailures + ' old file(s) could not be cleaned up — check console',
+            true
+        );
+    } else {
+        showToast('Data imported successfully. Previous data saved under Settings → Safety Snapshots.');
+    }
+}
+
+// Accepts a picked File/Blob, or a byte source from nativeByteSource()
+// (a .dbak Safety Snapshot).
 function importBackupData(file) {
     (async () => {
         try {
-            // Encrypted user-exported backups need the password/recovery
-            // key before anything else can happen. Internal Safety
-            // Snapshots (see writeSafetySnapshot()) are deliberately never
-            // encrypted -- no magic header, so they fall straight through
-            // to JSZip below exactly as before, with no prompt.
+            const source = file instanceof Blob ? blobByteSource(file) : file;
+            if (await isBackupV2(source)) {
+                await importBackupV2(source);
+                return;
+            }
+            if (!(file instanceof Blob)) { showToast('Invalid backup file', true); return; }
+
+            // ---- v1: encrypted or plain ZIP, read into memory as before ----
+            // Encrypted user-exported backups need the password/recovery key
+            // first. Old .zip Safety Snapshots were never encrypted -- no magic
+            // header, so they fall straight through to JSZip.
             let zipSource = file;
             if (await isEncryptedBackup(file)) {
                 const secret = await new Promise(resolve => {
@@ -12367,9 +16580,9 @@ function importBackupData(file) {
                 try {
                     decrypted = await decryptBackupBlob(file, trimmed);
                 } catch (e) {
-                    // First attempt used exactly what was typed (correct
-                    // for a real password). Retry once assuming it was a
-                    // recovery key typed with its display dashes/casing.
+                    // First attempt used exactly what was typed (correct for a
+                    // real password). Retry once assuming it was a recovery key
+                    // typed with its display dashes/casing.
                     try {
                         decrypted = await decryptBackupBlob(file, normalizeRecoveryKeyGuess(trimmed));
                     } catch (e2) {
@@ -12385,15 +16598,10 @@ function importBackupData(file) {
             if (!manifestEntry) { showToast('Invalid backup file', true); return; }
 
             const manifest = JSON.parse(await manifestEntry.async('string'));
-            if (!manifest.fileSystem || typeof manifest.fileSystem !== 'object' || Array.isArray(manifest.fileSystem)) {
-                showToast('Invalid backup file', true); return;
-            }
+            if (!isValidBackupManifest(manifest)) { showToast('Invalid backup file', true); return; }
 
-            // Zip-bomb / oversized-import protection -- reject BEFORE the
-            // confirm dialog (and before reading a single file's bytes out
-            // of the zip) rather than discovering the problem partway
-            // through restore. Limits are generous enough that no
-            // legitimate DOCMAN-exported backup should ever hit them.
+            // Zip-bomb / oversized-import protection -- a v1 restore holds the
+            // whole zip in memory, so reject BEFORE the confirm dialog.
             const IMPORT_MAX_FILES = 20000;
             const IMPORT_MAX_TOTAL_BYTES = 5 * 1024 * 1024 * 1024;
             const IMPORT_MAX_SINGLE_FILE_BYTES = 500 * 1024 * 1024;
@@ -12431,102 +16639,29 @@ function importBackupData(file) {
 
                 showToast('Restoring backup…');
 
-                // ------------------------------------------------------------
-                // STAGED RESTORE: build the new in-memory state from the zip
-                // FIRST, without touching anything currently on disk. Only
-                // once the new state is fully built and persisted do we go
-                // back and remove the OLD native files it replaces. This way
-                // a failure partway through parsing/staging never destroys
-                // data we haven't successfully replaced yet.
-                // ------------------------------------------------------------
+                // STAGED RESTORE: build the new state from the zip FIRST,
+                // without touching anything currently on disk.
+                const oldFsPaths = collectCurrentFsPaths();
+                const staged = stageRestoreStructure(manifest);
 
-                // Every native fsPath the CURRENT data (files + recycle bin,
-                // both of which this restore is about to fully replace)
-                // still points at. These become orphans the moment we swap
-                // in the backup's metadata below, since restored files are
-                // staged as fresh Blobs with no fsPath of their own -- so
-                // every one of these must be explicitly removed, not just
-                // "left behind and hopefully unreferenced".
-                const oldFsPaths = new Set();
-                for (const path in allFiles) {
-                    for (const f of (allFiles[path] || [])) {
-                        if (f && f.fsPath) oldFsPaths.add(f.fsPath);
-                    }
-                }
-                for (const item of recycleBin) {
-                    if (item.kind === 'file' && item.payload?.fsPath) {
-                        oldFsPaths.add(item.payload.fsPath);
-                    } else if (item.kind === 'folder' && item.payload?.filesSnapshot) {
-                        for (const k of Object.keys(item.payload.filesSnapshot)) {
-                            for (const f of item.payload.filesSnapshot[k]) {
-                                if (f && f.fsPath) oldFsPaths.add(f.fsPath);
-                            }
-                        }
-                    }
-                }
-
-                // Every folder/file name coming out of the manifest is
-                // untrusted (a crafted or corrupted zip, not necessarily
-                // one DOCMAN itself produced) -- run every key through the
-                // same sanitizePathSegment-based helpers the rest of the
-                // app already uses for user-typed names, so a '../' or a
-                // raw path separator can never end up embedded as a
-                // literal fileSystem/notes/folderMeta key. Deterministic
-                // per segment (see sanitizeFolderPathKey/sanitizeFileSystemTree's
-                // own comments), so the same raw path sanitizes to the same
-                // key everywhere it's used below, keeping fileSystem/
-                // allNotes/folderMeta/allFiles cross-linked correctly.
-                const stagedFileSystem = sanitizeFileSystemTree(manifest.fileSystem);
-                const stagedNotes = {};
-                if (manifest.allNotes && typeof manifest.allNotes === 'object' && !Array.isArray(manifest.allNotes)) {
-                    for (const path in manifest.allNotes) {
-                        if (Array.isArray(manifest.allNotes[path])) stagedNotes[sanitizeFolderPathKey(path)] = manifest.allNotes[path];
-                    }
-                }
-                const stagedDeptColors = {};
-                if (manifest.deptColors && typeof manifest.deptColors === 'object' && !Array.isArray(manifest.deptColors)) {
-                    for (const dept in manifest.deptColors) {
-                        stagedDeptColors[sanitizePathSegment(dept)] = manifest.deptColors[dept];
-                    }
-                }
-                const stagedDeptIconOverrides = {};
-                if (manifest.deptIconOverrides && typeof manifest.deptIconOverrides === 'object' && !Array.isArray(manifest.deptIconOverrides)) {
-                    for (const dept in manifest.deptIconOverrides) {
-                        stagedDeptIconOverrides[sanitizePathSegment(dept)] = manifest.deptIconOverrides[dept];
-                    }
-                }
-                const stagedFolderMeta = {};
-                if (manifest.folderMeta && typeof manifest.folderMeta === 'object' && !Array.isArray(manifest.folderMeta)) {
-                    for (const path in manifest.folderMeta) {
-                        stagedFolderMeta[sanitizeFolderPathKey(path)] = manifest.folderMeta[path];
-                    }
-                }
-                const stagedFiles = {};
-
-                const IMPORT_MAX_SINGLE_FILE_BYTES = 500 * 1024 * 1024;
                 let readFailures = 0;
                 if (fileMetaIsObject) {
                     for (const path in manifest.fileMetadata) {
                         const list = manifest.fileMetadata[path];
                         if (!Array.isArray(list)) continue;
                         const safePath = sanitizeFolderPathKey(path);
-                        if (!stagedFiles[safePath]) stagedFiles[safePath] = [];
+                        if (!staged.files[safePath]) staged.files[safePath] = [];
                         for (const f of list) {
                             if (!f || typeof f.name !== 'string') { readFailures++; continue; }
                             let fileData = null;
                             if (typeof f.size === 'number' && f.size > IMPORT_MAX_SINGLE_FILE_BYTES) {
-                                // Oversized single entry -- skip reading its
-                                // bytes (the expensive/risky part) but still
-                                // keep the metadata row so the restore
-                                // surfaces it as a readable failure instead
-                                // of silently vanishing.
+                                // Oversized single entry -- skip its bytes but
+                                // keep the row so it shows as a failure.
                                 console.warn('Skipping oversized file in backup:', path, f.name, f.size);
                                 readFailures++;
                             } else {
                                 // Zip entry lookup uses the RAW (pre-sanitize)
-                                // path/name -- that's how the zip was actually
-                                // packed on export; only the STAGED in-memory
-                                // key/name below need to be the sanitized ones.
+                                // path/name -- that's how the zip was packed.
                                 const zipEntry = zip.file('files/' + path + '/' + f.name);
                                 if (zipEntry) {
                                     try {
@@ -12536,86 +16671,186 @@ function importBackupData(file) {
                                         readFailures++;
                                     }
                                 } else {
-                                    // Metadata references a file the zip doesn't actually
-                                    // contain -- surface this rather than silently
-                                    // restoring a phantom entry with no content.
                                     readFailures++;
                                 }
                             }
-                            stagedFiles[safePath].push({
-                                name: sanitizePathSegment(f.name),
-                                type: f.type || 'application/octet-stream',
-                                uploadedAt: f.uploadedAt || Date.now(),
-                                favourite: f.favourite || false,
-                                locked: f.locked || false,
-                                size: f.size || (fileData ? fileData.size : 0),
-                                expiryDate: f.expiryDate || null,
-                                note: f.note || '',
-                                tags: f.tags || [],
-                                fileData: fileData,
-                                _hasData: !!fileData,
-                                _isBase64: false
-                            });
+                            const entry = stagedFileEntry(f);
+                            entry.size = f.size || (fileData ? fileData.size : 0);
+                            entry.fileData = fileData;
+                            entry._hasData = !!fileData;
+                            staged.files[safePath].push(entry);
                         }
                     }
                 }
 
-                // Commit the staged state -- this is the point of no return,
-                // now that every zip entry has been read successfully (or the
-                // failure counted above, without corrupting anything).
-                fileSystem = stagedFileSystem;
-                allNotes = stagedNotes;
-                deptColors = stagedDeptColors;
-                deptIconOverrides = stagedDeptIconOverrides;
-                folderMeta = stagedFolderMeta;
-                allFiles = stagedFiles;
-                // Recycle Bin is explicitly NOT carried over -- the confirm
-                // dialog above tells the user everything is being replaced,
-                // so leaving old trash entries around (pointing at fsPaths
-                // we're about to delete) would be a lie and a dangling
-                // reference. A restore starts with an empty Recycle Bin.
-                recycleBin = [];
-
-                await saveFolderStructure();
-                await saveDeptColors();
-                await saveDeptIconOverrides();
-                await saveFolderMeta();
-                await saveRecycleBin();
-                await saveAllNotesToDB();
-                await saveAllFilesToDB(true);
-                await loadAllFileMetadata();
-
-                // Now that the new state is safely persisted, remove the
-                // native files it replaced. Best-effort per file; failures
-                // are tracked and reported rather than assumed away.
-                let deleteFailures = 0;
-                for (const fsPath of oldFsPaths) {
-                    const ok = await deleteFileFromFS(fsPath);
-                    if (!ok) {
-                        console.warn('Restore: failed to remove obsolete native file', fsPath);
-                        deleteFailures++;
-                    }
-                }
-
-                currentPath = [];
-                closeSettingsPage();
-                render();
-
-                if (readFailures || deleteFailures) {
-                    showToast(
-                        'Backup restored, but ' + readFailures + ' file(s) could not be read from the backup and ' +
-                        deleteFailures + ' old file(s) could not be cleaned up — check console',
-                        true
-                    );
-                } else {
-                    showToast('Data imported successfully. Previous data saved under Settings → Safety Snapshots.');
-                }
+                await commitStagedRestore(staged, oldFsPaths, readFailures);
             }, { okLabel: 'Restore & Replace', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
         } catch (err) {
             console.error('Backup import failed:', err);
             showToast('Failed to read backup: ' + err.message, true);
         }
     })();
+}
+
+// v2 restore: reads the backup piece by piece and writes each file straight
+// to native storage, so the library never has to fit in memory. Files are
+// staged under docs/restore-<time>/; if anything fails before commit, that
+// folder is removed and the current data is left exactly as it was.
+async function importBackupV2(source) {
+    const reader = new BackupStreamReader(source);
+    const needsSecret = await reader.open();
+    if (needsSecret) {
+        const secret = await new Promise(resolve => {
+            showPasswordPromptModal('Enter the password or recovery key for this backup:', resolve);
+        });
+        if (secret === null) return;
+        const trimmed = secret.trim();
+        showBusyOverlay('Checking password…');
+        try {
+            try {
+                await reader.unlock(trimmed);
+            } catch (e) {
+                if (!(e instanceof BackupWrongSecretError)) throw e;
+                // Retry assuming a recovery key typed with dashes/casing.
+                try {
+                    await reader.unlock(normalizeRecoveryKeyGuess(trimmed));
+                } catch (e2) {
+                    if (!(e2 instanceof BackupWrongSecretError)) throw e2;
+                    hideBusyOverlay();
+                    showToast('Incorrect password or recovery key', true);
+                    return;
+                }
+            }
+        } finally {
+            hideBusyOverlay();
+        }
+    }
+
+    const first = await reader.nextHeader();
+    if (!first || first.t !== 'manifest') { showToast('Invalid backup file', true); return; }
+    const manifest = JSON.parse(new TextDecoder().decode(await reader.readExact(first.size)));
+    if (!isValidBackupManifest(manifest)) { showToast('Invalid backup file', true); return; }
+
+    const fileMetaIsObject = manifest.fileMetadata && typeof manifest.fileMetadata === 'object' && !Array.isArray(manifest.fileMetadata);
+    let declaredFileCount = 0;
+    if (fileMetaIsObject) {
+        for (const path in manifest.fileMetadata) {
+            if (Array.isArray(manifest.fileMetadata[path])) declaredFileCount += manifest.fileMetadata[path].length;
+        }
+    }
+    if (declaredFileCount > BACKUP_V2_MAX_FILES) {
+        showToast('Backup contains too many files (' + declaredFileCount + ') to import safely', true);
+        return;
+    }
+
+    const ok = await new Promise(resolve => showConfirmModal(
+        'This will <b>replace all current data</b> (including the Recycle Bin) with the backup. Continue?',
+        resolve,
+        { okLabel: 'Restore & Replace', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' }
+    ));
+    if (!ok) return;
+
+    const native = directoryIsNative();
+    const Filesystem = getFilesystemPlugin();
+    const restoreRoot = `docs/restore-${Date.now()}`;
+
+    showBusyOverlay('Saving safety snapshot…');
+    const snapshotResult = await writeSafetySnapshot(source.path);
+    if (!snapshotResult.ok) {
+        hideBusyOverlay();
+        console.error('Aborting restore: safety snapshot failed', snapshotResult.error);
+        showToast('Could not save a safety snapshot, so the restore was cancelled to avoid unrecoverable data loss. Try again, or free up storage space.', true);
+        return;
+    }
+
+    try {
+        updateBusyOverlay('Restoring backup…');
+        const oldFsPaths = collectCurrentFsPaths();
+        const staged = stageRestoreStructure(manifest);
+
+        // One staged row per manifest entry, filled in as its bytes arrive.
+        let readFailures = 0;
+        let totalBytes = 0;
+        const byKey = new Map();
+        if (fileMetaIsObject) {
+            for (const path in manifest.fileMetadata) {
+                const list = manifest.fileMetadata[path];
+                if (!Array.isArray(list)) continue;
+                const safePath = sanitizeFolderPathKey(path);
+                if (!staged.files[safePath]) staged.files[safePath] = [];
+                for (const f of list) {
+                    if (!f || typeof f.name !== 'string') { readFailures++; continue; }
+                    const entry = stagedFileEntry(f);
+                    staged.files[safePath].push(entry);
+                    byKey.set(path + ' ' + f.name, { entry, safePath, done: false });
+                    totalBytes += (typeof f.size === 'number' && f.size > 0) ? f.size : 0;
+                }
+            }
+        }
+
+        let doneBytes = 0;
+        let lastShown = 0;
+        const report = () => {
+            const now = Date.now();
+            if (now - lastShown < 250) return;
+            lastShown = now;
+            const pct = totalBytes ? Math.min(99, Math.floor(doneBytes * 100 / totalBytes)) : 0;
+            updateBusyOverlay(`Restoring… ${pct}%  (${formatBytes(doneBytes)} of ${formatBytes(totalBytes)})`);
+            // The water is the progress: without this it stayed at its idle level
+            // while the text climbed to 91%.
+            if (totalBytes) setBusyFill(pct);
+        };
+        const skip = async () => {};
+
+        for (;;) {
+            const hdr = await reader.nextHeader();
+            if (!hdr || hdr.t === 'end') break;
+            const size = Number(hdr.size) || 0;
+            if (size < 0) throw new Error('Backup file is damaged');
+            const hit = hdr.t === 'file' ? byKey.get(hdr.path + ' ' + hdr.name) : null;
+            if (!hit || hit.done || size > BACKUP_V2_MAX_SINGLE_FILE) {
+                await reader.pipe(size, skip);
+                continue;
+            }
+            const entry = hit.entry;
+            if (native) {
+                const fsPath = restoreRoot + '/' + fsPathFor(hit.safePath, entry.name).slice('docs/'.length);
+                const sink = nativeFileSink(fsPath, 'DATA');
+                if (size === 0) await Filesystem.writeFile({ path: fsPath, data: '', directory: 'DATA', recursive: true });
+                await reader.pipe(size, async (piece) => { await sink.write(piece); doneBytes += piece.length; report(); });
+                await sink.flush();
+                const st = await Filesystem.stat({ path: fsPath, directory: 'DATA' });
+                if (Number(st.size) !== size) throw new Error('Could not write ' + entry.name + ' (storage full?)');
+                entry.fsPath = fsPath;
+            } else {
+                const parts = [];
+                await reader.pipe(size, async (piece) => { parts.push(new Blob([piece])); doneBytes += piece.length; report(); });
+                entry.fileData = new Blob(parts, { type: entry.type });
+            }
+            entry.size = size;
+            entry._hasData = true;
+            hit.done = true;
+        }
+        // The 'end' record must be followed by the final frame and nothing
+        // else, or the backup was cut off or tampered with.
+        if (!reader.sawLast) {
+            await reader._nextFrame();
+            if (!reader.sawLast || reader.piece.length) throw new Error('Backup file is damaged');
+        }
+
+        for (const { done } of byKey.values()) if (!done) readFailures++;
+
+        updateBusyOverlay('Saving…');
+        await commitStagedRestore(staged, oldFsPaths, readFailures);
+        hideBusyOverlay();
+    } catch (err) {
+        console.error('Restore failed, nothing was changed:', err);
+        if (native) {
+            try { await Filesystem.rmdir({ path: restoreRoot, directory: 'DATA', recursive: true }); } catch (e) { /* nothing staged */ }
+        }
+        hideBusyOverlay();
+        showToast('Restore failed and nothing was changed: ' + err.message, true);
+    }
 }
 
 // ============================================================
@@ -12893,43 +17128,269 @@ function renderFavoritesPanel() {
     `).join('');
 }
 
-function renderStatisticsPanel() {
-    let fileCount = 0,
-        noteCount = 0,
-        folderCount = 0;
-    let largestFile = { name: '—', size: 0 };
-    let largestFolder = { name: '—', count: 0 };
+// Statistics panel. Rebuilt 2026-10-07 from four flat tiles into the ring +
+// tiles + largest-items + storage layout. Every number below is counted from
+// the same in-memory stores the rest of the app reads (fileSystem, allFiles,
+// allNotes), so it can never disagree with what a folder actually shows.
 
-    function countFolders(obj) {
-        for (const k in obj) if (typeof obj[k] === 'object') { folderCount++;
-            countFolders(obj[k]); }
+// Which department the panel is scoped to. '' means all of them.
+let statsDeptFilter = '';
+// 'size' bars the three file groups by bytes, 'count' by number of files.
+let statsStoreMode = 'size';
+
+// A folder path belongs to the filter when it IS the department or sits
+// under it. Comparing the first segment rather than a prefix string stops
+// "Work" from also matching a department called "Workshop".
+function statsPathInFilter(path) {
+    if (!statsDeptFilter) return true;
+    return path === statsDeptFilter || path.startsWith(statsDeptFilter + '/');
+}
+
+function statsFileGroup(f) {
+    const name = (f.name || '').toLowerCase();
+    if (f.type === 'application/pdf' || name.endsWith('.pdf')) return 'pdf';
+    if ((f.type || '').startsWith('image/') ||
+        /\.(jpe?g|png|gif|webp|bmp|heic|heif|tiff?)$/.test(name)) return 'img';
+    return 'oth';
+}
+
+function collectStatistics() {
+    const s = {
+        files: 0, notes: 0, folders: 0, depts: 0,
+        allFilesTotal: 0,
+        bytes: 0,
+        group: { pdf: { bytes: 0, count: 0 }, img: { bytes: 0, count: 0 }, oth: { bytes: 0, count: 0 } },
+        largestFile: { name: '', bytes: 0, folderPath: '', file: null },
+        largestFolder: { name: '', path: '', count: 0 }
+    };
+
+    const deptKeys = Object.keys(fileSystem);
+    s.depts = statsDeptFilter ? 1 : deptKeys.length;
+
+    // Subfolders only -- the department itself is counted on the
+    // DEPARTMENTS tile, so counting it here too would double it.
+    function countFolders(obj, path) {
+        for (const k in obj) {
+            if (typeof obj[k] !== 'object' || obj[k] === null) continue;
+            const child = path ? path + "/" + k : k;
+            if (statsPathInFilter(child)) s.folders++;
+            countFolders(obj[k], child);
+        }
     }
-    countFolders(fileSystem);
+    countFolders(fileSystem, '');
+    // countFolders counted the departments themselves at the top level; the
+    // FOLDERS tile is about folders inside them.
+    s.folders -= statsDeptFilter ? 1 : deptKeys.length;
+    if (s.folders < 0) s.folders = 0;
 
     for (const path in allFiles) {
-        if (!allFiles[path]) continue;
-        fileCount += allFiles[path].length;
-        const folderTotal = allFiles[path].length;
-        if (folderTotal > largestFolder.count) {
-            largestFolder = { name: path.split('/').pop() || path, count: folderTotal };
+        const arr = allFiles[path];
+        if (!arr || !arr.length) continue;
+        s.allFilesTotal += arr.length;
+        if (!statsPathInFilter(path)) continue;
+        s.files += arr.length;
+        if (arr.length > s.largestFolder.count) {
+            s.largestFolder = { name: path.split('/').pop() || path, path, count: arr.length };
         }
-        allFiles[path].forEach(f => {
-            const size = f.size || 0;
-            if (size > largestFile.size) largestFile = { name: f.name, size };
-        });
+        for (const f of arr) {
+            const bytes = (typeof getFileBytes === 'function' ? getFileBytes(f) : (f.size || 0)) || 0;
+            s.bytes += bytes;
+            const g = s.group[statsFileGroup(f)];
+            g.bytes += bytes;
+            g.count++;
+            if (bytes > s.largestFile.bytes) {
+                s.largestFile = { name: f.name, bytes, folderPath: path, file: f };
+            }
+        }
     }
-    for (const path in allNotes) if (allNotes[path]) noteCount += allNotes[path].length;
 
-    document.getElementById('statTotalFiles').textContent = fileCount;
-    document.getElementById('statTotalNotes').textContent = noteCount;
-    document.getElementById('statTotalFolders').textContent = folderCount;
-    document.getElementById('statTotalDepts').textContent = Object.keys(fileSystem).length;
-    document.getElementById('statLargestFile').textContent = largestFile.size > 0 ?
-        `${largestFile.name} (${(largestFile.size / (1024 * 1024)).toFixed(2)} MB)` :
-        '—';
-    document.getElementById('statLargestFolder').textContent = largestFolder.count > 0 ?
-        `${largestFolder.name} (${largestFolder.count} files)` :
-        '—';
+    for (const path in allNotes) {
+        if (!allNotes[path] || !statsPathInFilter(path)) continue;
+        s.notes += allNotes[path].length;
+    }
+    return s;
+}
+
+function renderStatisticsPanel() {
+    const s = collectStatistics();
+    const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+
+    set("statTotalFiles", s.files);
+    set("statTileFiles", s.files);
+    set("statTotalFolders", s.folders);
+    set("statTotalNotes", s.notes);
+    set("statTotalDepts", s.depts);
+
+    // The ring shows how much of the whole library this view covers, so it
+    // is full on "All Departments" and a slice once one is picked.
+    const arc = document.getElementById("statRingArc");
+    if (arc) {
+        const C = 2 * Math.PI * 48;
+        const frac = s.allFilesTotal > 0 ? Math.min(1, s.files / s.allFilesTotal) : 0;
+        // A hair under the full circle, so a 100% ring still reads as a ring
+        // rather than closing into a plain band at the join.
+        const len = frac >= 0.999 ? C - 0.6 : C * frac;
+        arc.setAttribute("stroke-dasharray", len.toFixed(1) + " " + C.toFixed(1));
+    }
+
+    const fileRow = document.getElementById("statLargestFileRow");
+    const folderRow = document.getElementById("statLargestFolderRow");
+    const pill = (id, text) => {
+        const el = document.getElementById(id);
+        if (el && el.lastElementChild) el.lastElementChild.textContent = text;
+    };
+
+    if (s.largestFile.bytes > 0) {
+        set("statLargestFile", s.largestFile.name);
+        pill("statLargestFilePill", formatBytes(s.largestFile.bytes));
+        if (fileRow) {
+            fileRow.style.display = "";
+            fileRow.onclick = () => {
+                openFolderPathInApp(s.largestFile.folderPath,
+                    () => { openSettingsPage(); showSettingsScreen('settingsPanel-statistics'); });
+            };
+        }
+    } else {
+        set("statLargestFile", "No files yet");
+        pill("statLargestFilePill", "—");
+        if (fileRow) fileRow.onclick = null;
+    }
+
+    if (s.largestFolder.count > 0) {
+        set("statLargestFolder", s.largestFolder.name);
+        pill("statLargestFolderPill", s.largestFolder.count + (s.largestFolder.count === 1 ? " file" : " files"));
+        if (folderRow) {
+            folderRow.onclick = () => {
+                openFolderPathInApp(s.largestFolder.path,
+                    () => { openSettingsPage(); showSettingsScreen('settingsPanel-statistics'); });
+            };
+        }
+    } else {
+        set("statLargestFolder", "No folders yet");
+        pill("statLargestFolderPill", "—");
+        if (folderRow) folderRow.onclick = null;
+    }
+
+    // ---- storage ----------------------------------------------------
+    const byCount = statsStoreMode === "count";
+    const g = s.group;
+    const total = byCount ? (g.pdf.count + g.img.count + g.oth.count) : s.bytes;
+    const val = (x) => byCount ? x.count : x.bytes;
+    const show = (x) => byCount ? String(val(x)) : formatBytes(val(x));
+
+    set("statStoreTotal", byCount ? String(s.files) : formatBytes(s.bytes));
+    set("statStoreTotalLbl", byCount ? "Total Files" : "Total Storage");
+    set("statStoreSideVal", s.largestFile.bytes > 0 ? formatBytes(s.largestFile.bytes) : "—");
+
+    const pct = (x) => total > 0 ? (val(x) / total * 100) : 0;
+    const bar = (id, x) => { const el = document.getElementById(id); if (el) el.style.width = pct(x).toFixed(2) + "%"; };
+    bar("statBarPdf", g.pdf);
+    bar("statBarImg", g.img);
+    bar("statBarOth", g.oth);
+
+    set("statLegPdf", "PDFs " + show(g.pdf));
+    set("statLegImg", "Images " + show(g.img));
+    set("statLegOth", "Other " + show(g.oth));
+
+    set("statFootLeft", byCount ? ("Files: " + s.files) : ("Used: " + formatBytes(s.bytes)));
+    // This used to read "Available", from navigator.storage.estimate(). On the
+    // device that returned a flat 10.00 GB -- the WebView's own quota, not the
+    // free space on the phone -- so it was a number that looked precise and
+    // meant nothing. What DOCMAN can actually count goes here instead.
+    const docLbl = s.files + (s.files === 1 ? " file" : " files");
+    const noteLbl = s.notes + (s.notes === 1 ? " note" : " notes");
+    set("statFootRight", docLbl + " \u00b7 " + noteLbl);
+}
+
+// Opens a folder path from inside Settings: closes the settings page, then
+// walks the app to that folder the same way a tap on the home screen would.
+function openFolderPathInApp(path, restore) {
+    if (!path) return;
+    const parts = path.split('/').filter(Boolean);
+    if (!parts.length) return;
+    if (restore) markNavReturn(restore); else clearNavReturn();
+    closeSettingsPage();
+    // The same lock check every other way into a folder runs, so a locked
+    // folder still asks for the PIN when it is reached from Statistics.
+    guardFolderEntry(parts, () => {
+        currentPath = parts;
+        render();
+    });
+}
+
+function initStatisticsControls() {
+    const deptSel = document.getElementById("statDeptFilter");
+    if (deptSel && !deptSel.dataset.wired) {
+        deptSel.dataset.wired = "1";
+        deptSel.onchange = () => {
+            statsDeptFilter = deptSel.value;
+            const lbl = document.getElementById("statDeptChipLabel");
+            if (lbl) lbl.textContent = deptSel.value || "All Departments";
+            renderStatisticsPanel();
+        };
+    }
+    if (deptSel) {
+        // Rebuilt every time the panel opens, because a department may have
+        // been added or renamed since it was last looked at.
+        const opts = ["<option value=\"\">All Departments</option>"];
+        for (const d of Object.keys(fileSystem)) {
+            opts.push("<option value=\"" + escapeHtml(d) + "\">" + escapeHtml(d) + "</option>");
+        }
+        deptSel.innerHTML = opts.join("");
+        if (!Object.keys(fileSystem).includes(statsDeptFilter)) statsDeptFilter = "";
+        deptSel.value = statsDeptFilter;
+        const lbl = document.getElementById("statDeptChipLabel");
+        if (lbl) lbl.textContent = statsDeptFilter || "All Departments";
+    }
+
+    const modeSel = document.getElementById("statStoreMode");
+    if (modeSel && !modeSel.dataset.wired) {
+        modeSel.dataset.wired = "1";
+        modeSel.onchange = () => {
+            statsStoreMode = modeSel.value;
+            const lbl = document.getElementById("statStoreModeLabel");
+            if (lbl) lbl.textContent = modeSel.value === "count" ? "File Count" : "Total Size";
+            renderStatisticsPanel();
+        };
+    }
+
+    const seeAll = document.getElementById("statSeeAllBtn");
+    if (seeAll && !seeAll.dataset.wired) {
+        seeAll.dataset.wired = "1";
+        seeAll.onclick = () => {
+            showSettingsScreen("settingsPanel-storageDetail");
+            renderStorageDetailPanel();
+        };
+    }
+}
+
+function openStatisticsPanel() {
+    initStatisticsControls();
+    renderStatisticsPanel();
+}
+
+// The same gradients the home-screen department pills use (mirrored from
+// style.css: the eight named departments, then an eight-colour cycle by
+// position for custom ones). Settings used to paint every dot the same
+// orange-pink, so a department's colour did not match itself there.
+const DEPT_PILL_GRADIENTS = {
+    'Personal':         ['#2048f9', '#142fb7'],
+    'Work':             ['#3db388', '#227a5b'],
+    'Finance & Bills':  ['#7f15e4', '#4e098f'],
+    'Education':        ['#d01883', '#8e0e56'],
+    'Health & Medical': ['#dc500c', '#a03703'],
+    'ID & Legal':       ['#d39d18', '#9a6c03'],
+    'Home & Property':  ['#368d59', '#20663d'],
+    'Others':           ['#1339dc', '#0a2293'],
+};
+const DEPT_PILL_CYCLE = Object.values(DEPT_PILL_GRADIENTS);
+
+// index is the department's position in the home-screen list, which is what
+// the CSS :nth-of-type cycle keys off for custom departments.
+function deptPillGradient(dept, index) {
+    if (deptColors[dept]) return deptColors[dept];                 // user-chosen colour wins
+    const g = DEPT_PILL_GRADIENTS[dept] || DEPT_PILL_CYCLE[index % DEPT_PILL_CYCLE.length];
+    return 'linear-gradient(135deg, ' + g[0] + ', ' + g[1] + ')';
 }
 
 function renderDepartmentsManagePanel() {
@@ -12937,11 +17398,11 @@ function renderDepartmentsManagePanel() {
     const depts = Object.keys(fileSystem);
     document.getElementById('deptManageCount').textContent = depts.length;
     if (!depts.length) { list.innerHTML = '<div class="settings-empty-row">No departments yet</div>'; return; }
-    list.innerHTML = depts.map(dept => {
+    list.innerHTML = depts.map((dept, i) => {
         const total = countDepartmentFiles(fileSystem[dept], [dept]);
         return `
             <div class="dept-manage-row">
-                <div class="dept-manage-dot"${deptColors[dept] ? ` style="background:${deptColors[dept]}"` : ''}></div>
+                <div class="dept-manage-dot" style="background:${deptPillGradient(dept, i)}"></div>
                 <div class="dept-manage-name">${escapeHtml(dept)}</div>
                 <span class="dept-manage-count">${total} items</span>
                 <button class="dept-manage-delete" data-dept-del="${escapeHtml(dept)}"><i class="fas fa-trash"></i></button>
@@ -12950,20 +17411,25 @@ function renderDepartmentsManagePanel() {
     list.querySelectorAll('[data-dept-del]').forEach(btn => {
         btn.onclick = () => {
             const dept = btn.getAttribute('data-dept-del');
-            showConfirmModal(`Delete department "<b>${escapeHtml(dept)}</b>" and everything inside it?`, async (confirmed) => {
+            // Was a straight `delete fileSystem[dept]`: this screen destroyed a
+            // department and everything in it with no way back, while the same
+            // action on the home screen goes to the Recycle Bin. Same route,
+            // same contents summary and countdown as everywhere else now.
+            const info = (() => { const c = folderContentsLine([dept]); return { html: `Move "<b>${escapeHtml(dept)}</b>" to the Recycle Bin?<br><span style="display:inline-block;margin-top:10px;font-weight:500;font-size:0.85rem;color:var(--text-secondary);">${c.empty ? c.text : 'It contains ' + c.text + '.'}</span>`, wait: c.empty ? 0 : 5 }; })();
+            showConfirmModal(info.html, async (confirmed) => {
                 if (!confirmed) return;
-                delete fileSystem[dept];
+                await moveFolderToRecycleBin([dept]);
                 delete deptColors[dept];
                 delete deptIconOverrides[dept];
-                await saveFolderStructure();
                 await saveDeptColors();
                 await saveDeptIconOverrides();
                 renderDepartmentsManagePanel();
                 refreshSettingsListSubtitles();
                 if (currentPath[0] === dept) currentPath = [];
                 render();
-                showToast(`Department "${dept}" deleted`);
-            });
+                updateStats();
+                showToast('Moved to Recycle Bin');
+            }, { okLabel: 'Move', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)', countdown: info.wait });
         };
     });
 }
@@ -13030,7 +17496,7 @@ const settingsPanelRenderers = {
     storage: renderStoragePanel,
     appearance: applyThemePickUI,
     favorites: renderFavoritesPanel,
-    statistics: renderStatisticsPanel,
+    statistics: openStatisticsPanel,
     departments: renderDepartmentsManagePanel,
     security: updatePinStatusUI
 };
@@ -13053,6 +17519,8 @@ function openSettingsPage() {
 
 function closeSettingsPage() {
     const page = document.getElementById('settingsPage');
+    // The Locked Folders & PDFs sheet belongs to Settings -- never leave it behind.
+    document.getElementById('lockedItemsOverlay')?.remove();
     page.classList.remove('settings-page-visible');
     setTimeout(() => page.classList.add('hidden'), 280);
 }
@@ -13091,20 +17559,20 @@ function initSettingsPage() {
     });
 
     // Appearance
-    document.getElementById('themePickDark').onclick = () => {
+    document.getElementById('themePickDark').onclick = (ev) => {
         docmanSettings.theme = 'dark';
         saveSettings();
-        applyTheme('dark');
+        themeReveal(() => applyTheme('dark'), ev);
     };
-    document.getElementById('themePickLight').onclick = () => {
+    document.getElementById('themePickLight').onclick = (ev) => {
         docmanSettings.theme = 'light';
         saveSettings();
-        applyTheme('light');
+        themeReveal(() => applyTheme('light'), ev);
     };
-    document.getElementById('themePickSystem').onclick = () => {
+    document.getElementById('themePickSystem').onclick = (ev) => {
         docmanSettings.theme = 'system';
         saveSettings();
-        applyTheme('system');
+        themeReveal(() => applyTheme('system'), ev);
     };
 
     const enableAnimToggle = document.getElementById('enableAnimationsToggle');
@@ -13170,7 +17638,18 @@ function initSettingsPage() {
     // is gone (replaced by a per-folder Favourite toggle on the folder
     // toolbar), this Settings entry keeps the full favourites list reachable.
     const openFavBtn = document.getElementById('openFavouritesFromSettings');
-    if (openFavBtn) openFavBtn.onclick = () => { haptic.press(); openFavouritesView(); };
+    // Settings sits at z-index 4000 and the Favourites screen at 50, so
+    // opening it from here put it BEHIND Settings and the button looked dead
+    // (reported 2026-09-23). Closing Settings first worked but flashed the
+    // home screen on the way in and dumped the reader there on the way out,
+    // so instead the screen is lifted ABOVE Settings: Settings stays open
+    // underneath and back returns straight to it.
+    if (openFavBtn) openFavBtn.onclick = () => {
+        haptic.press();
+        const favView = document.getElementById('favouritesView');
+        favView.style.zIndex = '4200';
+        openFavouritesView();
+    };
 
     const recentsLimitVal = document.getElementById('recentsLimitVal');
     recentsLimitVal.textContent = docmanSettings.recentsLimit;
@@ -13335,10 +17814,21 @@ function initSettingsPage() {
     };
 
     const importFileInput = document.getElementById('importFileInput');
-    document.getElementById('importDataBtn').onclick = () => { expectNativeReturn();
+    // Same treatment as the upload picker: picking a large backup out of
+    // Drive makes Android copy the whole file before onchange fires, which
+    // looked like a frozen app. markFilePickPending() puts a card up as soon
+    // as the picker hands control back.
+    importFileInput.addEventListener('cancel', () => finishFilePick());
+    document.getElementById('importDataBtn').onclick = () => { expectNativeReturn(); markFilePickPending();
         importFileInput.click(); };
     importFileInput.onchange = (e) => {
         if (e.target.files[0]) {
+            // Android has already finished copying the file out of Drive by
+            // the time this fires. Take the download card down now: left up
+            // (it used to be), it sat at "100%" on top of the backup's
+            // password prompt, so the restore looked frozen while the
+            // keyboard waited for a password nobody could see.
+            finishFilePick();
             importBackupData(e.target.files[0]);
             e.target.value = '';
         }
@@ -13365,7 +17855,14 @@ function initSettingsPage() {
 
     const settingsAlertsRow = document.getElementById('settingsAlertsRow');
     if (settingsAlertsRow) {
-        settingsAlertsRow.onclick = () => { haptic.press(); fixAlertPermissions(); };
+        // This used to fire the permission requests directly, showing nothing:
+        // a tap either produced Android's dialog or appeared to do nothing at
+        // all, and it never covered battery or autostart. The setup screen
+        // does, and says what each permission is for, so the row opens that.
+        // It is the same screen a fresh install is shown, which is the point
+        // -- there was a second row further down Settings that opened it, and
+        // two rows asking for the same three permissions is what this merges.
+        settingsAlertsRow.onclick = () => { haptic.press(); showAlertSetup({ fromSettings: true }); };
         refreshAlertPermissionRow();
     }
 
@@ -13455,7 +17952,14 @@ function attachPressEffects() {
         '.rename-file-btn', '.delete-file-btn', '.rename-note-btn',
         '.delete-note-btn', '.clear-search', '.modal-close',
         '.modal-footer button', '.breadcrumb-item', '.card', '.dept-oval',
+        '.stat-icon-btn',   // Recent / Sort / Dashboard / Recycle Bin
+        '.subtab-btn',      // Opened / Added / Modified inside Recent
         '.card-note-btn', '.card-tag-btn',
+        // The row's own menu button. Without it here the press started at the
+        // dots and bubbled up to the .card handler, so tapping the menu sank
+        // the WHOLE row. Bound here it is the target, pressHandler's
+        // stopPropagation keeps the card out of it, and only the dots move.
+        '.row-menu',
         '#closeImageViewer', '#closeDocViewer', '#shareDocViewerBtn',
         '#closeSheetViewer', '#shareSheetViewerBtn', '.doc-viewer-sheet-tab'
     ];
@@ -13483,13 +17987,55 @@ function pressHandler(e) {
         setTimeout(() => this.removeAttribute('data-touch-processing'), 200);
     }
     e.stopPropagation();
-    addDepthEffect(this, e);
+    // A list row is as likely to be the start of a SCROLL as of a tap, so
+    // buzzing on touchstart meant every scroll rattled the phone (reported
+    // 2026-09-23). Rows get the press animation immediately but the haptic
+    // only once the touch proves to be a tap; fixed controls keep the
+    // instant buzz, since they are never scrolled through.
+    const isScrollableRow = this.classList.contains('card') || this.classList.contains('dept-oval');
+    addDepthEffect(this, e, !(isScrollableRow && e.type === 'touchstart'));
+    if (isScrollableRow && e.type === 'touchstart') armTapHaptic(this, e);
 }
 
-function addDepthEffect(element, event) {
+// Fires one short haptic only if the touch that started on this element ends
+// as a tap: the finger barely moved and lifted quickly.
+function armTapHaptic(el, startEvent) {
+    const t = startEvent.touches && startEvent.touches[0];
+    if (!t) return;
+    const sx = t.clientX, sy = t.clientY, t0 = Date.now();
+    let moved = false;
+    const onMove = (ev) => {
+        const m = ev.touches && ev.touches[0];
+        if (!m) return;
+        if (Math.abs(m.clientX - sx) > 10 || Math.abs(m.clientY - sy) > 10) moved = true;
+    };
+    const done = () => {
+        el.removeEventListener('touchmove', onMove);
+        el.removeEventListener('touchend', onEnd);
+        el.removeEventListener('touchcancel', done);
+    };
+    const onEnd = () => {
+        if (!moved && Date.now() - t0 < 500) haptic.press();
+        done();
+    };
+    el.addEventListener('touchmove', onMove, { passive: true });
+    el.addEventListener('touchend', onEnd, { passive: true });
+    el.addEventListener('touchcancel', done, { passive: true });
+}
+
+
+// A press shrinks the row slightly and fires a haptic. It used to also tip
+// the card toward the finger (setPressTilt wrote --rx/--ry from the touch
+// point); that tilt is gone -- it read as the row wobbling rather than
+// responding.
+function addDepthEffect(element, event, withHaptic = true) {
     if (!element || element.hasAttribute('data-press-animating')) return;
     element.setAttribute('data-press-animating', 'true');
-    haptic.press();
+    // This class was only ever REMOVED here and had no CSS at all, so the press
+    // animation never actually ran -- the haptic was the whole effect. Adding
+    // it (and the rule in style.css) is animation 1.
+    element.classList.add('press-depth-3d');
+    if (withHaptic) haptic.press();
     setTimeout(() => {
         element.classList.remove('press-depth-3d');
         element.removeAttribute('data-press-animating');
@@ -13546,6 +18092,15 @@ async function handleFiles(files) {
     let firstHeicFailureDetail = null;
     uploadInProgress = true;
     showBusyOverlay(`Uploading 1 of ${total}…`);
+    // The copy phase left its own numbers on the card; they are about a
+    // different operation and reading "100%" while this runs is misleading.
+    // The water carries on from where the fetch left it instead of emptying.
+    setBusyFillRange(busyCloudStageRan ? 75 : 0, 100);
+    stopCloudWaitTicker();
+    removeCopyBar();
+    const sub0 = document.getElementById('busySubText');
+    if (sub0) sub0.textContent = 'Saving to your device…';
+    await refreshPickedNativePaths();
     try {
         for (let f of files) {
             const fileType = getFileType(f.name);
@@ -13591,6 +18146,8 @@ async function handleFiles(files) {
 
 function triggerUpload() {
     expectNativeReturn();
+    markFilePickPending();
+    showPendingPickOverlay();
     document.getElementById('fileInput').click();
 }
 
@@ -13626,6 +18183,11 @@ function initAndroidBackButton() {
 
     App.addListener('backButton', () => {
         if (uploadInProgress) return;
+        // Same reasoning as uploadInProgress: a backup/restore/snapshot is
+        // mid-flight behind this overlay, and there is nothing back can
+        // usefully close. Navigating (or exiting) underneath it would leave
+        // the user staring at a spinner over the wrong screen.
+        if (document.getElementById('busyOverlay')) return;
         haptic.press();
 
         // Never let back-button navigation bypass the lock screen.
@@ -13643,6 +18205,53 @@ function initAndroidBackButton() {
         // Long-press context menu (Favourite/Lock/Rename/...).
         const ctxMenu = document.getElementById('ctxMenuOverlay');
         if (ctxMenu) { ctxMenu.remove(); return; }
+
+        // Any other bottom sheet (Locked Folders & PDFs, Sort). Without this,
+        // back skipped the sheet and closed the Settings page underneath it,
+        // leaving the sheet stranded on the home screen.
+        const sheet = document.querySelector('.ctx-menu-overlay');
+        if (sheet) { sheet.remove(); return; }
+
+        // The one-off modals that build themselves on demand and are normally
+        // dismissed by their own X/Cancel button or a backdrop tap. None of
+        // them used to be in this chain, so back sailed straight past them and
+        // navigated (or closed Settings) UNDERNEATH a modal that stayed on
+        // screen -- the same thing the bottom-sheet branch above fixes.
+        // Each one's own dismiss control is clicked rather than the node being
+        // removed, so whatever that control does still happens: the date modal
+        // reports a cancelled pick, expiryTodayModal runs its onDone and keeps
+        // reminding, and so on. A null selector means backdrop-dismiss only --
+        // overlay.click() lands on the overlay itself, which is exactly what
+        // its "tap outside to close" listener tests for.
+        const dismissableModals = [
+            // The reminder note, before the panel it sits on. null = backdrop
+            // dismiss, which puts the note away WITHOUT marking the reminder
+            // seen -- backing out of an alert is not the same as reading it,
+            // so the bar on the main screen survives the press.
+            ['reminderStickyNote', null],
+            ['customDateModal', '#dateModalCancel'],
+            ['customFileDetailModal', '#fileDetailCloseX'],
+            ['customNoteViewModal', '#noteViewCloseX'],
+            ['customTagViewModal', '#tagViewCloseX'],
+            ['customMoveModal', '#moveModalCloseX'],
+            ['expiryTodayModal', null],
+            ['backupEncChoiceModal', '#encChoiceCloseX'],
+            ['recoveryKeyModal', '#recoveryKeyCancelBtn'],
+            ['safetySnapshotsModal', '#snapModalCloseX'],
+        ];
+        for (const [modalId, closeSel] of dismissableModals) {
+            const modalEl = document.getElementById(modalId);
+            if (!modalEl) continue;
+            const closeBtn = closeSel ? modalEl.querySelector(closeSel) : null;
+            if (closeBtn) closeBtn.click(); else modalEl.click();
+            return;
+        }
+
+        // Note editor. Uses .show rather than .hidden, and back behaves like
+        // its own Cancel button. Without this, back while writing a note
+        // walked out of the folder behind the still-open editor.
+        const noteModalEl = document.getElementById('noteModal');
+        if (noteModalEl && noteModalEl.classList.contains('show')) { closeNoteModal(); return; }
 
         // DOCMAN Pro screen. Built on demand, so existing at all means open.
         // It sits above the image editor, so it closes first.
@@ -13665,6 +18274,11 @@ function initAndroidBackButton() {
         // imgEditorCancel(), not closeImageEditor() -- it raises the
         // unsaved-changes prompt when there are edits to lose.
         if (backVisible(imageEditorEl) && imgEditor.activeTool === 'adjust') { imgAdjustCancel(); return; }
+        // Any other tool with an open overlay/panel (Crop, Scan, Text, the
+        // brushes) gets cancelled first -- exactly what that tool's own Cancel
+        // button does. Back used to skip the tool entirely and try to leave
+        // the editor, raising "discard changes?" over a half-drawn crop box.
+        if (backVisible(imageEditorEl) && imgEditor.activeTool) { imgEditorSetTool(null); return; }
         if (backVisible(imageEditorEl)) { imgEditorCancel(); return; }
 
         const imageViewerEl = document.getElementById('imageViewer');
@@ -13672,6 +18286,12 @@ function initAndroidBackButton() {
 
         const docViewerEl = document.getElementById('docViewer');
         if (backVisible(docViewerEl)) { closeDocViewer(); return; }
+
+        // The spreadsheet viewer is a second, separate .doc-viewer element --
+        // it was missing here, so back inside an open .xlsx/.csv navigated the
+        // folder list behind it, or exited the app outright from the root.
+        const sheetViewerEl = document.getElementById('sheetViewer');
+        if (backVisible(sheetViewerEl)) { closeSheetViewer(); return; }
 
         // These two are built on demand, so existing at all means open.
         const iconPickerEl = document.getElementById('iconPickerOverlay');
@@ -13682,6 +18302,19 @@ function initAndroidBackButton() {
 
         const deptInfoEl = document.getElementById('deptInfoModal');
         if (backVisible(deptInfoEl)) { closeDeptInfo(); return; }
+
+        // The reminder-setup screen, before the intro it follows: back is the
+        // same as its own way out, so the screen is marked seen and whatever
+        // opened it still gets its callback. It was the one overlay with no
+        // branch here, so back fell through and navigated underneath it.
+        const alertSetupEl = document.getElementById('alertSetupOverlay');
+        if (backVisible(alertSetupEl)) {
+            const later = document.getElementById('alertSetupLater');
+            const out = (later && getComputedStyle(later).display !== 'none')
+                ? later : document.getElementById('alertSetupDone');
+            if (out) out.click(); else closeAlertSetup();
+            return;
+        }
 
         // Back on the first-run intro behaves like Skip.
         const introEl = document.getElementById('introOverlay');
@@ -13699,12 +18332,34 @@ function initAndroidBackButton() {
             if (el && !el.classList.contains('hidden')) { closeFn(); return; }
         }
 
-        // Settings page.
+        // Settings page. A sub-panel (Appearance, Security, ...) steps back to
+        // the settings list first, the way its own back arrow does -- closing
+        // the whole page from three levels in skipped everything between.
         const settingsPage = document.getElementById('settingsPage');
-        if (settingsPage && !settingsPage.classList.contains('hidden')) { closeSettingsPage(); return; }
+        if (settingsPage && !settingsPage.classList.contains('hidden')) {
+            const activeScreen = settingsPage.querySelector('.settings-screen.settings-screen-active');
+            if (activeScreen && activeScreen.id !== 'settingsListScreen') {
+                showSettingsScreen('settingsListScreen');
+                return;
+            }
+            closeSettingsPage();
+            return;
+        }
 
         // Search mode.
         if (isSearchMode) { clearSearch(); return; }
+
+        // Multi-select: back leaves the selection, not the folder.
+        if (selectMode) { exitSelectMode(); return; }
+
+        // "Merge PDFs" selection -- same rule as the image one below.
+        if (pdfMergeMode) { exitPdfMergeMode(); return; }
+
+        // "Merge to PDF" selection mode -- back cancels the selection and
+        // stays in the folder, the way back leaves multi-select everywhere
+        // else on Android, instead of walking out of the folder with the
+        // selection still live behind it.
+        if (pdfSelectMode) { imgExitPdfSelectMode(); return; }
 
         // Inside a folder/department -- step up one level.
         if (currentPath.length) { goBack(); return; }
@@ -13725,8 +18380,250 @@ function initAndroidBackButton() {
 // UPLOAD OPTIONS ACTION SHEET
 // ============================================================
 
+// Android hands the picked files back by copying each one out of the source
+// app (Drive, Files, the gallery) before the WebView fires its change event.
+// With several large PDFs that is many seconds during which the app looked
+// frozen -- nothing on screen until "Uploading 1 of N" finally appeared. This
+// puts a card up the moment the picker closes and the app is in front again.
+let pendingFilePick = false;
+let pendingFilePickTimer = null;
+
+function markFilePickPending() {
+    pendingFilePick = true;
+    startCopyPoll();
+    clearTimeout(pendingFilePickTimer);
+    // Safety net: a picker that is dismissed without firing change OR cancel
+    // (some OEM file managers) must never leave the card up for good.
+    pendingFilePickTimer = setTimeout(() => finishFilePick(), 3 * 60 * 1000);
+}
+
+let pendingPickTicker = null;
+let pendingPickStartedAt = 0;
+
+// The native side (DocmanWebChromeClient.copyToCacheWithProgress) streams the
+// picked file into our cache and reports bytes as it goes, because a cloud
+// item is not on the device when the picker hands it over. This turns those
+// numbers into a real percentage instead of an indeterminate spinner.
+// Renders one progress report onto the upload card. Fed by BOTH channels
+// below so a failure of either one cannot blank the numbers out.
+function applyCopyProgress(d) {
+    if (!d || d.phase === 'done') { stopCloudWaitTicker(); removeCopyBar(); return; }
+    if (d.phase !== 'copy') return;
+    // Real numbers are here, so stop the generic elapsed ticker.
+    clearInterval(pendingPickTicker);
+    pendingPickTicker = null;
+    const name = d.name || 'file';
+    const of = d.count > 1 ? '  (' + d.index + ' of ' + d.count + ')' : '';
+
+    // PHASE 1 -- the cloud app is still preparing the file. It blocks our read
+    // for the whole of its own download (measured: 51s for a 287MB Drive file)
+    // and publishes no byte count anywhere: its document row was queried once
+    // a second for the entire wait and never changed. A percentage here would
+    // be invented, and a bar pinned at 0% reads as a frozen app -- so show the
+    // size, and a clock that is genuinely moving.
+    if (!d.copied) {
+        showBusyOverlay('Getting ' + name + ' from your cloud…');
+        startCloudWaitTicker(d.total, of);
+        return;
+    }
+
+    // PHASE 2 -- the bytes are ours to count.
+    if (cloudWaitStart) recordCloudRate(d.total, (Date.now() - cloudWaitStart) / 1000);
+    stopCloudWaitTicker();
+    showBusyOverlay('Downloading ' + name + '…');
+    const pct = d.total > 0 ? Math.min(100, Math.round((d.copied / d.total) * 100)) : null;
+    const sub = document.getElementById('busySubText');
+    if (sub) {
+        sub.textContent = formatBytes(d.copied)
+            + (d.total > 0 ? ' of ' + formatBytes(d.total) : ' downloaded')
+            + of;
+    }
+    setCopyBar(pct);
+}
+
+// The cloud gives no byte count while it prepares a file, so the bar during
+// that wait is an ESTIMATE: elapsed time x the transfer rate this phone last
+// achieved. The rate is measured from completed fetches (a 287MB Drive file
+// took 51s here, about 5.6 MB/s) and smoothed, so it adapts to the network
+// instead of being a fixed guess. It is capped below 100% and always labelled,
+// because it is not a real measurement of the cloud's progress.
+const CLOUD_RATE_KEY = 'docmanCloudRateBps';
+const CLOUD_RATE_DEFAULT = 5.6 * 1024 * 1024;
+function getCloudRate() {
+    const v = parseFloat(localStorage.getItem(CLOUD_RATE_KEY));
+    return (isFinite(v) && v > 64 * 1024) ? v : CLOUD_RATE_DEFAULT;
+}
+function recordCloudRate(bytes, seconds) {
+    // Ignore files that were already on the phone, and tiny samples: both
+    // would report an absurd rate and poison every later estimate.
+    if (!(bytes > 20 * 1024 * 1024) || !(seconds > 3)) return;
+    const measured = bytes / seconds;
+    const prev = parseFloat(localStorage.getItem(CLOUD_RATE_KEY));
+    const next = (isFinite(prev) && prev > 64 * 1024) ? (prev * 0.6 + measured * 0.4) : measured;
+    try { localStorage.setItem(CLOUD_RATE_KEY, String(Math.round(next))); } catch (e) { }
+}
+
+let cloudWaitTimer = null;
+let cloudWaitStart = 0;
+function startCloudWaitTicker(total, of) {
+    if (cloudWaitTimer) return;          // already counting this file
+    cloudWaitStart = Date.now();
+    const paint = () => {
+        const sub = document.getElementById('busySubText');
+        if (!sub) return;
+        const secs = Math.round((Date.now() - cloudWaitStart) / 1000);
+        const mm = Math.floor(secs / 60);
+        const ss = ('0' + (secs % 60)).slice(-2);
+        if (total > 0) {
+            // Linear until 85%, then decelerating towards (never reaching) 99%.
+            // A hard cap instead of a curve makes the bar stop dead whenever the
+            // estimate outruns the real download, which reads as a hang -- the
+            // bar sat at 95% and waited. This keeps creeping however long the
+            // cloud takes, and still cannot claim to have finished.
+            const linear = (getCloudRate() * secs) / total;
+            const frac = linear < 0.85
+                ? linear
+                : 0.85 + 0.14 * (1 - Math.exp(-(linear - 0.85) * 2));
+            const est = total * frac;
+            const pct = Math.min(99, Math.round(frac * 100));
+            sub.textContent = '~' + formatBytes(est) + ' of ' + formatBytes(total)
+                + '   (estimated · ' + mm + ':' + ss + ')' + of;
+            setCopyBar(pct);
+        } else {
+            sub.textContent = 'waiting for your cloud  ·  ' + mm + ':' + ss + of;
+        }
+        forceOverlayRepaint();
+    };
+    paint();
+    cloudWaitTimer = setInterval(paint, 1000);
+}
+function stopCloudWaitTicker() {
+    clearInterval(cloudWaitTimer);
+    cloudWaitTimer = null;
+    cloudWaitStart = 0;
+}
+
+// Channel 1 (push): native evaluateJavascript. Kept because it is instant
+// when it works.
+window.addEventListener('docmanCopyProgress', (e) => applyCopyProgress((e && e.detail) || {}));
+
+// Channel 2 (pull): poll the plugin bridge. On this device the push channel
+// silently delivered nothing -- the native side logged the copy running and
+// finishing, but the UI-thread eval callback never returned -- so the card
+// sat on its elapsed-seconds text for the whole download. The plugin bridge
+// is the path every other native call in this app already uses.
+let copyPollTimer = null;
+let lastCopyJson = '';
+function startCopyPoll() {
+    stopCopyPoll();
+    const PdfNative = window.Capacitor?.Plugins?.PdfNative;
+    if (!PdfNative || !PdfNative.getCopyProgress) return;
+    copyPollTimer = setInterval(async () => {
+        try {
+            const r = await PdfNative.getCopyProgress();
+            const json = (r && r.json) || '';
+            if (!json || json === lastCopyJson) return;
+            lastCopyJson = json;
+            applyCopyProgress(JSON.parse(json));
+            forceOverlayRepaint();
+            forceOverlayRepaint();
+        } catch (err) { /* a poll that fails must never break the upload */ }
+    }, 250);
+}
+// Kicks the compositor so text written during the copy actually reaches the
+// screen. Alternating a sub-pixel translate is enough and is invisible.
+let repaintTick = 0;
+function forceOverlayRepaint() {
+    const card = document.querySelector('#busyOverlay > div');
+    if (!card) return;
+    repaintTick = (repaintTick + 1) % 2;
+    card.style.transform = 'translateZ(0) translateY(' + (repaintTick * 0.01) + 'px)';
+}
+
+function stopCopyPoll() {
+    stopCloudWaitTicker();
+    clearInterval(copyPollTimer);
+    copyPollTimer = null;
+    lastCopyJson = '';
+}
+
+// A determinate bar; falls back to the indeterminate one when the provider
+// does not report a size (some cloud items report -1).
+function setCopyBar(pct) {
+    const card = document.querySelector('#busyOverlay > div');
+    if (!card) return;
+    let wrap = document.getElementById('copyBar');
+    if (!wrap) {
+        const old = document.getElementById('busyBar');
+        if (old) old.remove();
+        wrap = document.createElement('div');
+        wrap.id = 'copyBar';
+        wrap.style.cssText = 'margin-top:14px;height:6px;border-radius:4px;overflow:hidden;background:rgba(255,255,255,0.12);';
+        wrap.innerHTML = '<div id="copyBarFill" style="height:100%;border-radius:4px;background:linear-gradient(90deg,#8b5cf6,#c026d3);width:0%;transition:width 0.15s linear;"></div>';
+        card.appendChild(wrap);
+    }
+    const fill = document.getElementById('copyBarFill');
+    if (!fill) return;
+    if (pct === null) { setBusyFill(null); return; }   // no size reported: leave the bar empty rather than faking motion
+    // Remember that a cloud fetch actually happened, so the write stage that
+    // follows knows to continue the glass rather than restart it.
+    if (pendingFilePick) busyCloudStageRan = true;
+    fill.style.width = pct + '%';
+    setBusyFill(pct);
+}
+
+function removeCopyBar() {
+    const w = document.getElementById('copyBar');
+    if (w) w.remove();
+}
+
+function showPendingPickOverlay() {
+    if (!pendingFilePick || uploadInProgress) return;
+    showBusyOverlay(document.visibilityState === 'visible' && pendingPickStartedAt
+        ? 'Getting the file from your cloud…'
+        : 'Opening picker…');
+    clearInterval(pendingPickTicker);
+    pendingPickTicker = setInterval(() => {
+        const el = document.getElementById('busySubText');
+        if (!el) return;
+        const secs = Math.round((Date.now() - pendingPickStartedAt) / 1000);
+        el.textContent = secs < 4
+            ? "Please don't close the app"
+            : 'Downloading… ' + secs + 's — large cloud files can take a while';
+    }, 1000);
+}
+
+// A moving bar under the spinner. Indeterminate on purpose (see above).
+function addIndeterminateBar() {
+    const card = document.querySelector('#busyOverlay > div');
+    if (!card || document.getElementById('busyBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'busyBar';
+    bar.style.cssText = 'margin-top:14px;height:4px;border-radius:4px;overflow:hidden;background:rgba(255,255,255,0.12);';
+    bar.innerHTML = '<div style="height:100%;width:38%;border-radius:4px;background:linear-gradient(90deg,#8b5cf6,#c026d3);animation:busyBarSlide 1.2s ease-in-out infinite;"></div>'
+        + '<style>@keyframes busyBarSlide{0%{transform:translateX(-100%)}100%{transform:translateX(320%)}}</style>';
+    card.appendChild(bar);
+}
+
+function finishFilePick() {
+    if (!pendingFilePick) return;
+    stopCopyPoll();
+    clearInterval(pendingPickTicker);
+    pendingPickTicker = null;
+    pendingPickStartedAt = 0;
+    removeCopyBar();
+    pendingFilePick = false;
+    clearTimeout(pendingFilePickTimer);
+    pendingFilePickTimer = null;
+    // handleFiles() takes the card over for the upload itself; when the pick
+    // was cancelled there is nothing running, so it comes down here.
+    if (!uploadInProgress) hideBusyOverlay();
+}
+
 function openFilePicker({ accept, capture, multiple }) {
     expectNativeReturn();
+    markFilePickPending();
+    showPendingPickOverlay();
     const input = document.getElementById('fileInput');
     input.setAttribute('accept', accept);
     if (capture) input.setAttribute('capture', capture);
@@ -14036,6 +18933,220 @@ function initElasticOverscroll() {
 
 
 // ============================================================
+
+// ============================================================
+// REMINDER DELIVERY SETUP
+// ============================================================
+// A reminder has to clear three separate Android settings before it can
+// arrive on time, and an app can grant none of them for itself:
+//
+//   Notifications        a real runtime permission -- the one dialog here
+//   Alarms & reminders   a Settings toggle. Denied by default from Android 14
+//                        for anything targeting SDK 34+, which DOCMAN does.
+//                        Without it the notification plugin quietly downgrades
+//                        every alarm to an inexact one and Doze holds it until
+//                        the phone is next woken -- which is usually when the
+//                        app is opened, so the alert appears to arrive then.
+//   Battery              several manufacturers freeze a sleeping app and sit
+//                        on its alarm regardless of the two above.
+//
+// Reported from a second phone where reminders only ever turned up on opening
+// the app, while the same build was fine on the phone where the toggle had
+// been granted. Nothing was wrong with the scheduling.
+//
+// So this does the only thing available: says what each one is for, shows
+// which are still missing, and puts each a single tap from its own screen.
+
+const ALERT_SETUP_SEEN_KEY = 'docmanAlertSetupSeen';
+
+// Manufacturers that add an "autostart"/"background start" gate of their own.
+// There is no API to read it, let alone request it, so the most that can be
+// done is name it and open the app's page.
+const AUTOSTART_OEMS = ['xiaomi', 'redmi', 'poco', 'oppo', 'vivo', 'realme',
+                        'oneplus', 'huawei', 'honor', 'tecno', 'infinix', 'itel'];
+
+async function readAlertSetupState() {
+    const ex = window.Capacitor?.Plugins?.ExactAlarm;
+    const ln = window.Capacitor?.Plugins?.LocalNotifications;
+    // Default every unknown to "granted": a tick that cannot be checked is
+    // better left alone than turned into a chore that cannot be completed.
+    const s = { notif: true, exact: true, battery: true, oem: '', sdk: 0 };
+    try { const p = await ln.checkPermissions(); s.notif = p.display === 'granted'; } catch (e) { /* keep default */ }
+    try { const r = await ex.canScheduleExact(); s.exact = !!(r && r.granted); } catch (e) { /* keep default */ }
+    try { const r = await ex.isBatteryUnrestricted(); s.battery = !!(r && r.granted); } catch (e) { /* keep default */ }
+    try {
+        const d = await ex.deviceInfo();
+        s.oem = String((d && d.manufacturer) || '').toLowerCase();
+        s.sdk = (d && d.sdk) || 0;
+    } catch (e) { /* keep default */ }
+    return s;
+}
+
+function renderAlertSetupRows(s) {
+    const rows = document.getElementById('alertSetupRows');
+    if (!rows) return;
+
+    const row = (key, name, desc, done, optional) => `
+        <div class="aset-row${done ? ' done' : ''}">
+            <div class="aset-tick ${done ? 'on' : 'off'}"><i class="fas fa-check"></i></div>
+            <div class="aset-txt">
+                <div class="aset-nm">${name}${optional && !done ? '<span class="aset-opt">optional</span>' : ''}</div>
+                <div class="aset-ds">${desc}</div>
+            </div>
+            ${done
+                ? '<div class="aset-done-lbl">On</div>'
+                : `<button class="aset-go" data-aset="${key}">Turn on</button>`}
+        </div>`;
+
+    // Alarms & reminders leads because it is the one that actually decides
+    // whether an alert arrives on time; it was off on the phone where
+    // reminders only appeared on opening the app.
+    let html = '';
+    html += row('exact', 'Alarms &amp; reminders',
+                'Without it the alert arrives late, or only when you next open the app', s.exact);
+    html += row('notif', 'Notifications',
+                'Lets DOCMAN show an alert at all', s.notif);
+    // Battery is last and marked optional on purpose. Reminders were verified
+    // firing on time on a Galaxy S23 with this still optimised, so demanding
+    // it would send most people hunting through Settings for no gain -- and
+    // the one-tap system dialog is not an option: that needs
+    // REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, which Play has pulled apps over.
+    // It stays on the list because the phones that do sleep an app, mostly
+    // Xiaomi and Oppo, need it.
+    html += row('battery', 'Battery: unrestricted',
+                'Only if reminders still arrive late. Tap <b>Battery</b>, then <b>Unrestricted</b>',
+                s.battery, true);
+
+    if (AUTOSTART_OEMS.some(m => s.oem.includes(m))) {
+        const brand = s.oem.charAt(0).toUpperCase() + s.oem.slice(1);
+        html += `<div class="aset-note">
+            <b>${escapeHtml(brand)} phones also have “Autostart”.</b> It is not something an app
+            can switch on — find DOCMAN under Settings › Apps and turn it on there.
+            <div style="margin-top:7px"><button class="aset-go muted" data-aset="app">Open app settings</button></div>
+        </div>`;
+    }
+    rows.innerHTML = html;
+
+    // Battery is not counted: the screen must be able to read as finished
+    // without it, or it becomes a chore nobody can complete.
+    const left = [s.notif, s.exact].filter(v => !v).length;
+    const sub = document.getElementById('alertSetupSub');
+    if (sub) {
+        sub.textContent = left === 0
+            ? 'Everything reminders need is already on. Nothing to do here.'
+            : 'Android holds alerts back until these are on. It takes about twenty seconds.';
+    }
+    // Two buttons that both mean 'later' is one button too many, which is
+    // what 'Later' beside 'Finish later' read as. The way out keeps one name,
+    // and once there is nothing left to do there is nothing to postpone, so
+    // only Done remains.
+    const done = document.getElementById('alertSetupDone');
+    const later = document.getElementById('alertSetupLater');
+    if (done) done.textContent = 'Done';
+    if (later) later.style.display = left === 0 ? 'none' : '';
+}
+
+async function refreshAlertSetup() {
+    renderAlertSetupRows(await readAlertSetupState());
+}
+
+// Each button leads to the one screen that setting lives on. Nothing is
+// granted from in here, so the screen re-reads its own state on return.
+async function runAlertSetupAction(key) {
+    const ex = window.Capacitor?.Plugins?.ExactAlarm;
+    const ln = window.Capacitor?.Plugins?.LocalNotifications;
+    haptic.press();
+    try {
+        if (key === 'notif') {
+            // The system dialog only ever appears once. After a refusal it
+            // returns 'denied' without showing anything, so the app's own page
+            // is the only way back -- otherwise this button does nothing at
+            // all and looks broken.
+            let res = null;
+            try { res = await ln.requestPermissions(); } catch (e) { /* fall through to settings */ }
+            if (!res || res.display !== 'granted') await ex.openAppSettings();
+        } else if (key === 'exact') {
+            await ex.openSettings();
+        } else if (key === 'battery') {
+            await ex.openBatterySettings();
+        } else if (key === 'app') {
+            await ex.openAppSettings();
+        }
+    } catch (e) {
+        showToast('Could not open that settings screen', true);
+    }
+    refreshAlertSetup();
+}
+
+function closeAlertSetup() {
+    const o = document.getElementById('alertSetupOverlay');
+    if (o) o.classList.add('hidden');
+    localStorage.setItem(ALERT_SETUP_SEEN_KEY, '1');
+}
+
+// opts.onlyIfNeeded: skip the screen entirely when all three are already on,
+// which is what the first-run and first-reminder calls want. Opening it from
+// Settings always shows it, so there is somewhere to confirm they are on.
+async function showAlertSetup(opts = {}) {
+    const o = document.getElementById('alertSetupOverlay');
+    if (!o || !isNativePlatform()) { if (opts.onDone) opts.onDone(); return; }
+    const s = await readAlertSetupState();
+    if (opts.onlyIfNeeded && s.notif && s.exact) {
+        if (opts.onDone) opts.onDone();
+        return;
+    }
+    renderAlertSetupRows(s);
+    o.classList.remove('hidden');
+    alertSetupOnDone = opts.onDone || null;
+}
+
+let alertSetupOnDone = null;
+
+function wireAlertSetup() {
+    const o = document.getElementById('alertSetupOverlay');
+    if (!o) return;
+    const finish = () => {
+        closeAlertSetup();
+        // The row that opened this says whether alerts will arrive; something
+        // was very likely just changed, so it should not still read the old
+        // answer when the screen comes down.
+        refreshAlertPermissionRow();
+        // Anything scheduled while a permission was missing was quietly
+        // downgraded to an inexact alarm and would stay that way. Granting it
+        // only helps what is scheduled afterwards, so everything is re-armed.
+        rescheduleAllExpiryNotifications();
+        const cb = alertSetupOnDone;
+        alertSetupOnDone = null;
+        if (cb) cb();
+    };
+    const later = document.getElementById('alertSetupLater');
+    const done = document.getElementById('alertSetupDone');
+    if (later) later.onclick = () => { haptic.press(); finish(); };
+    if (done) done.onclick = () => { haptic.press(); finish(); };
+    o.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-aset]');
+        if (btn) runAlertSetupAction(btn.dataset.aset);
+    });
+    // These three are changed from outside the page -- by Android's own
+    // notification dialog, or on a Settings screen -- and nothing in here is
+    // told when it happens. Returning from Settings is the obvious moment,
+    // but not the only one: the notification dialog is answered while this
+    // screen is still in front, which left Notifications showing as missing
+    // seconds after it had been allowed.
+    //
+    // So it re-reads while it is open. Three plugin calls every second and a
+    // half, only for as long as the screen is actually up.
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && !o.classList.contains('hidden')) refreshAlertSetup();
+    });
+    window.addEventListener('focus', () => {
+        if (!o.classList.contains('hidden')) refreshAlertSetup();
+    });
+    setInterval(() => {
+        if (!o.classList.contains('hidden')) refreshAlertSetup();
+    }, 1500);
+}
+
 // FIRST-RUN INTRO
 // ============================================================
 // The department list is the app's one genuinely opinionated idea, and
@@ -14187,9 +19298,19 @@ function showIntro() {
 function closeIntro() {
     document.getElementById('introOverlay').classList.add('hidden');
     localStorage.setItem(INTRO_SEEN_KEY, '1');
+    // Straight on to the permissions reminders need, but only on the first
+    // run and only if something is actually missing. Replaying the tips from
+    // Settings must not drag this along behind them.
+    if (!localStorage.getItem(ALERT_SETUP_SEEN_KEY)) showAlertSetup({ onlyIfNeeded: true });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // First thing of all. The tap that opened the app is delivered within
+    // milliseconds, and the plugin logs "No listeners found" and drops it if
+    // nothing is listening yet -- attaching after the database opened was
+    // still 2.7 seconds too late.
+    attachNotificationTapListener();
+
     initAndroidBackButton();
 
     // CSS :active alone doesn't reliably show its transition on mobile
@@ -14215,6 +19336,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderIntroCard();
     });
     document.getElementById('settingsShowTipsBtn').onclick = () => { closeSettingsPage(); showIntro(); };
+    wireAlertSetup();
 
     // First launch only. Deliberately not re-shown after an update: an intro
     // that reappears reads as a bug to someone who has already read it.
@@ -14294,10 +19416,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Inject version
     const vEls = ['aboutVersionBadge', 'aboutVersionRow', 'deptInfoVersion'];
-    vEls.forEach(id => {
+    const showVersion = () => vEls.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.textContent = APP_VERSION;
     });
+    showVersion();
+    // The database version used to be typed into the page by hand (it said 9
+    // while the real one was 12). Read it from the source of truth instead.
+    const dbEl = document.getElementById('aboutDbVersion');
+    if (dbEl) dbEl.textContent = DB_VERSION;
+    try {
+        const info = await window.Capacitor?.Plugins?.App?.getInfo?.();
+        if (info && info.version) { APP_VERSION = info.version; showVersion(); }
+    } catch (e) { /* keep the fallback */ }
 
     // Theme
     const themeBtn = document.getElementById('themeToggle');
@@ -14374,9 +19505,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Wire every Adjust-panel slider from the same config used for
     // has-pending/reset/filter-string, so brightness/contrast/exposure/
-    // saturation/hue/blur/sepia/opacity/invert are all handled
-    // identically: live preview on 'input', and each finished drag
-    // ('change', i.e. release) commits as its own single undo step.
+    // saturation/hue/blur/sepia/opacity/invert are all handled identically:
+    // live preview on 'input', and nothing baked until the Adjust panel is
+    // left (imgEditorSetTool), another discrete edit happens, or the image is
+    // saved.
+    //
+    // 'change' used to call imgEditorCommitPending, so every release of the
+    // finger baked the pixels. For the one-directional tools that was fatal:
+    // baking raises the floor they can never go back below, so dragging blur
+    // to 10 and letting go locked it at 10 or more, and reaching 20 left the
+    // dial with nowhere to travel at all. Reported as blur and sharpen not
+    // working, and measured on the device: floor 0 -> 10 -> 20 on three
+    // ordinary drags, each one refusing to come back down.
+    //
+    // It also contradicted imgEditorSetTool, which states it is the only
+    // place a pending adjustment is baked and that a whole Adjust visit is
+    // meant to be ONE undo step rather than one per slider.
     IMG_ADJUST_PROPS.forEach(p => {
         const el = document.getElementById(p.elId);
         if (!el) return;
@@ -14389,7 +19533,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             imgEditorRender();
             imgEditorUpdateHistoryButtons();
         });
-        el.addEventListener('change', imgEditorCommitPending);
     });
 
     document.querySelectorAll('.img-preset-btn').forEach(btn => {
@@ -14498,10 +19641,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     // File input
-    document.getElementById('fileInput').addEventListener('change', async (e) => {
+    const fileInputEl = document.getElementById('fileInput');
+    fileInputEl.addEventListener('change', async (e) => {
+
+        // The files are here now: handleFiles() replaces the "Preparing files…"
+        // card with its own "Uploading 1 of N" straight away.
+        pendingFilePick = false;
+        clearTimeout(pendingFilePickTimer);
         await handleFiles(Array.from(e.target.files));
         e.target.value = '';
     });
+    // Chromium fires this when the picker is dismissed without choosing.
+    fileInputEl.addEventListener('cancel', () => finishFilePick());
+    // Back in the app after the picker: show the card while Android is still
+    // copying the chosen files over.
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            if (pendingFilePick) pendingPickStartedAt = Date.now();
+            showPendingPickOverlay();
+        }
+    });
+    window.addEventListener('focus', showPendingPickOverlay);
+
+    // The keyboard opening is a viewport resize, not a window resize.
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', positionSearchSuggestions);
+        window.visualViewport.addEventListener('scroll', positionSearchSuggestions);
+    }
+    window.addEventListener('resize', positionSearchSuggestions);
+    window.addEventListener('scroll', positionSearchSuggestions, true);
 
     document.getElementById('newNoteBtn').onclick = triggerNewNote;
     const searchInputEl = document.getElementById('searchInput');
@@ -14645,6 +19813,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         };
 
+        // Before the data load, so a tap that arrives while the database is
+        // still opening is caught rather than lost.
+        attachNotificationTapListener();
+
         loadAllFileMetadata().then(() => {
             const notesReq = db.transaction('notes', 'readonly').objectStore('notes').getAll();
             notesReq.onsuccess = () => {
@@ -14660,9 +19832,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // checked right after, once that first popup (if any) is
                 // dismissed, rather than both racing for the same modal.
                 registerExpiryNotificationActions();
+                flushPendingNotificationActions();
                 rescheduleAllExpiryNotifications();
                 recordReviewUsageDay();
-                setTimeout(() => checkExpiryTodayOnLoad(() => checkExpiringDocumentsOnLoad()), 1200);
+                setTimeout(() => checkExpiryTodayOnLoad(() => checkLaunchAlertsOnLoad()), 1200);
 
                 const migrationRun = localStorage.getItem('docman_migration_done');
                 if (!migrationRun) {
@@ -14728,7 +19901,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('scroll', redrawOnFirstInteraction, { capture: true, passive: true, once: true });
     window.addEventListener('touchstart', redrawOnFirstInteraction, { capture: true, passive: true, once: true });
 
+    // Long-pressing an image or a card used to raise the WebView's own menu --
+    // Save image, Copy link -- on top of the app's, which is what this is for.
+    //
+    // Cancelling it everywhere also cancelled the text selection toolbar. In a
+    // WebView, Chromium raises Cut/Copy/Paste through the context-menu path,
+    // so one unconditional preventDefault here meant no toolbar anywhere in
+    // the app: not in a note, not in the search box, not once. Text selected
+    // perfectly well and nothing ever came up with it.
+    //
+    // Somewhere text is being written or is already selected, the menu is the
+    // whole point, so it is left alone.
     document.addEventListener('contextmenu', function(e) {
+        if (e.target.closest('input, textarea, [contenteditable="true"], [contenteditable=""]')) return;
+        const sel = window.getSelection();
+        if (sel && String(sel).trim().length) return;
         e.preventDefault();
     });
 
@@ -14767,3 +19954,70 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ============================================================
 // END OF FILE
 // ============================================================
+
+/* Slide a list row out before its data operation runs, so the row is seen
+   leaving instead of vanishing on the next render(). Resolves when the
+   transition ends.
+
+   Deliberately resolves (rather than rejecting or hanging) on every early
+   exit -- a detached row, reduced-motion, or a transitionend that never
+   fires. The caller awaits this before deleting data, so a promise that
+   never settles would mean the delete never happens. The 420ms timeout is
+   the backstop for that: it is longer than the 340ms transition. */
+// opts.tear swaps the slide-away for a tear off the top edge, used where the
+// row is being destroyed. Restoring from the Recycle Bin deliberately keeps
+// the slide: the item is coming back, so tearing it off would say the opposite.
+function animateRowOut(row, opts = {}) {
+    return new Promise(resolve => {
+        if (!row || !row.isConnected) return resolve();
+        let settled = false;
+        const finish = () => { if (!settled) { settled = true; resolve(); } };
+        try {
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return finish();
+            row.style.maxHeight = row.offsetHeight + 'px';
+            void row.offsetHeight;          // flush, so the class change has a real value to animate FROM
+            row.classList.add('row-leaving');
+            if (opts.tear) row.classList.add('row-tear');
+            row.addEventListener('transitionend', e => {
+                if (e.target === row && (e.propertyName === 'max-height' || e.propertyName === 'transform')) finish();
+            });
+            setTimeout(finish, 420);
+        } catch (_) { finish(); }
+    });
+}
+
+// The DOCMAN panel and the folder bar are both frozen and stacked, so the bar
+// has to sit exactly at the panel's bottom edge. The panel is taller inside a
+// folder than on the home screen (it gains the Home + FILES/NOTES row), so the
+// height is measured rather than guessed.
+(function trackFrozenTopHeight() {
+    const panel = document.querySelector('.top-panel');
+    if (!panel) return;
+    const apply = () => document.documentElement.style.setProperty('--top-panel-h', panel.offsetHeight + 'px');
+    apply();
+    if (window.ResizeObserver) new ResizeObserver(apply).observe(panel);
+    window.addEventListener('orientationchange', () => setTimeout(apply, 150));
+})();
+
+// The WebView does not resize when the soft keyboard opens (no
+// windowSoftInputMode, and the window is edge-to-edge), so 100dvh stays the
+// full screen and a dialog's footer ends up behind the keyboard. visualViewport
+// does report the real visible box, so publish its height and let the CSS size
+// dialogs from that instead.
+(function trackVisualViewport() {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    // Only on resize, and only when the height really moved. The scroll
+    // event fires constantly while typing, and re-setting --vvh on each one
+    // resized the open dialog mid-keystroke; the relayout took focus off the
+    // field and Android closed the keyboard with it.
+    let last = 0;
+    const apply = () => {
+        const h = Math.round(vv.height);
+        if (Math.abs(h - last) < 8) return;
+        last = h;
+        document.documentElement.style.setProperty('--vvh', h + 'px');
+    };
+    vv.addEventListener('resize', apply);
+    apply();
+})();

@@ -11,17 +11,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="DOCMAN">
 <meta name="theme-color" content="#0e0e0e">
-<!-- iOS Icons -->
-<link rel="apple-touch-icon" href="icons/icon-180x180.png">
-<link rel="apple-touch-icon" sizes="120x120" href="icons/icon-120x120.png">
-<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152x152.png">
-<link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167x167.png">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180x180.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
-<link rel="stylesheet" href="vendor/inter/inter.css">
 <link rel="stylesheet" href="vendor/sacramento/sacramento.css">
-<link rel="stylesheet" href="style.css?v=319">
+<link rel="stylesheet" href="style.css?v=645">
 
 </head>
 <body>
@@ -199,6 +192,16 @@ transform: translateY(0);
 display: inline-block;
 }
 
+/* Same wordmark as the header, the About page and the website: DOC white,
+   MAN orange. Solid orange rather than the header gradient -- each letter
+   here is its own animated element, so a gradient would restart on every
+   letter instead of running across the word. */
+.splash-title span:nth-child(4),
+.splash-title span:nth-child(5),
+.splash-title span:nth-child(6) {
+color: #e8720a;
+}
+
 .splash-title span:nth-child(1) { animation-delay: 0.12s, 1.4s; }
 .splash-title span:nth-child(2) { animation-delay: 0.24s, 1.4s; }
 .splash-title span:nth-child(3) { animation-delay: 0.36s, 1.4s; }
@@ -364,7 +367,7 @@ border: 1px solid rgba(255,255,255,0.2);
 <div class="logo" id="appLogoBtn" role="button" tabindex="0" aria-label="Expiring documents"><div class="logo-inner"><div class="logo-tray-icon"></div></div></div>
 
     <div class="header-title">
-      <h1><span class="logo-doc">DOC</span><span class="logo-man">MAN</span></h1>
+      <h1><span class="logo-doc">DOC</span><span class="logo-man">MAN</span><span class="logo-pro" aria-label="Pro">PRO</span></h1>
       <span class="doc-tag">Document Manager</span>
     </div>
     <div class="header-dots"></div>
@@ -401,7 +404,6 @@ border: 1px solid rgba(255,255,255,0.2);
       <svg class="search-icon-svg" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352a144 144 0 1 0 0-288 144 144 0 1 0 0 288z"/></svg>
       <input type="text" id="searchInput" placeholder="Search" autocomplete="off">
       <button id="clearSearchBtn" class="clear-search hidden" aria-label="Clear search"><i class="fas fa-times"></i></button>
-      <i class="fas fa-filter search-filter-icon" aria-hidden="true"></i>
       <div id="searchSuggestions" class="search-suggestions hidden"></div>
     </div>
     <div class="top-bar-actions">
@@ -453,6 +455,7 @@ border: 1px solid rgba(255,255,255,0.2);
   <nav id="breadcrumb" class="breadcrumb"></nav>
   <div id="departmentsSection"></div>
   <div id="searchInfo" class="search-result-info hidden"></div>
+  <div id="folderChrome"></div>
   <div id="content" class="content"></div>
 </div>
 
@@ -521,6 +524,31 @@ border: 1px solid rgba(255,255,255,0.2);
 <!-- First-run intro. Direct <body> child for the same containing-block reason
      as the overlay panels above. Built by renderIntro() so the three cards
      stay in one place rather than split between markup and script. -->
+<!-- Reminder delivery setup. Android will not let an app grant these for
+     itself, so the most it can do is explain them in one place and put each
+     one a single tap away. Shown after the intro on a fresh install, and
+     again from Settings whenever it is wanted. -->
+<div id="alertSetupOverlay" class="aset-overlay hidden">
+  <div class="aset-sheet">
+    <svg class="aset-wave" viewBox="0 0 360 200" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0,120 C60,90 100,150 180,110 C260,70 300,130 360,90 L360,200 L0,200 Z" fill="rgba(247,138,20,0.18)"/>
+      <path d="M0,150 C80,120 140,170 220,130 C280,105 320,150 360,130 L360,200 L0,200 Z" fill="rgba(239,112,9,0.16)"/>
+    </svg>
+    <div class="aset-hd">
+      <div class="aset-hd-ic"><i class="fas fa-bell"></i></div>
+      <div>
+        <div class="aset-hd-t">Let reminders reach you</div>
+        <div class="aset-hd-s" id="alertSetupSub">Android holds alerts back until these are on. It takes about twenty seconds.</div>
+      </div>
+    </div>
+    <div class="aset-rows" id="alertSetupRows"></div>
+    <div class="aset-btns">
+      <button class="aset-btn aset-sec" id="alertSetupLater">Later</button>
+      <button class="aset-btn aset-pri" id="alertSetupDone">Done</button>
+    </div>
+  </div>
+</div>
+
 <div id="introOverlay" class="intro-overlay hidden">
   <button class="intro-skip" id="introSkipBtn">Skip</button>
   <div class="intro-body" id="introBody"></div>
@@ -543,6 +571,23 @@ border: 1px solid rgba(255,255,255,0.2);
      at a time, via the existing per-card context menu) and combine them
      into a single multi-page PDF. Deliberately a direct <body> child,
      same containing-block reason as deptAddFab above. -->
+<!-- Bulk actions for multi-select. A direct <body> child like the other
+     two floating bars, so no transformed ancestor can trap it. -->
+<div class="select-action-bar hidden" id="selectActionBar">
+    <button onclick="bulkFavourite()"><i class="fas fa-heart"></i><span>Favourite</span></button>
+    <button onclick="bulkMove()"><i class="fas fa-folder-tree"></i><span>Move</span></button>
+    <button onclick="bulkShare()"><i class="fas fa-share-nodes"></i><span>Share</span></button>
+    <button class="sab-delete" onclick="bulkDelete()"><i class="fas fa-trash"></i><span>Delete</span></button>
+</div>
+
+<!-- The PDF counterpart: live count of the PDFs picked for a merge, and
+     the trigger that opens the confirm sheet. Same body-child reasoning. -->
+<button class="pdf-queue-fab pdf-merge-fab hidden" id="pdfMergeFab" aria-label="Merge the selected PDFs" onclick="confirmAndMergePdfs()">
+    <i class="fas fa-object-group"></i>
+    <span id="pdfMergeCount">0</span>
+    <span class="pdf-queue-label">Merge PDFs</span>
+</button>
+
 <button class="pdf-queue-fab hidden" id="pdfQueueFab" aria-label="Combine selected images into a PDF">
     <i class="fas fa-file-pdf"></i>
     <span id="pdfQueueCount">0</span>
@@ -627,13 +672,13 @@ border: 1px solid rgba(255,255,255,0.2);
     <div class="img-editor-slider-row">
       <i class="fas fa-palette img-slider-icon"></i>
       <label>Hue</label>
-      <input type="range" id="imgSliderHue" min="0" max="360" value="0">
+      <input type="range" id="imgSliderHue" min="0" max="100" value="0">
       <span class="img-slider-value" id="imgSliderHueVal">0</span>
     </div>
     <div class="img-editor-slider-row">
       <i class="fas fa-water img-slider-icon"></i>
       <label>Blur</label>
-      <input type="range" id="imgSliderBlur" min="0" max="20" value="0">
+      <input type="range" id="imgSliderBlur" min="0" max="100" value="0">
       <span class="img-slider-value" id="imgSliderBlurVal">0</span>
     </div>
     <div class="img-editor-slider-row">
@@ -1104,45 +1149,135 @@ border: 1px solid rgba(255,255,255,0.2);
 
 <!-- Statistics Panel -->
 <div id="settingsPanel-statistics" class="settings-screen">
-  <div class="settings-header">
+  <div class="settings-header st-head">
+    <div class="st-head-aurora" aria-hidden="true"></div>
+    <svg class="st-head-wave" viewBox="0 0 400 120" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0,70 C70,20 130,96 200,62 C270,28 330,86 400,44" fill="none" stroke="rgba(236,72,153,0.55)" stroke-width="2"/>
+      <path d="M0,88 C80,44 140,110 210,76 C280,42 340,98 400,60" fill="none" stroke="rgba(168,85,247,0.40)" stroke-width="2"/>
+    </svg>
+    <svg class="st-head-art" viewBox="0 0 120 120" aria-hidden="true">
+      <defs><linearGradient id="statHeadGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#f0abfc" stop-opacity="0.95"/>
+        <stop offset="1" stop-color="#a855f7" stop-opacity="0.5"/></linearGradient></defs>
+      <g fill="none" stroke="url(#statHeadGrad)" stroke-width="2.5" stroke-linejoin="round">
+        <path d="M30 26 h30 l16 16 v50 h-46 z" fill="rgba(236,72,153,0.12)"/>
+        <path d="M44 18 h30 l16 16 v50 h-46 z" fill="rgba(217,70,239,0.16)"/>
+        <path d="M58 10 h30 l16 16 v50 h-46 z" fill="rgba(240,171,252,0.22)"/>
+      </g>
+      <g stroke="rgba(255,255,255,0.75)" stroke-width="2.5" stroke-linecap="round">
+        <path d="M68 32 h22"/><path d="M68 42 h26"/><path d="M68 52 h18"/><path d="M68 62 h24"/>
+      </g>
+    </svg>
     <button class="settings-back-btn settings-panel-back" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
     <div class="settings-header-title"><h2>Statistics</h2><span>Your DOCMAN at a glance</span></div>
   </div>
   <div class="settings-panel-body">
-    <div class="settings-group-title">Overview</div>
-    <div class="stats-grid-card">
-      <div class="stats-grid-item">
-        <div class="stats-grid-icon stats-icon-files"><i class="fas fa-file"></i></div>
-        <div class="stats-grid-val" id="statTotalFiles">—</div>
-        <div class="stats-grid-label">Total Files</div>
+
+    <div class="st-card">
+      <div class="st-card-head">
+        <span class="st-card-ico st-ico-ov"><i class="fas fa-chart-simple"></i></span>
+        <span class="st-card-title">OVERVIEW</span>
+        <span class="st-chip"><span id="statDeptChipLabel">All Departments</span><i class="fas fa-chevron-down"></i>
+          <select id="statDeptFilter" class="st-chip-select" aria-label="Filter statistics by department"></select></span>
       </div>
-      <div class="stats-grid-item">
-        <div class="stats-grid-icon stats-icon-notes"><i class="fas fa-sticky-note"></i></div>
-        <div class="stats-grid-val" id="statTotalNotes">—</div>
-        <div class="stats-grid-label">Total Notes</div>
-      </div>
-      <div class="stats-grid-item">
-        <div class="stats-grid-icon stats-icon-folders"><i class="fas fa-folder"></i></div>
-        <div class="stats-grid-val" id="statTotalFolders">—</div>
-        <div class="stats-grid-label">Total Folders</div>
-      </div>
-      <div class="stats-grid-item">
-        <div class="stats-grid-icon stats-icon-depts"><i class="fas fa-industry"></i></div>
-        <div class="stats-grid-val" id="statTotalDepts">—</div>
-        <div class="stats-grid-label">Departments</div>
+      <div class="st-ov">
+        <div class="st-ring">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <defs><linearGradient id="statRingGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#38bdf8"/><stop offset="0.45" stop-color="#a855f7"/>
+              <stop offset="0.75" stop-color="#ec4899"/><stop offset="1" stop-color="#f97316"/>
+            </linearGradient></defs>
+            <circle class="st-ring-track" cx="60" cy="60" r="48"/>
+            <circle class="st-ring-arc" id="statRingArc" cx="60" cy="60" r="48" stroke-dasharray="0 302"/>
+          </svg>
+          <div class="st-ring-val">
+            <div class="st-ring-num" id="statTotalFiles">—</div>
+            <div class="st-ring-lbl">TOTAL FILES</div>
+          </div>
+        </div>
+        <div class="st-tiles">
+          <div class="st-tile">
+            <div class="st-tile-ico st-ic-files"><i class="fas fa-file-lines"></i></div>
+            <div class="st-tile-num" id="statTileFiles">—</div><div class="st-tile-lbl">FILES</div>
+          </div>
+          <div class="st-tile">
+            <div class="st-tile-ico st-ic-folders"><i class="fas fa-folder"></i></div>
+            <div class="st-tile-num" id="statTotalFolders">—</div><div class="st-tile-lbl">FOLDERS</div>
+          </div>
+          <div class="st-tile">
+            <div class="st-tile-ico st-ic-notes"><i class="fas fa-note-sticky"></i></div>
+            <div class="st-tile-num" id="statTotalNotes">—</div><div class="st-tile-lbl">NOTES</div>
+          </div>
+          <div class="st-tile">
+            <div class="st-tile-ico st-ic-depts"><i class="fas fa-building"></i></div>
+            <div class="st-tile-num" id="statTotalDepts">—</div><div class="st-tile-lbl">DEPARTMENTS</div>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="settings-group-title">Largest Items</div>
-    <div class="settings-card">
-      <div class="settings-stat-detail-row">
-        <div class="settings-item-icon settings-icon-pdf settings-icon-sm"><i class="fas fa-file-alt"></i></div>
-        <div class="settings-item-text"><span class="settings-item-title">Largest File</span><span class="settings-item-sub" id="statLargestFile">—</span></div>
+
+    <div class="st-card">
+      <div class="st-card-head">
+        <span class="st-card-ico st-ico-big"><i class="fas fa-star"></i></span>
+        <span class="st-card-title">LARGEST ITEMS</span>
+        <button class="st-link" id="statSeeAllBtn">See all <i class="fas fa-chevron-right"></i></button>
       </div>
-      <div class="settings-stat-detail-row settings-row-no-border">
-        <div class="settings-item-icon settings-icon-departments settings-icon-sm"><i class="fas fa-folder-open"></i></div>
-        <div class="settings-item-text"><span class="settings-item-title">Largest Folder</span><span class="settings-item-sub" id="statLargestFolder">—</span></div>
+      <div class="st-row" id="statLargestFileRow">
+        <div class="st-row-ico st-ic-file-lg"><i class="fas fa-file-lines"></i></div>
+        <div class="st-row-txt">
+          <div class="st-row-t">Largest File</div>
+          <div class="st-row-s" id="statLargestFile">—</div>
+          <span class="st-pill st-pill-size" id="statLargestFilePill"><i class="fas fa-database"></i><span>—</span></span>
+        </div>
+        <i class="fas fa-chevron-right st-row-arrow"></i>
+      </div>
+      <div class="st-row" id="statLargestFolderRow">
+        <div class="st-row-ico st-ic-folder-lg"><i class="fas fa-folder-open"></i></div>
+        <div class="st-row-txt">
+          <div class="st-row-t">Largest Folder</div>
+          <div class="st-row-s" id="statLargestFolder">—</div>
+          <span class="st-pill st-pill-count" id="statLargestFolderPill"><i class="fas fa-folder"></i><span>—</span></span>
+        </div>
+        <i class="fas fa-chevron-right st-row-arrow"></i>
       </div>
     </div>
+
+    <div class="st-card">
+      <div class="st-card-head">
+        <span class="st-card-ico st-ico-store"><i class="fas fa-database"></i></span>
+        <span class="st-card-title">STORAGE USAGE</span>
+        <span class="st-chip"><span id="statStoreModeLabel">Total Size</span><i class="fas fa-chevron-down"></i>
+          <select id="statStoreMode" class="st-chip-select" aria-label="Show storage by">
+            <option value="size">Total Size</option>
+            <option value="count">File Count</option>
+          </select></span>
+      </div>
+      <div class="st-store-top">
+        <div>
+          <div class="st-store-num" id="statStoreTotal">—</div>
+          <div class="st-store-lbl" id="statStoreTotalLbl">Total Storage</div>
+        </div>
+        <div class="st-store-side">
+          <div class="st-store-side-ico"><i class="fas fa-file-lines"></i></div>
+          <div>
+            <div class="st-store-side-v" id="statStoreSideVal">—</div>
+            <div class="st-store-side-l">Largest File</div>
+          </div>
+        </div>
+      </div>
+      <div class="st-bar">
+        <div class="st-bar-pdf" id="statBarPdf"></div>
+        <div class="st-bar-img" id="statBarImg"></div>
+        <div class="st-bar-oth" id="statBarOth"></div>
+      </div>
+      <div class="st-legend">
+        <span><i class="st-dot st-dot-pdf"></i><span id="statLegPdf">PDFs —</span></span>
+        <span><i class="st-dot st-dot-img"></i><span id="statLegImg">Images —</span></span>
+        <span><i class="st-dot st-dot-oth"></i><span id="statLegOth">Other —</span></span>
+      </div>
+      <div class="st-bar-foot"><span id="statFootLeft">—</span><span id="statFootRight">—</span></div>
+    </div>
+
   </div>
 </div>
 
@@ -1217,14 +1352,14 @@ border: 1px solid rgba(255,255,255,0.2);
   <div class="settings-panel-body">
     <div class="about-card">
       <div class="about-icon"><img src="Images/about.png" alt="DOCMAN" class="about-icon-img"></div>
-      <div class="about-name">DOCMAN</div>
+      <div class="about-name"><span class="logo-doc">DOC</span><span class="logo-man">MAN</span></div>
       <div class="about-tagline">Document Manager</div>
       <div class="about-version-badge">Version <span id="aboutVersionBadge">—</span></div>
     </div>
     <div class="settings-group-title">App Info</div>
     <div class="settings-card">
       <div class="about-info-row"><span>Version</span><b id="aboutVersionRow">—</b></div>
-      <div class="about-info-row"><span>Database Version</span><b>9</b></div>
+      <div class="about-info-row"><span>Database Version</span><b id="aboutDbVersion">—</b></div>
       <div class="about-info-row"><span>Developer</span><b>𝓐𝒷𝒾𝓈𝒽 ℛ𝒶𝒿𝒶𝓃</b></div>
       <div class="about-info-row about-info-row-last"><span>Storage Engine</span><b>IndexedDB / Device Storage</b></div>
     </div>
@@ -1293,12 +1428,54 @@ border: 1px solid rgba(255,255,255,0.2);
 <!-- Note Modal -->
 
 <div id="noteModal" class="modal">
-  <div class="modal-content">
-    <div class="modal-body modal-body-note">
-      <input type="text" id="noteTitle" placeholder="Note title..." class="note-title-input" autocomplete="off">
-      <textarea id="noteContent" placeholder="Write your note here..." class="note-content-input"></textarea>
+  <div class="modal-content note-modal-card">
+    <div class="note-modal-head">
+      <span class="note-modal-icon"><i class="far fa-pen-to-square"></i></span>
+      <input type="text" id="noteTitle" placeholder="Note title..." class="note-title-input" maxlength="100" autocomplete="off">
+      <span class="note-count" id="noteTitleCount">0/100</span>
+      <button class="note-modal-x" onclick="closeNoteModal()" aria-label="Close"><i class="fas fa-times"></i></button>
     </div>
-    <div class="modal-footer"><button onclick="closeNoteModal()">Cancel</button><button id="saveNoteBtn">Save Note</button></div>
+    <div class="modal-body modal-body-note">
+      <div class="note-field note-field-body">
+        <i class="far fa-file-lines note-field-ico"></i>
+        <textarea id="noteContent" placeholder="Write your note here..." class="note-content-input" maxlength="1000"></textarea>
+        <span class="note-count" id="noteContentCount">0/1000</span>
+      </div>
+      <!-- Nothing on screen said a double tap is what opens the keyboard.
+           Shown only while the note is being read; CSS hides it the moment
+           editing starts. -->
+      <div class="note-read-hint"><i class="far fa-hand-pointer"></i> Double tap the text to edit</div>
+      <div class="note-style-row">
+        <div class="note-colors" id="noteColors" role="radiogroup" aria-label="Note colour"></div>
+        <div class="note-size" role="group" aria-label="Text size">
+          <button type="button" id="noteFontMinus" aria-label="Smaller text">&minus;</button>
+          <span id="noteFontValue" aria-live="polite">15px</span>
+          <button type="button" id="noteFontPlus" aria-label="Larger text">+</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer note-modal-foot">
+      <!-- The toggles live in the footer so they share the row with Save, and
+           they are nested in their own box on purpose: the footer's button
+           rules are written as `> button`, which this keeps them out of, so
+           they stay 36px squares instead of taking Cancel's pill shape. -->
+      <div class="note-toggles">
+        <!-- Both share .note-lined-btn deliberately: same size, same pressed
+             look, and they pick up the small-screen rule that shrinks that
+             button, which a class of their own would have had to repeat.
+             Ruled page first, bullets second -- the order asked for.
+             The page icon shows ruling on a sheet rather than another stack of
+             bare lines: fa-align-justify sat beside fa-list-ul as two
+             near-identical sets of horizontal strokes and neither said what
+             it did. -->
+        <button type="button" id="noteLinedBtn" class="note-lined-btn" aria-pressed="false"
+                aria-label="Ruled lines" title="Ruled lines"><i class="fas fa-file-lines"></i></button>
+        <button type="button" id="noteBulletBtn" class="note-lined-btn" aria-pressed="false"
+                aria-label="Bullet list" title="Bullet list"><i class="fas fa-list-ul"></i></button>
+      </div>
+      <button id="noteCancelBtn" onclick="closeNoteModal()"><i class="fas fa-times"></i>Cancel</button>
+      <button id="saveNoteBtn"><i class="fas fa-check"></i>Save Note</button>
+    </div>
   </div>
 </div>
 
@@ -1361,12 +1538,12 @@ border: 1px solid rgba(255,255,255,0.2);
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">⬆️</div>
-    <div class="dept-info-help-text"><b>Upload</b> — Tap <b>Upload</b> inside a folder to <b>scan a document</b>, or add a file from your Photo Library, Camera, Files or Google Drive.</div>
+    <div class="dept-info-help-text"><b>Upload</b> &mdash; Tap <b>Upload</b> inside a folder to <b>scan a document</b>, or add a file from your Photo Library, Camera, Files or Google Drive. <b>Choose Files</b> opens on your phone and <b>Google Drive</b> opens in Drive, each remembering where you were last. A file coming from the cloud isn&rsquo;t on your phone yet, so DOCMAN shows its name and size straight away and a progress bar while it arrives &mdash; large files can take a minute, and the bar tells you it is still working rather than stuck.</div>
   </div>
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">📸</div>
-    <div class="dept-info-help-text"><b>Scan Documents</b> — Open a folder and tap <b>Scan</b> next to Back, or use <b>Upload → Scan Document</b>. DOCMAN finds the page edges, captures it automatically and saves every page as one PDF.</div>
+    <div class="dept-info-help-text"><b>Scan Documents</b> — Open a folder and tap <b>Scan</b> next to Back, or use <b>Upload → Scan Document</b>. DOCMAN finds the page edges, captures it automatically and saves every page as one PDF. It then asks what to call the scan, so it lands in the folder under a name you will recognise instead of a date and a number — leave it as it is if you would rather name it later.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1380,8 +1557,13 @@ border: 1px solid rgba(255,255,255,0.2);
   </div>
 
   <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🧩</div>
+    <div class="dept-info-help-text"><b>Join PDFs Together</b> — Tap <b>⋯</b> on a PDF and pick <b>Merge PDFs</b>, then tap the other PDFs in the order you want them; each one shows its position number. The badge at the bottom opens a list with the page count, and <b>Merge</b> saves them as one new document in the same folder. Your original files are never changed, and a password-protected file is refused rather than half-merged.</div>
+  </div>
+
+  <div class="dept-info-help-row">
     <div class="dept-info-help-icon">📄</div>
-    <div class="dept-info-help-text"><b>Viewing &amp; Editing PDFs</b> — Tap any file to open it in DOCMAN's built-in reader. Pinch to zoom, rotate for landscape drawings, switch to Night Mode or two-page Spread view, and use the mark tool to circle a spot. Jump to a page via Bookmarks/Thumbnails, and pick up where you left off with Continue Reading. Long-press text to select &amp; copy it or add a Highlight. The tools along the bottom let you <b>Sign</b> (in black or blue ink), <b>Fill form</b> and <b>Erase</b>, and <b>More</b> has Crop page, Copy page text, Attachments, Print and Export. Every edit is saved as a new file in the same folder, so your original is never touched. Password-protected PDFs prompt for the password automatically.</div>
+    <div class="dept-info-help-text"><b>Viewing &amp; Editing PDFs</b> — Tap any file to open it in DOCMAN's built-in reader. Pinch to zoom, rotate for landscape drawings, switch to Night Mode or two-page Spread view, and use the mark tool to circle a spot. Jump to a page via Bookmarks/Thumbnails, and pick up where you left off with Continue Reading. Long-press text to select &amp; copy it or add a Highlight. The tools along the bottom let you <b>Sign</b> (in black or blue ink — DOCMAN remembers your signature, so next time just tap <b>Use this</b> to place it again, or <b>Draw new</b> to replace it), <b>Fill form</b> and <b>Erase</b>, and <b>More</b> has Crop page, Copy page text, Attachments, Print and Export. Every edit is saved as a new file in the same folder, so your original is never touched. Password-protected PDFs prompt for the password automatically. Very large PDFs, such as big manuals and drawings, still open for reading, search and bookmarks &mdash; the editing tools tell you when a file is too large to edit on a phone. Prefer another reader such as Adobe Acrobat? In <b>Settings &rarr; PDF Settings</b> pick <b>External App</b>, or set a <b>Threshold Size</b>, and DOCMAN opens the PDF in that app.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1391,7 +1573,7 @@ border: 1px solid rgba(255,255,255,0.2);
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">🔎</div>
-    <div class="dept-info-help-text"><b>Search Inside a PDF</b> — Open a PDF and tap the search icon to find a word anywhere in the document. DOCMAN jumps to the page and highlights every match, and the arrows step through them one at a time.</div>
+    <div class="dept-info-help-text"><b>Search Inside a PDF</b> — Open a PDF and tap the search icon to find a word anywhere in the document. DOCMAN jumps to the page and highlights every match, and the arrows step through them one at a time. Drawings and scanned pages carry no real text, so after a search DOCMAN offers <b>Also search drawings?</b> to read those pages too &mdash; you can stop it at any time.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1401,17 +1583,22 @@ border: 1px solid rgba(255,255,255,0.2);
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">📝</div>
-    <div class="dept-info-help-text"><b>Notes</b> — Switch to the Notes tab to write and save quick text notes inside any folder, alongside your files.</div>
+    <div class="dept-info-help-text"><b>Notes</b> &mdash; Switch to the Notes tab to write and save quick text notes inside any folder, alongside your files. Give a note one of six <b>colours</b> from the dots under the text box and its row carries that colour, so you can pick it out at a glance. The same row sets the <b>text size</b> and turns the page <b>ruled</b>, for when a note is a list rather than a sentence. Opening a note shows it to you to read — the keyboard stays down until you tap the text to start writing. Need to come back to it? Tap <b>&#8943;</b> on the note and choose <b>Remind me</b>; the row then shows a bell, and tapping that reminder opens the note itself. The same menu says <b>Remove reminder</b> once it has one.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">🗒️</div>
+    <div class="dept-info-help-text"><b>Quick Note on a File</b> &mdash; Tap <b>&#8943;</b> on any file and choose <b>Quick note</b> to pin a short note to that document &mdash; a reference number, who sent it, what still needs doing. The row then shows a note icon: tap it and the note opens as a small bubble beside the file, the way a comment pops up in a spreadsheet, with <b>Edit</b>, <b>Delete</b> and <b>Close</b> inside it. No full page and no leaving the folder.</div>
   </div>
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">📆</div>
-    <div class="dept-info-help-text"><b>Expiry Dates &amp; Alerts</b> — Tap <b>⋯</b> on a file and set an <b>Expiry date</b> for anything that runs out: passport, licence, insurance. Your phone then alerts you even when DOCMAN is closed — <b>7 days before</b> and <b>3 days before</b> at 9am, and on the day itself <b>every 30 minutes from 7am</b> until you tap <b>Got it</b>. It stops at 9pm, so it never wakes you at night, and if the document still isn't renewed you get one reminder a day for a week. <b>Renew date</b> sets a new date and starts the cycle again.</div>
+    <div class="dept-info-help-text"><b>Expiry Dates &amp; Alerts</b> &mdash; Tap <b>&#8943;</b> on a file and set an <b>Expiry date</b> for anything that runs out: passport, licence, insurance. Your phone then alerts you even when DOCMAN is closed &mdash; <b>7 days before</b> and <b>3 days before</b> at 9am, and on the day itself <b>every 30 minutes from 7am</b> until you tap <b>Got it</b>. It stops at 9pm, so it never wakes you at night, and if the document still isn&rsquo;t renewed you get one reminder a day for a week. <b>Renew date</b> sets a new date and starts the cycle again. The <b>Expiring</b> list shows this month plus anything already overdue, so it stays about what needs doing now rather than everything with a date on it.</div>
   </div>
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">⏰</div>
-    <div class="dept-info-help-text"><b>Reminders</b> — Tap the DOCMAN logo at the top to see Expiring Documents and Reminders. Add a reminder with a title, due date, and time, and DOCMAN will notify you when it's due.</div>
+    <div class="dept-info-help-text"><b>Reminders</b> &mdash; Tap the DOCMAN logo at the top for <b>Expiring</b> and <b>Reminders</b>. Add one with a title, due date and time. When it falls due your phone alerts you with sound and vibration, and keeps reminding you <b>every 30 minutes for 3 hours</b> until you tap <b>Got it</b> &mdash; so a missed notification isn&rsquo;t the end of it. Set it to repeat and you only ever enter it once: below the time, under <b>Repeat</b>, pick <b>Never</b>, <b>Every month</b> or <b>Every year</b> &mdash; rent and bills monthly, a birthday or an annual renewal yearly. The moment you tap <b>Got it</b> the reminder moves itself on to the next month or year by itself, so a monthly bill never needs entering twice. A repeating one shows its cycle beside the date in the list, and the pencil button on its row can change the repeat or turn it off. <b>Expiring</b>, <b>Reminders</b> and <b>+ Add reminder</b> sit together on one row at the top. The month calendar is above the list &mdash; tap any day to see just that day&rsquo;s reminders, and dated days carry a dot &mdash; and anything overdue pulses, including the <b>Reminders</b> tab itself, so you can see it from the Expiring side. When something needs you, DOCMAN opens <b>one</b> popup at start-up covering expiring documents and due reminders together, and <b>View</b> takes you straight to the list. Once you&rsquo;ve seen it, DOCMAN stops raising that reminder at start-up; the reminder itself stays until you delete it, and a newly added one still announces itself.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1426,12 +1613,17 @@ border: 1px solid rgba(255,255,255,0.2);
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">🔍</div>
-    <div class="dept-info-help-text"><b>Search</b> — Use the search bar to quickly find a file or note by name without digging through folders.</div>
+    <div class="dept-info-help-text"><b>Search</b> — Use the search bar to find a file or note without digging through folders. It matches a note&rsquo;s <b>contents</b> as well as its name, and shows the line your word appears on, so you can find a note you remember writing but not naming. A <b>locked</b> note is left out of the results entirely — a note behind your PIN should not give itself away in a search.</div>
   </div>
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">✋</div>
     <div class="dept-info-help-text"><b>Rename, Delete &amp; Favourite a File</b> — Every file, note and folder row has a <b>⋯</b> button on the right. Tap it for <b>Favourite</b>, <b>Rename</b>, <b>Delete</b> and the rest. (Departments on the home screen still use a long-press.)</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">☑️</div>
+    <div class="dept-info-help-text"><b>Working on Several at Once</b> — Tap <b>Select</b> in a folder&rsquo;s bar to put a tick box on every file and note. Tick the ones you want (or <b>Select all</b>), then use the bar at the bottom to <b>Favourite</b>, <b>Move</b>, <b>Share</b> or <b>Delete</b> them together. Deleted items go to the Recycle Bin as usual, and the back button leaves selection without changing anything.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1446,7 +1638,7 @@ border: 1px solid rgba(255,255,255,0.2);
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">👑</div>
-    <div class="dept-info-help-text"><b>DOCMAN Pro</b> — Scan, Sign, Highlight, Fill form, Erase, Crop, reading scanned pages, Edit image, Convert to PDF and Lock can each be used once for free — a <b>FREE</b> tag shows the ones you haven&rsquo;t tried yet. Unlock DOCMAN Pro once (no subscription) from Settings → DOCMAN Pro to use them as often as you like and add as many departments and folders as you need. Bought it before? Use <b>Restore purchase</b>. Nothing you&rsquo;ve already made is ever locked away.</div>
+    <div class="dept-info-help-text"><b>DOCMAN Pro</b> — Scan, Sign, Highlight, Fill form, Erase, Crop, reading scanned pages, Edit image, Convert to PDF, Merge PDFs and Lock can each be used once for free — a <b>FREE</b> tag shows the ones you haven&rsquo;t tried yet. Unlock DOCMAN Pro once (no subscription) from Settings → DOCMAN Pro to use them as often as you like and add as many departments and folders as you need. Bought it before? Use <b>Restore purchase</b>. Nothing you&rsquo;ve already made is ever locked away.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1549,7 +1741,7 @@ border: 1px solid rgba(255,255,255,0.2);
     '</div>';
 })();
 </script>
-<script src="app.js?v=328"></script>
+<script src="app.js?v=603"></script>
 
 
 <script>

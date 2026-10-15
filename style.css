@@ -58,10 +58,23 @@ box-sizing: border-box;
 
 :root {
 --safe-bottom: env(safe-area-inset-bottom, 0px);
+--safe-top: env(safe-area-inset-top, 0px);
+--frozen-bar: linear-gradient(180deg, #2b1020 0%, #1b0a14 100%);
+--cf-path-bg: rgba(255, 255, 255, 0.05);
+--cf-path-border: rgba(255, 255, 255, 0.14);
+/* One height for the Search field and the Upload / New Note buttons, so the
+   top row lines up instead of the buttons standing taller than the field. */
+--action-h: 40px;
+/* Floating surfaces (toasts, menus, popups) sit on a dark wallpaper, so a
+   10-16% white hairline disappeared and they read as holes in the screen
+   (reported 2026-09-23). These give every one of them the same visible edge. */
+--float-border: rgba(255,255,255,0.30);
+--float-ring: 0 0 0 1px rgba(255,140,0,0.32);
+--float-shadow: 0 16px 38px rgba(0,0,0,0.6);
 --bg-deep: #1d222c;
 --bg-secondary: #220f38; 
 --bg-tertiary: #2a1240; 
---app-wallpaper: url('Images/bg-main-theme.jpg');
+--app-wallpaper: linear-gradient(180deg, #5b1a3a 0%, #4a1330 18%, #350d23 38%, #230816 58%, #150410 76%, #0a0207 100%);
 --glass-bg: rgba(40, 15, 55, 0.52); 
 /* One surface for every overlay panel -- info hub, favourites/recent/dashboard,
    dialogs, context menus and the icon picker all sit on this, so they read as
@@ -100,12 +113,19 @@ box-sizing: border-box;
 
 body.light-mode {
 --bg-deep: #F6E4D3;
+--frozen-bar: linear-gradient(180deg, #FBF3E7 0%, #F3DFCB 100%);
+--cf-path-bg: rgba(120, 95, 65, 0.08);
+--cf-path-border: rgba(120, 95, 65, 0.28);
 --app-wallpaper: linear-gradient(160deg, #FBF3E7 0%, #F6E4D3 100%);
 --glass-bg: rgba(255, 255, 255, 0.82);
 --panel-bg: linear-gradient(160deg, #fffdfa 0%, #fdf3e8 100%);
 --glass-bg-hover: rgba(255, 255, 255, 0.94);
 --glass-border: rgba(120, 95, 65, 0.55);
 --glass-border-hover: rgba(120, 95, 65, 0.65);
+/* The dark theme's floating edge is white; on cream paper white is nothing
+   at all, so the same hairline is drawn in the warm dark instead. Without
+   this every popup in light mode had an edge it could not show. */
+--float-border: rgba(120, 95, 65, 0.60);
 --toolbar-bg-header: linear-gradient(90deg, #ffffff 0%, #fdf6ee 100%);
 --toolbar-bg-topbar: linear-gradient(90deg, #fffdfa 0%, #fdf3e8 100%);
 --toolbar-bg-stats: linear-gradient(90deg, #ffffff 0%, #fdf6ee 100%);
@@ -167,7 +187,7 @@ max-width: 900px;
 min-height: 100vh;
 min-height: 100dvh;
 margin: 0 auto;
-padding: 24px 20px calc(40px + env(safe-area-inset-bottom));
+padding: 24px 20px calc(40px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
 
 opacity: 0;
 transform: translateY(24px) scale(0.98);
@@ -225,7 +245,7 @@ animation: childReveal 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both;
 
     margin-bottom: 0;
 
-    padding: 2px 18px;
+    padding: 1px 18px;
 
     background: none;
 
@@ -560,6 +580,9 @@ position: relative;
 min-width: 180px; 
 border-radius: 16px; 
 background: rgba(0,0,0,0.32); 
+height: var(--action-h); 
+display: flex; 
+align-items: center; 
 }
 
 .search-container::before { 
@@ -635,7 +658,8 @@ color: rgba(192, 38, 211, 0.9);
     position: relative;
     z-index: 2;
     width: 100%;
-    padding: 11px 40px 11px 44px;
+    padding: 0 40px 0 44px;
+    height: 100%;
     border-radius: 16px;
     border: none;
     background: transparent;
@@ -733,7 +757,8 @@ font-weight: 700;
 font-size: 0.75rem; 
 cursor: pointer; 
 width: 122px !important; 
-height: 40px; 
+height: var(--action-h); 
+border: 1px solid rgba(255,255,255,0.55) !important; 
 justify-content: center; 
 white-space: nowrap; 
 position: relative; 
@@ -818,7 +843,7 @@ background: linear-gradient(175deg, #f59e0b 0%, #d97706 50%, #b45309 100%) !impo
     justify-content: center;
     padding: 20px;
     padding-top: max(20px, calc(env(safe-area-inset-top) + 10px));
-    padding-bottom: max(20px, calc(env(safe-area-inset-bottom) + 10px));
+    padding-bottom: max(20px, calc(max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)) + 10px));
     opacity: 0;
     transition: opacity 0.28s ease, background 0.28s ease, backdrop-filter 0.28s ease;
     pointer-events: none;
@@ -843,7 +868,10 @@ background: linear-gradient(175deg, #f59e0b 0%, #d97706 50%, #b45309 100%) !impo
     flex-direction: column;
     overflow: hidden;
     transform: scale(0.92) translateY(10px);
-    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    /* Was cubic-bezier(0.16, 1, 0.3, 1) -- the same front-loaded curve that
+       made the FAB read as a snap (most of the travel in the first quarter).
+       Even curve so the panel is seen arriving. */
+    transition: transform 0.34s cubic-bezier(0.45, 0.05, 0.35, 1);
 }
 body.light-mode .fav-view-card {
     border: 1px solid rgba(180, 120, 50, 0.4);
@@ -860,10 +888,11 @@ body.light-mode .fav-view-card {
     flex-shrink: 0;
 }
 .fav-view-back {
-    width: 36px; height: 36px;
+    width: 38px; height: 38px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.07);
-    border: 1px solid var(--glass-border);
+    background: rgba(255,255,255,0.12);
+    border: 1.5px solid rgba(255,255,255,0.55);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.18);
     color: var(--text-primary);
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; font-size: 0.9rem;
@@ -982,7 +1011,7 @@ body.light-mode .fav-view-card {
 .fav-empty-chip span {
     width: 58px; height: 58px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 1.15rem; color: #ab90f2;
+    font-size: 1.35rem; color: #ab90f2;
     background: rgba(255,255,255,0.05); border: 1px solid rgba(167,139,250,0.22);
 }
 .fav-empty-note {
@@ -1497,7 +1526,17 @@ width: 100%;
 .dept-add-fab {
     position: fixed;
     right: 4px;
-    bottom: calc(24px + env(safe-area-inset-bottom));
+    /* Lifted 5 mm (27 CSS px) off the navigation bar on 2026-10-07: at 24px the
+       button's glow sat right on the nav-bar line and read as crowded. 3 mm only
+       just cleared it (9px of air), so it still read as stuck to the bar; 5 mm
+       leaves a gap you can actually see.
+
+       The 5 mm was being measured from the wrong place. This read
+       calc(51px + env(safe-area-inset-bottom)), and that inset is 0 here, so
+       the button sat 51px off the SCREEN edge -- 3px above a 48px navigation
+       bar, not 27px above it. Measured on the device: a 3px gap. The lift now
+       starts from the bar itself. */
+    bottom: calc(27px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
     z-index: 40;
     height: 78px;
     width: 78px;
@@ -1523,7 +1562,7 @@ width: 100%;
 .pdf-queue-fab {
     position: fixed;
     left: 14px;
-    bottom: calc(24px + env(safe-area-inset-bottom));
+    bottom: calc(24px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
     z-index: 40;
     display: flex;
     align-items: center;
@@ -1541,6 +1580,12 @@ width: 100%;
 }
 .pdf-queue-fab.hidden { display: none; }
 .pdf-queue-fab i.fa-file-pdf { font-size: 1rem; }
+#pdfMergeCount {
+    background: rgba(255,255,255,0.25);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+}
 #pdfQueueCount {
     background: rgba(255,255,255,0.25);
     border-radius: 999px;
@@ -1979,7 +2024,7 @@ padding-top: 12px;
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
 
-    border: 1px solid rgba(59,130,246,0.7);
+    border: 1px solid var(--float-border);   /* was a blue edge; every floating dialog now shares one hairline */
 
     border-radius: var(--radius-lg);
     width: 100%;
@@ -2404,7 +2449,7 @@ overflow: auto;
     display: flex;
     gap: 8px;
     padding: 10px 12px;
-    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    padding-bottom: calc(10px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
     background: rgba(0,0,0,0.3);
 }
 .img-editor-save-btn {
@@ -2632,7 +2677,7 @@ transform: scale(0.95);
 flex: 1;
 overflow-y: auto;
 background: #ffffff;
-padding: 24px 20px calc(40px + env(safe-area-inset-bottom));
+padding: 24px 20px calc(40px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
 }
 
 /* mammoth.js outputs plain <p>/<h1-6>/<table>/<img> etc -- style it
@@ -2684,6 +2729,7 @@ padding: 40px 24px;
 
 /* Excel sheet tabs + table */
 .doc-viewer-sheet-tabs {
+    border-top: 1px solid rgba(255,255,255,0.22);
 display: flex;
 gap: 4px;
 padding: 8px 12px;
@@ -2773,14 +2819,27 @@ border-bottom-color: rgba(0, 0, 0, 0.1);
 @keyframes floatIcon { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
 
-#searchInfo { margin: 0 0 16px 0; padding: 10px 18px; font-size: 0.85rem; font-weight: 500; background: var(--glass-bg); border-radius: var(--radius-full); border: 1px solid var(--glass-border); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); display: inline-flex; align-items: center; gap: 10px; }
+/* The results pill sits directly under the search field, so it now wears that
+   field's own skin: the same #101216 fill and the same 1px #ff8c28 edge the
+   .search-container override further down gives it. It was glass with a faint
+   grey border, which read as a third unrelated thing between the field and the
+   cards.
+   Block-level flex, not inline-flex: inline-flex shrink-wrapped it to its text
+   and left it 60px short of the result cards. The -10px right margin is the
+   bleed the cards themselves carry, so both now end on the same line.
+   Height came down 50px -> 38px; the Clear button is pushed to the far edge by
+   its own auto margin rather than sitting against the text. */
+#searchInfo { margin: 0 -10px 16px 0; padding: 6px 8px 6px 16px; font-size: 0.85rem; font-weight: 500; background: #101216; border-radius: var(--radius-full); border: 1px solid #ff8c28; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); display: flex; align-items: center; gap: 10px; }
 #searchInfo button {
+    /* auto margin, not a gap: it holds Clear against the pill's right edge
+       however long the "Found N result(s) for ..." line turns out to be. */
+    margin-left: auto;
     border: 1px solid #ff8c28;
     background: transparent;
     color: #ff8c28;
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     font-weight: 600;
-    padding: 6px 14px 6px 10px;
+    padding: 4px 12px 4px 9px;
     border-radius: 999px;
     cursor: pointer;
     display: inline-flex;
@@ -2801,12 +2860,12 @@ border-bottom-color: rgba(0, 0, 0, 0.1);
 
 .toast {
 position: fixed;
-bottom: calc(20px + env(safe-area-inset-bottom));
+bottom: calc(20px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
 left: 50%;
 transform: translateX(-50%) translateY(100px);
-background: #1a1c33;
+background: linear-gradient(160deg, rgba(47,30,80,0.97), rgba(24,15,42,0.98));
 /* Full hairline first, then the accent re-declares just the left edge. */
-border: 1px solid rgba(255, 255, 255, 0.16);
+border: 1px solid var(--float-border);
 border-left: 3px solid #34d399;
 color: #e2e8f0;
 padding: 10px 16px;
@@ -2817,7 +2876,7 @@ align-items: center;
 gap: 8px;
 font-size: 0.85rem;
 font-weight: 500;
-box-shadow: 0 10px 24px rgba(0,0,0,0.5);
+box-shadow: var(--float-ring), var(--float-shadow);
 transition: transform 0.35s cubic-bezier(0.34,1.2,0.64,1), opacity 0.25s ease;
 opacity: 0;
 max-width: calc(100vw - 40px);
@@ -2943,7 +3002,7 @@ filter: none !important;
 will-change: transform; 
 backface-visibility: hidden; 
 -webkit-backface-visibility: hidden; 
-overflow-x: hidden; 
+overflow-x: clip; 
 }
 
 
@@ -3110,6 +3169,7 @@ box-shadow:
 
 
 @media (max-width: 640px) { 
+:root { --action-h: 38px; } 
 .app { padding: 16px 14px 32px; } 
 #departmentsSection { margin-left: 0; } 
 .card { 
@@ -3145,7 +3205,7 @@ padding: 0 !important;
 #uploadBtn, #newNoteBtn { 
 padding: 0 13px !important; 
 width: 108px !important; 
-height: 38px !important; 
+height: var(--action-h) !important; 
 border-radius: var(--radius-full) !important; 
 font-size: 0.72rem !important; 
 } 
@@ -3556,7 +3616,12 @@ overflow: visible;
 overflow: hidden; 
 }
 
-@media (max-width: 480px) { 
+/* Was max-width:480px. The rules inside are the phone presentation of the
+   department cluster -- pill width, hub size, label size. Above 480px none of
+   them applied, so a foldable got the OTHER geometry (.dept-oval flex:1, a
+   134px hub) and the two disagreed about where the pill ends. The column is
+   capped at 460px now, so this is simply the one geometry the app has. */
+@media (max-width: 1400px) { 
 .search-container { min-width: 90px; }
 .departments-grid { padding-left: 0; gap: 7px; }
 .departments-wrapper { padding: 4px 0; }
@@ -3593,10 +3658,30 @@ overflow: hidden;
 
 }
 
+/* Narrow phones, in two steps. 360dp is the commonest Android width there
+   is, and at the shared 11px type "HEALTH & MEDICAL" ran off the end of its
+   pill; 320dp panels need a further step down for "FINANCE & BILLS" too.
+   Nothing moves -- the type comes down and the pill takes a little more of
+   the row, which is all the two longest names need. The 340 block must stay
+   AFTER the 380 one: same specificity, so the later rule is the one that
+   wins on a 320dp screen. */
+@media (max-width: 380px) {
+.dept-pill-name { font-size: 10px; letter-spacing: 0.1px; padding-right: 4px; }
+.dept-oval { flex: 0 1 calc(70% - 9px); }
+}
+@media (max-width: 340px) {
+.dept-pill-name { font-size: 9px; letter-spacing: 0; padding-right: 4px; }
+.dept-pill-icon { width: 42px; height: 42px; margin-left: -21px; }
+.dept-pill-icon .dept-count { font-size: 11px; }
+.dept-pill-icon .dept-count-label { font-size: 5px; }
+.dept-oval { flex: 0 1 calc(73% - 9px); }
+}
+
+
 
 .app { 
 max-width: 100%; 
-overflow-x: hidden; 
+overflow-x: clip; 
 }
 
 body { 
@@ -3606,7 +3691,7 @@ width: 100%;
 
 .app { 
 padding-top: max(2px, env(safe-area-inset-top)); 
-padding-bottom: max(40px, env(safe-area-inset-bottom)); 
+padding-bottom: calc(40px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px))); 
 padding-left: max(16px, env(safe-area-inset-left)); 
 padding-right: max(16px, env(safe-area-inset-right)); 
 }
@@ -3614,7 +3699,7 @@ padding-right: max(16px, env(safe-area-inset-right));
 @supports (padding-top: env(safe-area-inset-top)) { 
 .app { 
 padding-top: calc(2px + env(safe-area-inset-top)); 
-padding-bottom: calc(40px + env(safe-area-inset-bottom)); 
+padding-bottom: calc(40px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px))); 
 padding-left: calc(16px + env(safe-area-inset-left)); 
 padding-right: calc(16px + env(safe-area-inset-right)); 
 } 
@@ -4035,19 +4120,23 @@ width: 44px;
 height: 44px; 
 flex-shrink: 0; 
 border-radius: 50%; 
-border: 1px solid var(--glass-border); 
-background: var(--glass-bg); 
+/* Was a 22%-white hairline over a translucent fill: on the wallpaper it
+   barely registered as a button at all (reported 2026-09-23). */
+border: 1.5px solid rgba(255,255,255,0.55); 
+background: rgba(255,255,255,0.12); 
+box-shadow: 0 4px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.18); 
 -webkit-backdrop-filter: blur(12px);
 backdrop-filter: blur(12px); 
 color: var(--text-primary); 
 display: flex; 
 align-items: center; 
 justify-content: center; 
-font-size: 1rem; 
+font-size: 1.05rem; 
 cursor: pointer; 
 transition: var(--transition-fast); 
 } 
-.settings-back-btn:active { transform: scale(0.9); } 
+.settings-back-btn i { font-weight: 700; }
+.settings-back-btn:active { transform: scale(0.9); background: rgba(255,255,255,0.2); } 
 .settings-header-title { display: flex; flex-direction: column; } 
 .settings-header-title h2 { 
 font-size: 1.3rem; 
@@ -4243,17 +4332,20 @@ transform: translateX(20px);
 }
 
 /* Theme picker */
-.theme-pick-row { display: flex; gap: 16px; margin-bottom: 4px; } 
+.theme-pick-row { display: flex; gap: 12px; margin-bottom: 4px; } 
 .theme-pick-card { 
 flex: 1; 
 background: var(--card-bg); 
-border: 1.5px solid var(--glass-border); 
-border-radius: 20px; 
-padding: 20px 10px 16px; 
+border: 1.5px solid var(--float-border); 
+border-radius: 16px; 
+/* Was 20px padding around a 72px circle: three cards then filled a third of
+   the screen for a choice made once (reported 2026-09-23). */
+padding: 14px 8px 12px; 
+font-size: 0.76rem; 
 display: flex; 
 flex-direction: column; 
 align-items: center; 
-gap: 14px; 
+gap: 9px; 
 cursor: pointer; 
 font-family: inherit; 
 color: var(--text-muted); 
@@ -4264,18 +4356,18 @@ text-transform: uppercase;
 transition: all 0.25s ease; 
 } 
 .theme-pick-card.active { 
-border-color: var(--glass-border); 
+border-color: rgba(255,255,255,0.75); 
 color: var(--text-primary); 
 } 
 /* Circle icon container */
 .theme-pick-preview { 
-width: 72px; 
-height: 72px; 
+width: 50px; 
+height: 50px; 
 border-radius: 50%; 
 display: flex; 
 align-items: center; 
 justify-content: center; 
-font-size: 1.6rem; 
+font-size: 1.15rem; 
 position: relative;
 flex-shrink: 0;
 } 
@@ -4283,19 +4375,19 @@ flex-shrink: 0;
 .theme-pick-preview-dark { 
 background: radial-gradient(circle at 35% 35%, #3a2060 0%, #1a0c3a 60%, #0d0820 100%); 
 color: #c084fc;
-box-shadow: 0 0 0 2.5px #9333ea, 0 0 18px 4px rgba(147,51,234,0.45);
+box-shadow: 0 0 0 2px #9333ea;
 }
 .theme-pick-card.active .theme-pick-preview-dark {
-box-shadow: 0 0 0 2.5px #a855f7, 0 0 28px 8px rgba(168,85,247,0.6);
+box-shadow: 0 0 0 2.5px #a855f7;
 }
 /* Light / Day */
 .theme-pick-preview-light { 
 background: radial-gradient(circle at 40% 35%, #1e3a5f 0%, #0e2044 60%, #071328 100%); 
 color: #e0f2fe;
-box-shadow: 0 0 0 2.5px #38bdf8, 0 0 18px 4px rgba(56,189,248,0.45);
+box-shadow: 0 0 0 2px #38bdf8;
 }
 .theme-pick-card.active .theme-pick-preview-light {
-box-shadow: 0 0 0 2.5px #7dd3fc, 0 0 28px 8px rgba(125,211,252,0.65);
+box-shadow: 0 0 0 2.5px #7dd3fc;
 }
 
 /* Department manage list */
@@ -4354,17 +4446,15 @@ transform: scale(1.14);
 -webkit-user-drag: none;
 margin-bottom: 8px;
 }
+/* The wordmark matches the home header and the website: DOC white, MAN in
+   the orange gradient (.logo-doc/.logo-man below). The old blue gradient
+   fill lived here and would paint over both spans. */
 .about-name { 
 font-size: 1.4rem; 
 font-weight: 800; 
-background: linear-gradient(135deg, #fff, #bfdbfe, #a5f3fc); 
--webkit-background-clip: text; 
--webkit-text-fill-color: transparent; 
 } 
 body.light-mode .about-name { 
-background: linear-gradient(135deg, #1e293b, #334155, #475569); 
--webkit-background-clip: text; 
--webkit-text-fill-color: transparent; 
+background: none; 
 } 
 .about-tagline { font-size: 0.78rem; color: var(--text-muted); } 
 .about-footer {
@@ -4635,10 +4725,10 @@ border-radius: var(--radius-full);
 .theme-pick-preview-system { 
 background: radial-gradient(circle at 40% 35%, #1e2a3a 0%, #0d1520 100%); 
 color: #94a3b8;
-box-shadow: 0 0 0 2.5px #64748b, 0 0 18px 4px rgba(100,116,139,0.4);
+box-shadow: 0 0 0 2px #64748b;
 }
 .theme-pick-card.active .theme-pick-preview-system {
-box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
+box-shadow: 0 0 0 2.5px #94a3b8;
 }
 
 .dept-count,
@@ -4877,10 +4967,12 @@ body.light-mode .card-folder-count {
     position: fixed;
     z-index: 8001;
     width: 200px;
-    max-height: calc(100vh - 16px - var(--safe-bottom));
+    /* Same reason as the positioning code: --safe-bottom reads 0 here, so the
+       real bar height has to come from --nav-bottom. */
+    max-height: calc(100vh - 16px - max(var(--safe-bottom, 0px), var(--nav-bottom, 0px)));
     overflow-y: auto;
     background: var(--panel-bg);
-border: 1px solid rgba(140,100,255,0.7); 
+border: 1px solid var(--float-border);  /* was purple; same hairline as every other popup */ 
     border-radius: 16px;
     padding: 6px 0;
         box-shadow: 0 0 6px rgba(130,90,255,0.6), 0 8px 32px rgba(0,0,0,0.55);
@@ -5272,6 +5364,9 @@ body.light-mode .dash-used-value { color: #ffffff !important; }
 }
 
 .search-suggestions {
+  /* Placed by positionSearchSuggestions() once shown: the element is moved to
+     <body> and switched to fixed, because .top-panel clips its children. These
+     values only matter for the first paint. */
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
@@ -5745,12 +5840,17 @@ body.light-mode .ft-icon-label { color: #3a3226 !important; }
 .top-panel {
     background:
         radial-gradient(ellipse 160px 140px at 100% 0%, rgba(255, 90, 40, 0.38) 0%, rgba(255, 80, 30, 0.14) 35%, transparent 60%),
-        #191835;
+        /* Slate navy, from the reference the user supplied on 2026-10-04 -- the
+           old #191835 indigo read as washed out behind the wordmark. */
+        #0F172A;
     border: none !important;
     box-shadow:
         0 0 0 0.6px rgba(255, 130, 20, 0.65),
         0 20px 44px rgba(0, 0, 0, 0.55) !important;
-    padding: 14px 18px 16px !important;
+    /* Top padding dropped to 0 on 2026-10-04: the gap above the header was
+       4mm; the user settled on 3mm. Part of what sits above the icons is the
+       slack of centring them in the header row, about 8px. */
+    padding: 9px 18px 16px !important;
     margin-left: -12px !important;
     margin-right: -10px !important;
     overflow: hidden !important;
@@ -5793,8 +5893,15 @@ body.light-mode .ft-icon-label { color: #3a3226 !important; }
     background: none !important;
     border: none !important;
     box-shadow: none !important;
-    margin-top: -7px !important;
-    margin-left: -14px !important;
+    /* The tray reads 7px high because its art carries the glow below the
+       box, so flex centring puts the drawing above the line. Nudged with a
+       transform, not a margin: a margin grows the header, which pushes the
+       centred gear and dot grid down with it, so half of every correction
+       was chasing itself. */
+    margin-top: 0 !important;
+    transform: translateY(7px) !important;
+    /* Pushed further out to the left edge, matching the reference header. */
+    margin-left: -22px !important;
 }
 .logo-tray-icon {
     width: 100% !important;
@@ -5868,15 +5975,21 @@ body.light-mode .doc-tag {
     padding: 0 !important;
     margin: 0 !important;
     position: absolute !important;
-    top: 3px !important;
-    right: 3px !important;
+    /* Centred the same way the dot grid is (top:50% + translateY), so the two
+       always share one centre line. Pinned to top:3px it could only match at
+       one header height, and it was sitting above the dots. */
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    /* Sits closer to the right edge, matching the reference header. */
+    right: -5px !important;
 }
 .header-dots {
     position: absolute;
-    right: 48px;
+    /* Two more columns of dots (10px apart), and shifted out with the gear. */
+    right: 40px;
     top: 50%;
     transform: translateY(-50%);
-    width: 60px;
+    width: 80px;
     height: 60px;
     background-image: radial-gradient(rgba(255, 150, 50, 0.35) 1px, transparent 1.5px);
     background-size: 10px 10px;
@@ -5923,7 +6036,7 @@ body.light-mode .header-gear-icon {
 #searchInput { caret-color: #ff8c28 !important; }
 #searchInput::placeholder { color: rgba(255, 255, 255, 0.32) !important; }
 #clearSearchBtn {
-    right: 42px !important;
+    right: 12px !important;
     background: rgba(255, 140, 40, 0.12) !important;
     border: 1.5px solid rgba(255, 150, 60, 0.5) !important;
     color: rgba(255, 255, 255, 0.7) !important;
@@ -5945,21 +6058,11 @@ body.light-mode .header-gear-icon {
 }
 .search-container:focus-within .search-icon-svg { color: #ff8c28; }
 
-.search-filter-icon {
-    position: absolute !important;
-    left: auto !important;
-    right: 16px !important;
-    top: 50% !important;
-    bottom: auto !important;
-    transform: translateY(-50%) !important;
-    width: auto !important;
-    color: #ff8c28;
-    font-size: 0.95rem;
-    z-index: 2;
-    pointer-events: none;
-}
+/* The decorative filter icon was removed: it had pointer-events:none and
+   no handler, so it looked tappable but did nothing, and it reserved 66px
+   of the search field for itself. */
 
-#searchInput { padding-right: 66px !important; }
+#searchInput { padding-right: 44px !important; }
 
 
 /* Home button — shrink to match the other top-bar controls */
@@ -5980,8 +6083,8 @@ body.light-mode .header-gear-icon {
     height: 52px !important;
 }
 #searchInput {
-    padding-top: 7px !important;
-    padding-bottom: 7px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
 }
 
 
@@ -6727,8 +6830,8 @@ body.light-mode .dash-dep-v { color: var(--text-primary); }
     max-width: none; min-height: 100%; max-height: 100%;
 }
 .fav-view-header { padding: max(12px, calc(env(safe-area-inset-top) + 8px)) 14px 10px; }
-.fav-view-list { padding-bottom: max(20px, calc(env(safe-area-inset-bottom) + 18px)); }
-.dashboard-body { padding: 0 14px max(20px, calc(env(safe-area-inset-bottom) + 18px)); }
+.fav-view-list { padding-bottom: max(20px, calc(max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)) + 18px)); }
+.dashboard-body { padding: 0 14px max(20px, calc(max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)) + 18px)); }
 
 .dash-tiles { gap: 8px; margin-bottom: 10px; }
 .dash-tile { min-height: 0; padding: 9px 9px 10px; border-radius: 15px; }
@@ -6849,7 +6952,12 @@ body.light-mode .dash-backup-n { color: var(--text-primary); }
         radial-gradient(115% 70% at 12% 0%, #221046 0%, #120f22 48%, #0a0a14 100%);
     font-family: Inter, sans-serif;
     padding-top: max(14px, calc(env(safe-area-inset-top) + 10px));
-    padding-bottom: max(18px, calc(env(safe-area-inset-bottom) + 14px));
+    /* env(safe-area-inset-bottom) reports 0 in this WebView -- targetSdk 35+
+       draws edge-to-edge without publishing the inset -- so this resolved to
+       18px while the navigation bar is 48px tall, and Next sat underneath the
+       back and home keys. --nav-bottom is the real height MainActivity
+       measures and publishes; max() keeps the gesture-bar case working too. */
+    padding-bottom: calc(14px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
 }
 .intro-skip {
     position: absolute;
@@ -7063,7 +7171,7 @@ body.light-mode .dept-empty-hint b { color: var(--text-primary); }
         radial-gradient(120% 60% at 50% -8%, #4a1f80 0%, rgba(74,31,128,0) 62%),
         linear-gradient(180deg, #1e0c33 0%, #170a28 55%, #12081f 100%);
     padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px));
     animation: pwIn .22s ease-out;
 }
 @keyframes pwIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
@@ -7184,7 +7292,7 @@ body.light-mode .dept-empty-hint b { color: var(--text-primary); }
 .img-editor-try-note {
     display: flex; align-items: center; justify-content: center; gap: 8px;
     padding: 0 12px 10px;
-    font-size: 0.74rem; color: #e2dcea;
+    font-size: 0.72rem; color: #e2dcea;
 }
 .img-editor-try-note .try-badge { margin-left: 0; }
 
@@ -7213,7 +7321,7 @@ body.light-mode .dept-empty-hint b { color: var(--text-primary); }
     background: #0f1013;
 }
 .img-adjust-top-btn {
-    width: 44px; height: 44px; border: 0; border-radius: 50%; background: none;
+    width: 50px; height: 50px; border: 0; border-radius: 50%; background: none;
     color: #d7d7e0; font-size: 1.2rem; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
 }
@@ -7230,7 +7338,7 @@ body.light-mode .dept-empty-hint b { color: var(--text-primary); }
     outline: 2px solid #c4b5fd; outline-offset: 2px;
 }
 
-.img-adjust-dock { padding: 4px 0 max(12px, env(safe-area-inset-bottom)); background: #0f1013; }
+.img-adjust-dock { padding: 4px 0 calc(12px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px))); background: #0f1013; }
 .img-adjust-name { display: flex; justify-content: center; align-items: baseline; gap: 8px; min-height: 24px; }
 .img-adjust-name span { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.12em; color: #a8a8b8; text-transform: uppercase; }
 .img-adjust-name b { font-size: 1.06rem; color: #fff; font-variant-numeric: tabular-nums; }
@@ -7386,8 +7494,9 @@ body.light-mode .dept-empty-hint b { color: var(--text-primary); }
 .fav-menu {
     position: fixed; z-index: 10001; min-width: 190px; max-width: 78vw;
     border-radius: 16px; overflow: hidden;
-    background: #241a49; border: 1px solid rgba(255,255,255,0.12);
-    box-shadow: 0 18px 36px rgba(0,0,0,0.55);
+    background: linear-gradient(160deg, rgba(47,30,80,0.97), rgba(26,16,45,0.98));
+    border: 1px solid var(--float-border);
+    box-shadow: var(--float-ring), var(--float-shadow);
 }
 .fav-menu-item {
     display: flex; align-items: center; gap: 11px; width: 100%;
@@ -7412,7 +7521,9 @@ body.light-mode .fav-list-card .fav-row-name { color: #241f42; }
 body.light-mode .fav-list-card .fav-row-path { color: #6f6796; }
 body.light-mode .fav-tagline p { color: rgba(90,80,140,0.45); }
 body.light-mode .fav-tagline span { background: rgba(90,80,140,0.25); }
-body.light-mode .fav-menu { background: #ffffff; border-color: rgba(0,0,0,0.10); }
+body.light-mode .fav-menu {
+    border: 1px solid rgba(120, 95, 65, 0.45);
+    box-shadow: 0 0 0 1px rgba(239,122,12,0.22), 0 14px 30px rgba(60,40,20,0.22); background: #ffffff; border-color: rgba(120, 95, 65, 0.45); }
 body.light-mode .fav-menu-item { color: #241f42; }
 body.light-mode .fav-menu-item i { color: #6d28d9; }
 
@@ -7433,7 +7544,7 @@ body.light-mode .fav-menu-item i { color: #6d28d9; }
     border-radius: 22px;
     overflow: hidden;
     background: linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(8,6,16,0.30) 45%, rgba(6,4,12,0.48) 100%);
-    border: 1px solid rgba(255,255,255,0.12);
+    border: 1px solid var(--float-border);
     box-shadow: 0 14px 34px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12);
 }
 .dm-empty-card { align-items: center; padding-top: 16px; }
@@ -7457,7 +7568,7 @@ body.light-mode .fav-menu-item i { color: #6d28d9; }
 .dm-list-card .fav-row {
     display: flex; align-items: center; gap: 9px;
     padding: 7px 9px; margin-bottom: 7px; border-radius: 14px;
-    background: rgba(9,7,18,0.72); border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(9,7,18,0.72); border: 1px solid rgba(255,255,255,0.26);
     box-shadow: 0 4px 12px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05);
 }
 .dm-list-card .fav-row-icon {
@@ -7500,8 +7611,9 @@ body.light-mode .dm-list-card .fav-row-path { color: #6f6796; }
 .expiry-modal {
     width: 100%; max-width: 340px; padding: 20px 18px 16px;
     border-radius: 22px; text-align: center; font-family: Inter, sans-serif;
-    background: #191627; border: 1px solid rgba(255,255,255,0.14);
-    box-shadow: 0 20px 50px rgba(0,0,0,0.55);
+    background: linear-gradient(160deg, rgba(47,30,80,0.97), rgba(24,15,42,0.98));
+    border: 1px solid var(--float-border);
+    box-shadow: var(--float-ring), var(--float-shadow);
 }
 .expiry-modal-icon {
     width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 20px;
@@ -7514,7 +7626,7 @@ body.light-mode .dm-list-card .fav-row-path { color: #6f6796; }
 .expiry-modal-file {
     display: flex; align-items: center; gap: 10px; text-align: left;
     margin-top: 10px; padding: 9px 10px; border-radius: 14px;
-    background: rgba(9,7,18,0.72); border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(9,7,18,0.72); border: 1px solid rgba(255,255,255,0.26);
 }
 .expiry-modal-file > i {
     flex: none; width: 34px; height: 34px; border-radius: 11px;
@@ -7531,7 +7643,7 @@ body.light-mode .dm-list-card .fav-row-path { color: #6f6796; }
 }
 .expiry-modal-renew { background: linear-gradient(135deg, #f59e0b, #d97706); color: #ffffff; }
 .expiry-modal-ack { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.14) !important; color: #e7e3f5; }
-body.light-mode .expiry-modal { background: #ffffff; border-color: rgba(0,0,0,0.10); }
+body.light-mode .expiry-modal { background: #ffffff; border-color: rgba(120, 95, 65, 0.45); box-shadow: 0 0 0 1px rgba(239,122,12,0.20), 0 18px 40px rgba(60,40,20,0.22); }
 body.light-mode .expiry-modal h3 { color: #241f42; }
 body.light-mode .expiry-modal > p, body.light-mode .expiry-modal-more { color: #5f5878; }
 body.light-mode .expiry-modal-file { background: #f6f4fb; border-color: rgba(0,0,0,0.08); }
@@ -7592,4 +7704,3676 @@ body.light-mode .settings-pro-badge { color: #15803d; background: rgba(34,197,94
 body.light-mode .settings-list.settings-list-grouped .settings-item {
     border: 1.3px solid rgba(90, 70, 45, 0.65) !important;
     box-shadow: 0 1px 4px rgba(150, 110, 60, 0.10) !important;
+}
+
+/* ---- Multi-select (toolbar Select) ---- */
+.select-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: calc(100% + 26px);
+    box-sizing: border-box;
+    margin: 3px -13px 0 -13px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(59,130,246,0.18);
+    border: 1px solid rgba(96,165,250,0.5);
+}
+.select-bar-x {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.12);
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.select-bar-count { color: #fff; font-weight: 700; font-size: 0.95rem; }
+.select-bar-all {
+    margin-left: auto;
+    border: none;
+    background: none;
+    color: #93c5fd;
+    font-weight: 700;
+    font-size: 0.82rem;
+    font-family: Inter, sans-serif;
+    cursor: pointer;
+    padding: 6px 4px;
+}
+.bulk-check {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 2px solid rgba(255,255,255,0.35);
+    flex: none;
+    margin-right: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 0.7rem;
+}
+.bulk-check-on { background: #3b82f6; border-color: #3b82f6; }
+.select-action-bar {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    bottom: calc(16px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
+    z-index: 45;
+    display: flex;
+    gap: 8px;
+    padding: 12px 8px;
+    border-radius: 20px;
+    /* Near-black on a dark wallpaper read as a hole in the screen with no
+       edge at all (reported 2026-09-23). A purple-tinted panel, a white
+       hairline and a thin orange ring in the app's accent make it read as a
+       floating bar. */
+    background: linear-gradient(160deg, rgba(47,30,80,0.97), rgba(24,15,42,0.98));
+    border: 1px solid rgba(255,255,255,0.30);
+    box-shadow:
+        0 0 0 1px rgba(255,140,0,0.35),
+        0 16px 38px rgba(0,0,0,0.65),
+        inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.select-action-bar.hidden { display: none; }
+.select-action-bar button {
+    flex: 1;
+    border: none;
+    background: none;
+    color: #e6e9f2;
+    font-family: Inter, sans-serif;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 0;
+}
+.select-action-bar button i { display: block; font-size: 1rem; margin-bottom: 4px; }
+/* One colour per action, so the row is readable at a glance. */
+.select-action-bar button:nth-child(1) i { color: #fb7185; }
+.select-action-bar button:nth-child(2) i { color: #60a5fa; }
+.select-action-bar button:nth-child(3) i { color: #34d399; }
+.select-action-bar .sab-delete { color: #f87171; }
+.select-action-bar .sab-delete i { color: #f87171; }
+.ft-icon-btn.ft-select { border-color: #60a5fa; color: #60a5fa; background: #10203c; }
+
+/* A flex child's default min-height is auto, so .fav-view-list grew to fit
+   every row instead of scrolling inside the card -- with many favourites the
+   list simply ran past the bottom edge of the screen and nothing scrolled
+   (reported 2026-09-19). min-height:0 lets it shrink, which is what makes
+   its own overflow-y:auto take effect. Same fix for the Recents/Recycle Bin
+   lists and the Dashboard, which share this card layout. */
+.fav-view-list,
+.dashboard-body {
+    min-height: 0;
+}
+/* The panels INSIDE that scrollable list (Favourites, Recents, Recycle Bin).
+   As flex:1 children with overflow:hidden they clipped their own rows at one
+   screen's worth and swallowed the scroll -- the list above them had nothing
+   left to scroll, so with many favourites the rest were simply unreachable
+   (reported 2026-09-19). They should grow with their rows and let
+   .fav-view-list do the scrolling. */
+.fav-view-list > .fav-list-card,
+.fav-view-list > .dm-list-card,
+.fav-view-list > .dm-empty-card {
+    flex: 0 0 auto;
+    overflow: visible;
+}
+
+
+/* Back buttons: on the light theme a white edge disappears, so use the same
+   warm outline the light cards use. */
+body.light-mode .settings-back-btn,
+body.light-mode .fav-view-back {
+    border-color: rgba(120, 95, 65, 0.55);
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 4px 12px rgba(60, 40, 20, 0.18);
+}
+
+
+/* The expiring-soon box breathes for ten seconds after an expiry alert opens
+   the dashboard: a slow in-and-out glow is easier to follow than a quick
+   flash, and it lasts long enough to find without being frantic. */
+@keyframes dashExpiryBreathe {
+    0%, 100% {
+        box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35), 0 0 10px 2px rgba(245, 158, 11, 0.18);
+        transform: scale(1);
+    }
+    50% {
+        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.95), 0 0 26px 8px rgba(245, 158, 11, 0.55);
+        transform: scale(1.015);
+    }
+}
+.dash-expiry-breathe {
+    animation: dashExpiryBreathe 2s ease-in-out 5;
+    border-radius: 18px;
+    transform-origin: center;
+}
+
+
+/* ============================================================
+   Inside a folder the top bar gained a whole grid row for the Home
+   button and the FILES/NOTES toggle, making the DOCMAN card 64px
+   taller than on the home screen -- and in a folder that holds only
+   subfolders the toggle is hidden, so that row was almost empty.
+   The Home button now shares the search row (it is only 60px wide and
+   the search field simply gives up that much), and the first row only
+   exists when the toggle is actually there.
+   ============================================================ */
+/* Home on the left, FILES/NOTES on the right, sharing one row -- the layout
+   asked for. The row is kept as short as the controls themselves, so the card
+   grows by the height of that row and nothing more. */
+body.in-folder.tabs-visible .top-bar > #homeBtn {
+    grid-column: 1;
+    grid-row: 1;
+    width: 60px;
+    min-width: 60px;
+    justify-self: start;
+}
+/* No pill to share the row with: Home joins the search row instead. */
+body.in-folder:not(.tabs-visible) .top-bar > #homeBtn {
+    grid-column: 1;
+    grid-row: 2;
+    width: 60px;
+    min-width: 60px;
+    justify-self: start;
+}
+body.in-folder:not(.tabs-visible) .top-bar > .search-container {
+    grid-column: 2 / 4;
+    grid-row: 2;
+}
+/* Only when the toggle is showing does the first row take any height. */
+body.in-folder .top-bar > .type-selector:not(.hidden) {
+    grid-column: 2 / 5;
+    grid-row: 1;
+    justify-self: end;
+}
+body.in-folder .top-bar > .type-selector.hidden {
+    display: none !important;
+}
+
+
+/* In a folder the FILES/NOTES pill is the only thing on its row, and at 52px
+   tall (plus the row gap) it was most of the extra height the card gained.
+   Two thirds the size is still an easy target and saves ~30px. */
+body.in-folder .top-bar {
+    row-gap: 4px !important;
+}
+
+/* The pill is 38px but its wrapper was padded out to 82px. */
+body.in-folder.tabs-visible .top-bar > .type-selector {
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    align-items: center !important;
+}
+
+
+/* About 1mm smaller on this screen (~6dp): the Home button and the
+   FILES/NOTES pill inside a folder. */
+body.in-folder #homeBtn {
+    width: 54px !important;
+    min-width: 54px !important;
+    height: 42px !important;
+}
+body.in-folder .home-icon-img {
+    width: 46px !important;
+    height: 46px !important;
+}
+body.in-folder .ft-toggle {
+    width: 190px !important;
+    min-width: 190px !important;
+    height: 46px !important;
+    min-height: 46px !important;
+    flex: 0 0 190px !important;
+}
+body.in-folder .ft-toggle-label {
+    font-size: 0.78rem !important;
+}
+
+
+/* The search/Upload row sat about 3mm above the Recent/Sort/Dashboard box.
+   The box keeps its frame; only the empty space between them is trimmed. */
+.top-bar {
+    padding-bottom: 1px !important;
+}
+.stats-bar {
+    margin-top: 0 !important;
+}
+
+
+/* A little air between the Home + FILES/NOTES row and the search row, so the
+   two do not read as one block. */
+body.in-folder .top-bar {
+    row-gap: 14px !important;
+}
+
+
+/* Push the Recent/Sort/Dashboard/Recycle Bin box down so it sits near the
+   card's bottom edge: a little more air above it, less padding below. */
+.stats-bar {
+    margin-top: 10px !important;
+    margin-bottom: 0 !important;
+}
+.top-panel {
+    padding-bottom: 6px !important;
+}
+
+
+/* Another ~1mm off the Home button. */
+body.in-folder #homeBtn {
+    width: 48px !important;
+    min-width: 48px !important;
+    height: 38px !important;
+}
+body.in-folder .home-icon-img {
+    width: 40px !important;
+    height: 40px !important;
+}
+
+
+/* Search + Upload row about 1mm lower. */
+
+
+
+/* Home button another ~1mm smaller. */
+body.in-folder #homeBtn {
+    width: 42px !important;
+    min-width: 42px !important;
+    height: 34px !important;
+}
+body.in-folder .home-icon-img {
+    width: 34px !important;
+    height: 34px !important;
+}
+
+
+/* The icon image is sized by an id-level rule (#homeBtn .home-icon-img), which
+   outranked the earlier class-only override -- the button shrank but the
+   picture inside did not, so nothing looked smaller. */
+body.in-folder #homeBtn .home-icon-img {
+    width: 34px !important;
+    height: 34px !important;
+}
+
+
+/* A touch bigger again -- 34px read as too small on the phone. */
+body.in-folder #homeBtn {
+    width: 48px !important;
+    min-width: 48px !important;
+    height: 40px !important;
+}
+body.in-folder #homeBtn .home-icon-img {
+    width: 40px !important;
+    height: 40px !important;
+}
+
+
+/* The FILES/NOTES pill now matches the height of the search field and the
+   Upload / New Note button (one shared value, --action-h). */
+body.in-folder .ft-toggle {
+    height: var(--action-h) !important;
+    min-height: var(--action-h) !important;
+    width: 176px !important;
+    min-width: 176px !important;
+    flex: 0 0 176px !important;
+}
+body.in-folder .ft-toggle-label {
+    font-size: 0.74rem !important;
+}
+
+
+/* Search + Upload row another ~1.5mm lower (6px -> 15px). */
+
+
+
+/* Spacing in millimetres on this screen: 387 ppi at 2.81 dpr means
+   1mm = 5.4 CSS px. The gap between the Home/FILES-NOTES row and the search
+   row is 2.5mm; the grid's own 8px is included in that number. */
+body.in-folder .top-bar {
+    row-gap: 22px !important;
+}
+
+
+/* The '1mm lower' push above only made the DOCMAN card taller -- the search
+   row moved down and the Recent/Sort/Dashboard/Recycle Bin box moved down with
+   it, so the gap between the two was unchanged. Reverted (no margin-top, and
+   the in-folder row-gap back to 22px), and the gap itself is closed instead:
+   .stats-bar's own margin-top is the only part of it that is adjustable
+   (the other 5px are .top-bar's 1px padding + .top-panel's 4px flex gap). */
+.top-bar > .search-container,
+.top-bar > .top-bar-actions {
+    margin-top: 0 !important;
+}
+body.in-folder .top-bar {
+    row-gap: 22px !important;
+}
+.stats-bar {
+    margin-top: 0 !important;
+}
+
+
+/* Home button and the FILES/NOTES pill both 1mm bigger (1mm = 5.4 CSS px on
+   this screen). The pill no longer tracks --action-h: it deliberately stands
+   taller than the search field now, which is fine -- in a folder the two sit
+   on separate rows, so nothing lines up against it edge to edge. */
+body.in-folder #homeBtn {
+    width: 53.4px !important;
+    min-width: 53.4px !important;
+    height: 45.4px !important;
+}
+body.in-folder #homeBtn .home-icon-img {
+    width: 45.4px !important;
+    height: 45.4px !important;
+}
+body.in-folder .ft-toggle {
+    height: 43.4px !important;
+    min-height: 43.4px !important;
+    width: 181.4px !important;
+    min-width: 181.4px !important;
+    flex: 0 0 181.4px !important;
+}
+body.in-folder .ft-toggle-label {
+    font-size: 0.78rem !important;
+}
+
+
+/* ============================================================
+   File / subfolder rows take the Settings page's box look
+   (2026-09-24). The flat #0a0d1f screen background was tried and
+   rejected -- the purple wallpaper stays; only the rows change.
+
+   Values copied verbatim from .settings-item so the two screens
+   genuinely match rather than approximately:
+       background  var(--card-bg)  = rgba(35, 12, 50, 0.72)
+       border      0.6px solid rgba(255,255,255,0.7)
+       box-shadow  0 0 2px rgba(255,255,255,0.2)
+
+   !important throughout because .card.glow-folder (the subfolder
+   rows) sets its own background and border that way. border-radius
+   is deliberately NOT copied -- the rows keep their pill shape;
+   only the fill and the edge were asked for.
+   ============================================================ */
+body:not(.light-mode) .card,
+body:not(.light-mode) .card.glow-folder {
+    background: var(--card-bg) !important;
+    border: 0.6px solid rgba(255, 255, 255, 0.7) !important;
+    box-shadow: 0 0 2px rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Real file rows are class="card file-card" (createFileCard, app.js:8651),
+   and .file-card::after paints a masked 1px BLUE gradient ring plus a blue
+   glow directly over the border. That ring, not the border, was the edge on
+   screen -- the border above was already identical to .settings-item but sat
+   underneath it. Turning the ring off lets the Settings edge show.
+   .note-card::after shares the rule and is deliberately left alone: the ask
+   was files. */
+body:not(.light-mode) .file-card::after {
+    display: none !important;
+}
+body:not(.light-mode) .card.file-card {
+    border: 0.6px solid rgba(255, 255, 255, 0.7) !important;
+    box-shadow: 0 0 2px rgba(255, 255, 255, 0.2) !important;
+}
+
+
+/* ============================================================
+   Row leave animation -- slide out, fade, then collapse the gap.
+   Used by animateRowOut() in app.js before the row's data op runs,
+   so the list only re-renders once the row has visually gone.
+
+   max-height is set inline to the row's MEASURED height first: going
+   to 0 from a guessed large value would spend most of the duration
+   doing nothing visible, since the collapse only starts once the
+   value drops below the real height.
+   ============================================================ */
+.row-leaving {
+    transform: translateX(110%) !important;
+    opacity: 0 !important;
+    max-height: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    border-width: 0 !important;
+    overflow: hidden !important;
+    transition:
+        transform 0.34s cubic-bezier(0.4, 0, 0.2, 1),
+        opacity 0.28s ease,
+        max-height 0.34s ease,
+        margin 0.34s ease,
+        padding 0.34s ease !important;
+}
+@media (prefers-reduced-motion: reduce) {
+    .row-leaving {
+        transform: none !important;
+        transition: opacity 0.12s linear !important;
+    }
+}
+
+
+/* ============================================================
+   Recycle Bin items take the Settings page box look (2026-09-24),
+   the same treatment the file rows got -- values copied verbatim
+   from .settings-item so the two genuinely match:
+       background  var(--card-bg)  = rgba(35, 12, 50, 0.72)
+       border      0.6px solid rgba(255,255,255,0.7)
+       box-shadow  0 0 2px rgba(255,255,255,0.2)
+
+   Scoped to #recycleBinView ONLY. Recent, Favourites and the
+   Dashboard share .fav-row and are deliberately left alone.
+   The panel behind the rows keeps its original var(--panel-bg).
+   ============================================================ */
+#recycleBinView .fav-row {
+    background: var(--card-bg);
+    border: 0.6px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 0 2px rgba(255, 255, 255, 0.2);
+    border-radius: 14px;
+}
+#recycleBinView .fav-row:active { background: var(--card-bg-hover); }
+/* White basket in the mockup's neutral blue-grey box -- NOT red. The red
+   reads as a warning, and this row is just a listing; the destructive
+   action is the Delete Forever button, which keeps the red. */
+/* The mockup's basket is the U+1F5D1 emoji, not an icon-font glyph -- it
+   carries its own colours, so no 'color' is set here. Squircle box behind it,
+   as in the mockup. */
+#recycleBinView .fav-row-icon-bin {
+    background: #242a4a;
+    border-radius: 12px;
+    font-size: 1.25rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Restore is the mockup's outlined pill. Delete Forever stays a round icon
+   button -- two pills plus the icon leave the filename almost no room at
+   375px. */
+#recycleBinView .recycle-restore-btn {
+    width: auto;
+    height: auto;
+    border-radius: 20px;
+    padding: 7px 13px;
+    gap: 6px;
+    background: transparent;
+    border: 1px solid #e8590c;
+    color: #ffb74d;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-family: inherit;
+}
+#recycleBinView .recycle-restore-btn:active { background: rgba(232, 89, 12, 0.15); }
+#recycleBinView .recycle-purge-btn {
+    background: transparent;
+    border: 1px solid #f87171;
+    color: #f87171;
+}
+
+/* File / note rows need two extra things the .fav-row rows did not:
+
+   1. min-height. .card is min-height:36px and .file-card 44px, and in CSS
+      min-height WINS over max-height -- without this the row stops at 44px
+      instead of collapsing.
+   2. a negative top margin. #content is display:flex with row-gap:8px, so the
+      gaps are not margins and do not collapse with the row: a zero-height item
+      still sits between two 8px gaps where there used to be one. -8px cancels
+      the leftover gap so the list closes up smoothly instead of snapping when
+      render() rebuilds it. */
+.card.row-leaving {
+    min-height: 0 !important;
+    margin-top: -8px !important;
+}
+
+
+/* ============================================================
+   Confirm dialog -- built to the reference image (2026-09-24).
+
+   The key point I got wrong twice: the red is NOT a full-height
+   column. It is a blob in the upper-left that narrows toward the
+   bottom, which is why the reference's buttons run nearly the
+   whole card width instead of starting to the right of it.
+   So the art and the badge are OVERLAYS on a normal block card,
+   and only the title/body/chip are indented to clear the badge.
+
+   PROMPTS ARE NOT TOUCHED -- showModal() also serves rename, the
+   date picker and expiry; only type:'confirm' uses this.
+   ============================================================ */
+#customConfirm {
+    align-items: center !important;
+    padding-top: 20px !important;
+    background: rgba(6, 8, 16, 0.82) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+}
+.dlg2 {
+    position: relative;
+    width: 100%;
+    max-width: 380px;
+    padding: 16px 16px 14px;
+    border-radius: 24px;
+    overflow: hidden;
+    background: linear-gradient(160deg, #1b2131 0%, #151a28 55%, #111623 100%);
+    /* Same outer line as the Settings boxes and the file/folder rows --
+       0.6px solid rgba(255,255,255,0.7) plus its 2px white glow, copied
+       verbatim from .settings-item. The dialog's own deep drop shadow is
+       kept underneath it. */
+    border: 0.6px solid rgba(255, 255, 255, 0.7);
+    box-shadow:
+        0 30px 80px rgba(0, 0, 0, 0.72),
+        0 0 2px rgba(255, 255, 255, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    animation: dlg2In 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes dlg2In {
+    from { opacity: 0; transform: scale(0.94) translateY(12px); }
+    to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .dlg2 { animation: none; } }
+
+/* The red is NOT a shape with an edge -- it is a glow that fades out into
+   the card. Earlier versions used border-radius to cut a solid blob, which
+   left a hard boundary the reference does not have. A radial gradient
+   running to fully transparent is what makes it melt into the dark. */
+/* The red panel is the reference artwork, cropped to the red column and with
+   the reference's OWN badge and Cancel button painted out of the pixels.
+   Masking alone could not remove those: they sit inside the red, which is why
+   a second ring appeared around the badge and a ghost "C" under Cancel.
+   Three attempts at rebuilding the shape (gradients, then SVG curves) were
+   rejected as not matching, so this is the artwork itself rather than an
+   approximation of it. Source 1647x955, card at x130..1512 / y145..818,
+   cropped to 340x673. */
+.dlg2-art {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 30%;
+    background: url('Images/dialog-red-art.png') no-repeat;
+    background-size: 100% 100%;
+    /* The crop already ends in card-dark, so this only softens the seam. */
+    -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 84%, rgba(0,0,0,0) 100%);
+    mask-image: linear-gradient(90deg, #000 0%, #000 84%, rgba(0,0,0,0) 100%);
+    z-index: 0;
+    pointer-events: none;
+}
+
+.dlg2-badge {
+    position: absolute;
+    left: 16px; top: 20px;
+    width: 50px; height: 50px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(158deg, #ff6670 0%, #f0303f 46%, #cf1826 100%);
+    color: #fff;
+    font-size: 1.32rem;
+    z-index: 2;
+    box-shadow:
+        0 0 0 6px rgba(255, 255, 255, 0.22),
+        0 10px 26px rgba(60, 4, 10, 0.45),
+        inset 0 2px 3px rgba(255, 255, 255, 0.45),
+        inset 0 -3px 6px rgba(120, 8, 16, 0.5);
+}
+
+.dlg2-x {
+    position: absolute;
+    top: 14px; right: 14px;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.10);
+    color: #cfd6e4;
+    font-size: 0.82rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+    z-index: 3;
+}
+
+/* Only this block is indented, to clear the badge. */
+/* padding-left clears the badge horizontally; min-height clears it
+   vertically for the button row below, whose buttons stay full width as in
+   the reference. 76px = badge top (30) + badge height (50) - card padding
+   (16) + a little breathing room. */
+.dlg2-head { position: relative; z-index: 1; padding-left: 86px; min-height: 76px; }
+.dlg2-title {
+    color: #fff;
+    font-size: 1.06rem;
+    font-weight: 800;
+    line-height: 1.25;
+    margin: 0 30px 4px 0;
+    font-family: Inter, sans-serif;
+}
+.dlg2-sub {
+    color: #93a1bb;
+    font-size: 0.83rem;
+    line-height: 1.45;
+    margin: 0 0 11px;
+    font-family: Inter, sans-serif;
+}
+.dlg2-chip {
+    display: flex; align-items: center; gap: 11px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 13px;
+    padding: 9px 11px;
+    margin-bottom: 11px;
+}
+.dlg2-chip-ic {
+    width: 38px; height: 38px; flex: none;
+    border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, 0.12);
+    color: #e7ecf5;
+    font-size: 1.05rem;
+}
+.dlg2-chip-n {
+    color: #fff; font-size: 0.9rem; font-weight: 700; line-height: 1.25;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-family: Inter, sans-serif;
+}
+.dlg2-chip-m {
+    color: #8492ab; font-size: 0.74rem; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-family: Inter, sans-serif;
+}
+
+/* Full width, clear of the blob -- as in the reference. */
+.dlg2-row { position: relative; z-index: 1; display: flex; gap: 10px; }
+.dlg2-row button {
+    min-height: 46px;
+    padding: 12px 8px;
+    border-radius: 14px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    font-family: Inter, sans-serif;
+    cursor: pointer;
+    border: none;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    white-space: nowrap;
+}
+.dlg2-cancel {
+    flex: 0 0 40%;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    color: #e7ecf5;
+}
+.dlg2-ok { flex: 1 1 auto; color: #fff; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.42); }
+
+body.light-mode .dlg2 { background: linear-gradient(160deg, #ffffff, #f7f1e8); border-color: rgba(120, 95, 65, 0.35); }
+body.light-mode .dlg2-title { color: #2b2418; }
+body.light-mode .dlg2-sub, body.light-mode .dlg2-chip-m { color: #6b5c48; }
+body.light-mode .dlg2-chip { background: rgba(0,0,0,0.04); border-color: rgba(120,95,65,0.28); }
+body.light-mode .dlg2-chip-n { color: #2b2418; }
+body.light-mode .dlg2-cancel { background: rgba(0,0,0,0.04); border: 1px solid rgba(120,95,65,0.45) !important; color: #2b2418; }
+
+
+/* ============================================================
+   Animation 1 -- file card select press (2026-09-24).
+   addDepthEffect() adds .press-depth-3d for 150ms; until now it only
+   ever removed it and the class had no rule, so nothing moved.
+
+   The scale is driven by the EXISTING press path (pressHandler ->
+   addDepthEffect), which already waits for a confirmed tap on rows
+   via armTapHaptic. No new touch handlers -- binding on touchstart
+   is what caused the scroll-vibration bug.
+   ============================================================ */
+.card, .dept-oval {
+    transition: transform 0.15s cubic-bezier(0.2, 0.9, 0.4, 1.2),
+                background 0.15s ease,
+                border-color 0.15s ease;
+}
+.press-depth-3d {
+    transform: scale(0.96);
+}
+body:not(.light-mode) .card.press-depth-3d {
+    background: var(--card-bg-hover, rgba(50, 20, 68, 0.82));
+    border-color: rgba(245, 158, 11, 0.5);
+}
+
+/* The check ring. render() rebuilds the row on every toggle, so a
+   transition can never run -- the element is brand new each time.
+   An entry animation plays on that new element instead. */
+.card-select-dot-checked {
+    animation: dotFill 0.18s cubic-bezier(0.2, 0.9, 0.4, 1.2) both;
+}
+.card-select-dot-checked i {
+    animation: dotTick 0.18s cubic-bezier(0.2, 0.9, 0.4, 1.2) 0.04s both;
+}
+@keyframes dotFill {
+    from { transform: scale(0.6); }
+    to   { transform: scale(1); }
+}
+@keyframes dotTick {
+    from { opacity: 0; transform: scale(0.4); }
+    to   { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .press-depth-3d { transform: none; }
+    .card-select-dot-checked,
+    .card-select-dot-checked i { animation: none; }
+}
+
+
+/* ============================================================
+   Select mode -- prominent white border (2026-09-24).
+   Both select-mode containers sat on a faint tinted edge and read
+   as part of the wallpaper behind them. Same outer line as the
+   Settings boxes, the file/folder rows and the delete dialog:
+   0.6px solid rgba(255,255,255,0.7) + its 2px white glow, so the
+   whole app uses one edge treatment.
+
+   The existing drop shadows are kept underneath; only the border
+   and the added glow change.
+   ============================================================ */
+/* 2px at 0.95 alpha, not 0.6px at 0.7: on this bar's light purple panel a
+   hairline disappeared, and the original rule's own orange ring
+   (0 0 0 1px rgba(255,140,0,0.35)) sat immediately outside the border and
+   muddied it. The orange ring is dropped so the white edge stands alone. */
+.select-action-bar {
+    border: 1.2px solid rgba(255, 255, 255, 0.95) !important;
+    box-shadow:
+        0 0 7px rgba(255, 255, 255, 0.22),
+        0 18px 40px rgba(0, 0, 0, 0.6) !important;
+}
+
+
+/* ============================================================
+   "N selected" bar gets the SAME edge as the Home/<folder> card
+   (2026-09-24). That card has border:none -- its orange edge is a
+   gradient-masked ::before ring, which a plain border cannot
+   reproduce (a border only takes a flat colour). So the ring is
+   copied verbatim, including the 0.6px inset and the xor mask.
+   .select-bar is position:relative already, so the ring anchors.
+   ============================================================ */
+.select-bar {
+    border: none !important;
+    position: relative;
+}
+.select-bar::before {
+    display: block;
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 0.6px;
+    background: linear-gradient(135deg, #ffb347, #ff8f1f, #ffa337, #ffb347);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    box-shadow: none;
+    pointer-events: none;
+    z-index: 0;
+}
+/* The bar's own children must sit above the ring layer. */
+.select-bar > * { position: relative; z-index: 1; }
+
+
+/* ============================================================
+   Animation 3 -- search results stagger (2026-09-24).
+   render() rebuilds #content for a search, so these are entry
+   KEYFRAMES on brand-new elements; a transition could never run.
+
+   Capped at 8 rows. The brief asked for ~70ms per item, but a
+   search here can return 40+ results and the last row would land
+   nearly three seconds late. Rows 9+ share the 8th row's delay, so
+   a long list still finishes in ~0.6s.
+   ============================================================ */
+/* 10px over 340ms was too subtle to read on the phone -- reported as "no
+   changes". 22px, a slight scale-up and a longer 0.44s make the rise
+   actually visible without feeling slow. */
+.search-stagger > * {
+    animation: srchRise 0.44s cubic-bezier(0.18, 0.9, 0.3, 1) both;
+}
+/* #content carries its own childReveal from .app.app-visible. It only runs at
+   launch, but if it ever coincided with a search it would slide the whole
+   block and hide the per-row motion. */
+.app.app-visible #content.search-stagger { animation: none !important; }
+.search-stagger > *:nth-child(1) { animation-delay: 0.02s; }
+.search-stagger > *:nth-child(2) { animation-delay: 0.09s; }
+.search-stagger > *:nth-child(3) { animation-delay: 0.16s; }
+.search-stagger > *:nth-child(4) { animation-delay: 0.23s; }
+.search-stagger > *:nth-child(5) { animation-delay: 0.30s; }
+.search-stagger > *:nth-child(6) { animation-delay: 0.37s; }
+.search-stagger > *:nth-child(7) { animation-delay: 0.44s; }
+.search-stagger > *:nth-child(n+8) { animation-delay: 0.51s; }
+@keyframes srchRise {
+    from { opacity: 0; transform: translateY(22px) scale(0.97); }
+    to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .search-stagger > * { animation: none; }
+}
+
+
+/* ============================================================
+   Animation 3b -- the SUGGESTIONS list staggers too (2026-09-24).
+   While you type, the suggestions dropdown is what is actually on
+   screen: the results list behind it is covered by the dropdown and
+   by the keyboard, so its stagger finished unseen. These are the
+   rows you can see, so they get the same rise.
+
+   Shorter and tighter than the results list (0.3s, 45ms apart): the
+   dropdown rebuilds on EVERY keystroke, so a long animation would
+   still be running when the next character arrives.
+   ============================================================ */
+.search-suggestions .search-suggest-item {
+    animation: sugRise 0.3s cubic-bezier(0.18, 0.9, 0.3, 1) both;
+}
+.search-suggestions .search-suggest-item:nth-child(1) { animation-delay: 0s; }
+.search-suggestions .search-suggest-item:nth-child(2) { animation-delay: 0.045s; }
+.search-suggestions .search-suggest-item:nth-child(3) { animation-delay: 0.09s; }
+.search-suggestions .search-suggest-item:nth-child(4) { animation-delay: 0.135s; }
+.search-suggestions .search-suggest-item:nth-child(5) { animation-delay: 0.18s; }
+.search-suggestions .search-suggest-item:nth-child(n+6) { animation-delay: 0.225s; }
+@keyframes sugRise {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .search-suggestions .search-suggest-item { animation: none; }
+}
+
+
+/* ============================================================
+   Page-turn smoothness (2026-09-24).
+   .card carries backdrop-filter: blur(14px). Scaling a subtree full
+   of live backdrop blurs makes the browser recompute every blur on
+   every frame -- that is the "stuck" feel, not the timing.
+   The blur is suspended for the ~330ms of the turn; on a nearly
+   opaque card fill it is barely visible anyway, and it comes
+   straight back when the class is removed.
+   ============================================================ */
+#content.page-turning,
+#content.page-turning * {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+#content.page-turning {
+    /* Flatten the subtree into one layer for the duration. */
+    transform-style: flat;
+    backface-visibility: hidden;
+}
+
+
+/* ============================================================
+   Prompt dialogs get an entrance too (2026-09-24).
+   showModal()'s confirm branch animates in with dlg2In; the prompt
+   branch (Add Department, rename, new folder...) had no animation
+   at all, so it simply appeared -- "comes fast".
+
+   Only the overlay and the card are touched. The prompt's markup
+   is left exactly as it is: it also serves rename, the date picker
+   and the expiry flows.
+   ============================================================ */
+#customPrompt {
+    animation: promptFade 0.18s ease both;
+}
+#customPrompt > div {
+    animation: dlg2In 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes promptFade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #customPrompt,
+    #customPrompt > div { animation: none; }
+}
+
+
+/* ============================================================
+   Add Department FAB -- smooth expand (2026-09-24).
+
+   It was `transition: width 0.42s`. Animating width re-rasterises
+   the button's layer at a new size on every frame, with a 1040x404
+   and a 413x570 PNG inside it -- that is the stutter, not the
+   timing. will-change:transform could not help, because width is
+   not a compositable property.
+
+   The button is now always full width and revealed with clip-path,
+   which Chrome animates on the compositor. Same visual result: the
+   collapsed state shows the rightmost 78px, where the "+" icon is
+   anchored (right:0), and the wide artwork is uncovered as the clip
+   opens. clip-path also clips hit-testing, so the tap target still
+   follows the visible part instead of spanning the full width.
+   ============================================================ */
+.dept-add-fab {
+    width: 272px !important;
+    clip-path: inset(0 0 0 194px);
+    transition: clip-path 0.36s cubic-bezier(0.22, 1, 0.36, 1) !important;
+    will-change: clip-path;
+}
+.dept-add-fab.dept-add-fab-expanded {
+    width: 272px !important;
+    clip-path: inset(0 0 0 0);
+}
+@media (prefers-reduced-motion: reduce) {
+    .dept-add-fab { transition: none !important; }
+}
+
+
+/* ============================================================
+   Add Department FAB -- slide-in when it appears (2026-09-24).
+   It is shown/hidden with .hidden { display:none }, so it simply
+   popped onto the screen with nothing to smooth it. Going from
+   display:none back to visible restarts a CSS animation, which is
+   what makes this fire each time it returns (coming back to the
+   department hub, closing an overlay).
+
+   translateZ(0) is repeated in BOTH keyframes on purpose: the
+   element relies on it for layer promotion, and an animation on
+   transform would otherwise replace it and drop the FAB off its
+   own compositing layer mid-slide.
+   ============================================================ */
+.dept-add-fab:not(.hidden) {
+    animation: fabSlideIn 0.5s cubic-bezier(0.45, 0.05, 0.35, 1) both;
+}
+@keyframes fabSlideIn {
+    from { transform: translateZ(0) translateX(115%); opacity: 0; }
+    to   { transform: translateZ(0) translateX(0);    opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .dept-add-fab:not(.hidden) { animation: none; }
+}
+
+/* ============================================================
+   FAB expand -- the artwork must travel WITH the reveal.
+   The two PNGs cross-fade on their own transitions (0.25s and
+   0.3s, set way above). Slowing the clip-path reveal alone left
+   the "ADD DEPARTMENT" image still popping in over 0.3s while the
+   shape was only part-way open -- which is the "comes fast" being
+   described. All three now share one duration and easing.
+   ============================================================ */
+.dept-add-fab {
+    /* Easing, not duration, was the problem: cubic-bezier(.22,1,.36,1) was 76%
+       open in 240ms and then crawled for another 650ms, so it read as a snap.
+       This curve spreads the travel evenly across the whole duration. */
+    transition: clip-path 0.7s cubic-bezier(0.45, 0.05, 0.35, 1) !important;
+}
+.dept-add-fab-collapsed,
+.dept-add-fab-full {
+    transition: opacity 0.7s cubic-bezier(0.45, 0.05, 0.35, 1) !important;
+}
+.dept-add-fab-expanded .dept-add-fab-collapsed {
+    transition: opacity 0.35s ease !important;   /* the old icon may leave sooner */
+}
+.dept-add-fab:not(.hidden) {
+    animation-duration: 0.55s !important;
+}
+
+
+/* ============================================================
+   Stat buttons + Recent subtabs (2026-09-24).
+   Recent / Sort / Dashboard / Recycle Bin and the Opened / Added /
+   Modified tabs had no press feedback -- they were not in
+   attachPressEffects()'s selector list. They are now, and this
+   gives them the transition the scale needs.
+   ============================================================ */
+.stat-icon-btn,
+.subtab-btn {
+    transition: transform 0.15s cubic-bezier(0.2, 0.9, 0.4, 1.2),
+                background 0.15s ease,
+                border-color 0.15s ease;
+}
+
+/* Switching a Recent tab replaces the list's contents, so the rows get the
+   same rise-in the search results use. Re-armed from the tab's click handler
+   (remove -> reflow -> add), because the list element itself is not replaced
+   and a keyframe would otherwise only ever run once. */
+.recents-revealing > * {
+    animation: recentRise 0.4s cubic-bezier(0.45, 0.05, 0.35, 1) both;
+}
+.recents-revealing > *:nth-child(1) { animation-delay: 0s; }
+.recents-revealing > *:nth-child(2) { animation-delay: 0.05s; }
+.recents-revealing > *:nth-child(3) { animation-delay: 0.1s; }
+.recents-revealing > *:nth-child(4) { animation-delay: 0.15s; }
+.recents-revealing > *:nth-child(5) { animation-delay: 0.2s; }
+.recents-revealing > *:nth-child(n+6) { animation-delay: 0.25s; }
+@keyframes recentRise {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .recents-revealing > * { animation: none; }
+    .stat-icon-btn, .subtab-btn { transition: none; }
+}
+
+
+/* ============================================================
+   Recent page -- Settings box theme (2026-09-24).
+   Its rows come from `.dm-list-card .fav-row` (a different rule
+   from the Recycle Bin rows themed earlier), on a near-black fill
+   with a 26% white edge. Same values as .settings-item, copied
+   verbatim so the two screens genuinely match:
+       background  var(--card-bg)  = rgba(35, 12, 50, 0.72)
+       border      0.6px solid rgba(255,255,255,0.7)
+       box-shadow  0 0 2px rgba(255,255,255,0.2)
+
+   Scoped to #recentsView and written with the id so it outranks
+   `.dm-list-card .fav-row` without needing !important. The
+   Dashboard and Favourites use the same classes and are untouched.
+   ============================================================ */
+#recentsView .dm-list-card .fav-row {
+    background: var(--card-bg);
+    border: 0.6px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 0 2px rgba(255, 255, 255, 0.2);
+}
+#recentsView .dm-list-card .fav-row:active {
+    background: var(--card-bg-hover);
+}
+/* The panel the rows sit in gets the same edge. */
+#recentsView .dm-list-card,
+#recentsView .dm-empty-card {
+    border: 0.6px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 0 2px rgba(255, 255, 255, 0.2),
+                0 14px 34px rgba(0, 0, 0, 0.45);
+}
+
+
+/* ============================================================
+   Row "..." menu button -- neon-rim pill (2026-09-24, second
+   reference). Near-black fill with a rim that runs blue -> violet
+   -> magenta and a soft outer glow.
+
+   The rim is a masked ::before, not a border: a CSS border only
+   takes a flat colour and cannot hold a gradient. Same xor-mask
+   technique the Home/<folder> card and the DOCMAN header use.
+
+   Both selectors the app uses for this control are covered:
+   .card .row-menu (files/notes) and .folder-row .frow-menu
+   (subfolders).
+   ============================================================ */
+.folder-row .frow-menu,
+.card .row-menu {
+    background: linear-gradient(180deg, #16111f 0%, #0d0916 100%);
+    border: none;
+    /* No outer glow -- the coloured halo spilled onto the row behind it.
+       Only the inset shade stays, so the rim reads as a crisp edge. */
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+.folder-row .frow-menu::before,
+.card .row-menu::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.4px;
+    background: linear-gradient(100deg,
+        #3b82f6 0%, #6366f1 32%, #8b5cf6 62%, #c026d3 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 0;
+}
+/* The dots are absolutely positioned too -- keep them above the rim layer. */
+.folder-row .frow-dots,
+.card .row-menu .frow-dots {
+    color: #ffffff;
+    z-index: 1;
+}
+.folder-row .frow-menu:active,
+.card .row-menu:active {
+    background: linear-gradient(180deg, #221a33 0%, #140e22 100%);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+
+/* ============================================================
+   "..." button -- bigger touch target (2026-09-24).
+   The pill is 42x24px. Anything under ~48px is easy to miss, and a
+   near-miss landed on the row instead, which opened the file. The
+   button's handlers already stopPropagation, so the fix is purely
+   to make more of the area actually BE the button.
+
+   An invisible ::after extends the hit region to roughly 62x48
+   without changing anything you can see. ::before is already the
+   neon rim, so ::after is the free slot. It must NOT have
+   pointer-events:none -- receiving the touch is its whole job.
+   ============================================================ */
+/* The button computes to overflow:hidden, which CLIPPED the hit-area
+   pseudo-element to the pill -- that is why taps 10px out still hit the row. */
+.folder-row .frow-menu,
+.card .row-menu { overflow: visible !important; }
+.folder-row .frow-menu::after,
+.card .row-menu::after {
+    content: "";
+    position: absolute;
+    /* wider on the right, where the finger tends to land near the edge */
+    /* Sized for a large finger: a touch centroid can sit well off the
+       visual centre. ~66x52 around a 42x24 pill. Biased so the WORST case
+       is opening the wrong menu (harmless, dismissible) rather than opening
+       the wrong file. */
+    inset: -14px -12px -14px -12px;
+    border-radius: 999px;
+    background: transparent;
+}
+
+
+/* ============================================================
+   Image viewer / editor headers -- clear the status bar
+   (2026-09-24). Both used `max(12px, env(safe-area-inset-top))`,
+   which puts the buttons flush against the inset with no gap, so
+   Close/Edit sat right under the clock and notification icons.
+
+   The rest of the app already uses the "+ a gap" form, e.g.
+   .fav-view-header and the settings headers:
+       max(20px, calc(env(safe-area-inset-top) + 10px))
+   These two were simply written without it. Matched here, with a
+   slightly larger gap since these are round 44px buttons.
+   ============================================================ */
+.image-viewer-header,
+.img-editor-header {
+    padding-top: max(22px, calc(env(safe-area-inset-top) + 14px)) !important;
+}
+
+/* A reminder whose time has passed. The row carries its border colour inline,
+   but a CSS animation outranks an inline declaration, so the keyframes drive
+   it without the markup having to know. Border and glow only -- the title and
+   time stay at their normal contrast and remain readable throughout. */
+.reminder-row.reminder-due {
+    animation: reminderDuePulse 1.7s ease-in-out infinite;
+}
+@keyframes reminderDuePulse {
+    0%, 100% {
+        border-color: rgba(249, 115, 22, 0.35);
+        box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+    }
+    50% {
+        border-color: rgba(249, 115, 22, 0.95);
+        box-shadow: 0 0 14px 2px rgba(249, 115, 22, 0.42);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    /* Still marked out, just not moving. */
+    .reminder-row.reminder-due {
+        animation: none;
+        border-color: rgba(249, 115, 22, 0.9);
+    }
+}
+
+/* The Reminders tab when something is due. Same pulse language as the due
+   row itself, so the tab and the row it leads to read as one signal. The tab
+   sets its border and background inline; a CSS animation outranks an inline
+   declaration, so the keyframes drive the border without touching the markup.
+   The inactive tab is the case that matters -- the active one is already lit
+   by its own gradient. */
+.expdoc-tab.expdoc-tab-due {
+    animation: expdocTabDuePulse 1.9s ease-in-out infinite;
+    will-change: opacity;
+}
+@keyframes expdocTabDuePulse {
+    0%, 100% { opacity: 0.1; }
+    50%      { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .expdoc-tab.expdoc-tab-due {
+        animation: none;
+        opacity: 1;
+        border-color: rgba(249, 115, 22, 0.9);
+    }
+}
+
+/* Quick note -- a comment bubble pinned to the file row, the way a
+   spreadsheet shows one. No dimmed backdrop: the point is that the note
+   belongs to the row behind it, which stays visible. The catcher is an
+   invisible full-screen layer purely so a tap anywhere else closes it. */
+.qnote-catcher {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: transparent;
+}
+.qnote-bubble {
+    position: fixed;
+    width: 250px;
+    max-height: 42vh;
+    overflow-y: auto;
+    background: #fdf6d3;
+    border: 1px solid #d9c98a;
+    border-radius: 6px;
+    padding: 9px 11px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+    animation: qnotePop 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/* Grows out of the icon that was tapped -- transform-origin is set in JS to
+   the anchor's centre, so it opens from the note rather than from nowhere. */
+@keyframes qnotePop {
+    from { opacity: 0; transform: scale(0.86); }
+    to   { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .qnote-bubble { animation: none; } }
+.qnote-arrow {
+    position: absolute;
+    top: -6px;
+    width: 11px; height: 11px;
+    background: #fdf6d3;
+    border-left: 1px solid #d9c98a;
+    border-top: 1px solid #d9c98a;
+    transform: rotate(45deg);
+}
+/* Flipped above the row when there is no space below it. */
+.qnote-bubble.qnote-above .qnote-arrow {
+    top: auto;
+    bottom: -6px;
+    border-left: none; border-top: none;
+    border-right: 1px solid #d9c98a;
+    border-bottom: 1px solid #d9c98a;
+}
+.qnote-name {
+    color: #6b5b12;
+    font-size: 0.62rem;
+    font-weight: 700;
+    font-family: Inter, sans-serif;
+    margin-bottom: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.qnote-body {
+    color: #2f2a12;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    font-family: Inter, sans-serif;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.qnote-actions {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    margin-top: 9px;
+    padding-top: 7px;
+    border-top: 1px solid rgba(0, 0, 0, 0.12);
+}
+.qnote-act {
+    background: none;
+    border: none;
+    padding: 4px 0;
+    cursor: pointer;
+    color: #7a5c0a;
+    font-size: 0.7rem;
+    font-weight: 600;
+    font-family: Inter, sans-serif;
+    display: flex; align-items: center; gap: 4px;
+}
+.qnote-act i { font-size: 0.68rem; }
+.qnote-act-danger { color: #a33; }
+.qnote-act-close { margin-left: auto; color: #8a7c3f; font-weight: 500; }
+
+
+/* ============================================================
+   THEME SWITCH — CIRCULAR REVEAL
+   Only active while themeReveal() has .theme-vt on <html>. The default
+   View Transition cross-fades the two snapshots, which would wash the
+   colours out mid-switch; turning that off leaves the new theme sitting
+   over the old one, and JS clips it open from the tapped point.
+   ============================================================ */
+html.theme-vt::view-transition-old(root),
+html.theme-vt::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+}
+html.theme-vt::view-transition-old(root) { z-index: 0; }
+html.theme-vt::view-transition-new(root) { z-index: 1; }
+
+
+/* ============================================================
+   SLIDING TAB PILL
+   The active gradient moves to a floating pill so it can travel between
+   tabs instead of jumping. Only rows that moveTabGlider() has touched get
+   .has-glider, so every other tab row in the app is untouched.
+   ============================================================ */
+.has-glider { position: relative; }
+
+.tab-glider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    border-radius: 20px;
+    background: linear-gradient(135deg, #ff6b4a, #e91e8c);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3),
+                inset 0 -2px 5px rgba(0, 0, 0, 0.25),
+                0 3px 10px rgba(233, 30, 140, 0.45);
+    pointer-events: none;
+    z-index: 0;
+    /* overshoot slightly on arrival, the way a physical switch settles */
+    transition: transform 0.42s cubic-bezier(0.34, 1.4, 0.64, 1),
+                width 0.42s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* the buttons ride above the pill */
+.has-glider .subtab-btn { position: relative; z-index: 1; }
+
+/* the active button hands its background to the pill and keeps only its text */
+.has-glider .subtab-btn.active,
+body.light-mode .has-glider .subtab-btn.active {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    color: #fff !important;
+}
+
+/* honour the app's own animation switch and the system setting */
+body.reduce-motion .tab-glider { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+    .tab-glider { transition: none; }
+}
+
+
+/* ============================================================
+   LIST ROWS RISE IN
+   The same idiom the search results use (.search-stagger, srchRise), applied
+   to the two lists that appeared fully formed with no motion at all: the
+   Expiring rows, and the reminders for the day picked on the calendar. The
+   ladder is capped at the 8th row, so a long list still finishes in ~0.6s
+   instead of trickling in for several seconds.
+   ============================================================ */
+.stagger-rows > * {
+    animation: srchRise 0.44s cubic-bezier(0.18, 0.9, 0.3, 1) both;
+}
+.stagger-rows > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger-rows > *:nth-child(2) { animation-delay: 0.09s; }
+.stagger-rows > *:nth-child(3) { animation-delay: 0.16s; }
+.stagger-rows > *:nth-child(4) { animation-delay: 0.23s; }
+.stagger-rows > *:nth-child(5) { animation-delay: 0.30s; }
+.stagger-rows > *:nth-child(6) { animation-delay: 0.37s; }
+.stagger-rows > *:nth-child(7) { animation-delay: 0.44s; }
+.stagger-rows > *:nth-child(n+8) { animation-delay: 0.51s; }
+
+body.reduce-motion .stagger-rows > * { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+    .stagger-rows > * { animation: none; }
+}
+
+
+/* ============================================================
+   THE PILL ON THE EXPIRING / REMINDERS ROW
+   Same pill, this row's own colours: fully round tabs and the mango-to-pink
+   ramp rather than the Recent row's coral. The active tab is styled inline
+   from the panel template, so handing its fill to the pill takes !important.
+   ============================================================ */
+.expdoc-tab-row .tab-glider {
+    border-radius: 999px;
+    background: linear-gradient(135deg, #f97316, #ec4899);
+    box-shadow: 0 4px 12px rgba(236, 72, 153, 0.34);
+}
+
+/* all three buttons ride above the pill, the add-reminder one included */
+.expdoc-tab-row.has-glider > button { position: relative; z-index: 1; }
+
+.expdoc-tab-row.has-glider .expdoc-tab-active {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    color: #fff !important;
+}
+
+
+/* ============================================================
+   TEAR A ROW OFF
+   Borrowed from a desk calendar: the row hinges on its top edge, lifts, then
+   goes over and away. Used when a reminder is deleted. The record is already
+   saved as gone before this runs, so the animation is only the flourish.
+   ============================================================ */
+.tear-away {
+    transform-origin: top center;
+    pointer-events: none;
+    animation: rowTear 0.4s cubic-bezier(0.45, 0.05, 0.35, 1) both;
+}
+
+@keyframes rowTear {
+    0%   { transform: perspective(700px) rotateX(0deg); opacity: 1; }
+    30%  { transform: perspective(700px) rotateX(32deg) translateY(-4px); opacity: 1; }
+    100% { transform: perspective(700px) rotateX(150deg) translateY(-14px); opacity: 0; }
+}
+
+body.reduce-motion .tear-away { animation: none; opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+    .tear-away { animation: none; opacity: 0; }
+}
+
+
+/* A destroyed row tears off its top edge instead of sliding sideways. The
+   height still collapses underneath, so the rows below close the gap while
+   this one goes over. Restoring from the Recycle Bin keeps the slide. */
+.row-leaving.row-tear {
+    transform-origin: top center;
+    transform: perspective(700px) rotateX(155deg) translateY(-10px) !important;
+    transition:
+        transform 0.36s cubic-bezier(0.45, 0.05, 0.35, 1),
+        opacity 0.3s ease,
+        max-height 0.34s cubic-bezier(0.4, 0, 0.2, 1),
+        margin 0.34s cubic-bezier(0.4, 0, 0.2, 1),
+        padding 0.34s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+
+/* ============================================================
+   THE STORAGE BAR DRAWS ITSELF
+   Each segment grows from its own left edge, one after the next, so the split
+   reads as being measured out rather than appearing finished. scaleX rather
+   than width: the segments are sized in percentages inline, and scaling costs
+   no layout.
+   ============================================================ */
+.dash-bar2-draw > span {
+    transform-origin: left center;
+    animation: dashBarDraw 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.dash-bar2-draw > span:nth-child(1) { animation-delay: 0.05s; }
+.dash-bar2-draw > span:nth-child(2) { animation-delay: 0.13s; }
+.dash-bar2-draw > span:nth-child(3) { animation-delay: 0.21s; }
+.dash-bar2-draw > span:nth-child(n+4) { animation-delay: 0.29s; }
+
+@keyframes dashBarDraw {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+}
+
+body.reduce-motion .dash-bar2-draw > span { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+    .dash-bar2-draw > span { animation: none; }
+}
+
+
+/* ============================================================
+   PRESSED ROWS
+   A pressed row shrinks a little. It used to tip toward the finger as well
+   (a 3D rotate driven from the touch point), which read as the card wobbling
+   rather than answering the tap, so the rotation is gone.
+   ============================================================ */
+.card.press-depth-3d {
+    transform: scale(0.96);
+    /* Reads as the card being pushed INTO the surface rather than just
+       getting smaller: the light that normally sits on its top edge becomes a
+       shadow, and the whole card dims a touch. */
+    box-shadow: inset 0 3px 7px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.35) !important;
+    filter: brightness(0.93);
+}
+body.light-mode .card.press-depth-3d {
+    box-shadow: inset 0 3px 7px rgba(120, 95, 65, 0.3), 0 1px 2px rgba(120, 95, 65, 0.18) !important;
+    filter: brightness(0.97);
+}
+
+/* The menu button sinks on its own, a bit deeper than the row does -- it is
+   small, so the same 4% would barely register. */
+.row-menu.press-depth-3d {
+    transform: scale(0.88);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.6) !important;
+    filter: brightness(0.85);
+}
+body.light-mode .row-menu.press-depth-3d {
+    box-shadow: inset 0 2px 5px rgba(120, 95, 65, 0.35) !important;
+    filter: brightness(0.93);
+}
+.card.press-depth-3d,
+.row-menu.press-depth-3d {
+    transition: transform 0.09s ease-out, box-shadow 0.09s ease-out, filter 0.09s ease-out;
+}
+
+
+/* Each department's usage bar grows from its left edge, one row after the
+   next -- the same draw-in as the storage split bar, which only appears when
+   there is more than one file type to split. Reuses dashBarDraw. */
+.dash-dep-draw .dash-dep-fill {
+    transform-origin: left center;
+    animation: dashBarDraw 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.dash-dep-draw .dash-dep-row:nth-child(1) .dash-dep-fill { animation-delay: 0.06s; }
+.dash-dep-draw .dash-dep-row:nth-child(2) .dash-dep-fill { animation-delay: 0.14s; }
+.dash-dep-draw .dash-dep-row:nth-child(3) .dash-dep-fill { animation-delay: 0.22s; }
+.dash-dep-draw .dash-dep-row:nth-child(4) .dash-dep-fill { animation-delay: 0.30s; }
+.dash-dep-draw .dash-dep-row:nth-child(n+5) .dash-dep-fill { animation-delay: 0.38s; }
+
+body.reduce-motion .dash-dep-draw .dash-dep-fill { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+    .dash-dep-draw .dash-dep-fill { animation: none; }
+}
+
+
+ }
+
+/* "PRO" badge beside the DOCMAN wordmark, shown only once Pro is bought
+   (body.docman-pro, set by updateProBadge() in app.js). Approved 2026-09-29. */
+.logo-pro { display: none; }
+body.docman-pro .logo-pro {
+    display: inline-block;
+    align-self: flex-start;
+    margin: 1px 0 0 5px;
+    padding: 2px 5px 1px;
+    border-radius: 5px;
+    font-size: 0.5rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    line-height: 1;
+    color: #1a0f02 !important;
+    -webkit-text-fill-color: #1a0f02 !important;
+    background: linear-gradient(135deg, #ffd27a, #f59e0b 55%, #e8720a) !important;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.45);
+}
+/* The wordmark is clipped to .header-title (see HEADER TEXT vs THE SYSTEM
+   FONT SIZE SETTING above), which cut the badge down to its "P". The badge
+   may use the space held clear of the gear instead: about 50px on the S23,
+   enough for it. On narrow screens the wordmark gives up a little size so
+   the badge still clears the gear. */
+body.docman-pro .header-title h1 {
+    overflow: visible !important;
+    text-overflow: clip !important;
+}
+/* The h1 alone was not enough: .header-title above it still carries
+   overflow:hidden, so the badge was clipped by the parent and the wordmark
+   read "DOCMANP". Both have to let it through. */
+body.docman-pro .header-title { overflow: visible !important; }
+@media (max-width: 380px) {
+    body.docman-pro .header-title h1 {
+        font-size: clamp(0.95rem, 6.2vw, 1.7rem) !important;
+    }
+    body.docman-pro .logo-pro {
+        font-size: 0.45rem;
+        letter-spacing: 0.8px;
+        margin-left: 4px;
+    }
+}
+/* Clear the few decorative dots sitting right behind the PRO badge
+   (approved 2026-09-29), leaving the rest of the grid. The badge sits over
+   the grid's top-left corner, so only that corner is masked out. */
+body.docman-pro .header-dots {
+    -webkit-mask-image: linear-gradient(#000, #000), linear-gradient(#000, #000);
+    -webkit-mask-size: 100% 100%, 40px 18px;
+    -webkit-mask-position: 0 0, 0 0;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-composite: xor;
+    mask-image: linear-gradient(#000, #000), linear-gradient(#000, #000);
+    mask-size: 100% 100%, 40px 18px;
+    mask-position: 0 0, 0 0;
+    mask-repeat: no-repeat;
+    mask-composite: exclude;
+}
+
+
+/* ============================================================
+   ABOUT PAGE -- TIGHTER TOP, AND CLEAR OF THE NAV BAR
+   Two separate problems, two separate fixes.
+
+   1. The bottom of every settings panel ran under the Android nav bar.
+      .settings-page-inner reserved a flat 60px, which is less than the bar
+      on a phone that draws one, so the last row was cut in half. The reserve
+      now follows the real bar height MainActivity publishes as --nav-bottom,
+      falling back to the safe-area inset. Applied to the shared container,
+      so every settings panel gains it, not just About.
+
+   2. About alone opened with roughly 60px of dead space above the icon: the
+      shared 22px header margin plus the 28px top padding of its own card.
+      Both are trimmed here, scoped to About so no other panel shifts.
+   ============================================================ */
+.settings-page-inner {
+    padding-bottom: calc(28px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
+}
+
+/* Second pass. The first trimmed 30px and still read as unchanged, and the
+   badge-to-APP-INFO gap was three spacings stacking: the card padding-bottom,
+   the 4px body gap, and an 18px group-title margin. All three are cut, taking
+   that gap from 36px to 12px, and the identity block itself is tightened.
+   Scoped to About, so no other settings panel moves. */
+#settingsPanel-about .settings-header { margin-bottom: 2px; }
+#settingsPanel-about .about-card { padding: 0 16px 4px; gap: 3px; }
+#settingsPanel-about .about-icon { width: 66px; height: 66px; border-radius: 18px; }
+#settingsPanel-about .about-name { font-size: 1.18rem; }
+#settingsPanel-about .about-tagline { font-size: 0.74rem; }
+#settingsPanel-about .about-version-badge { margin-top: 2px; }
+#settingsPanel-about .settings-group-title { margin-top: 4px; }
+
+
+/* ============================================================
+   REMINDER STICKY NOTE FROM A NOTIFICATION
+   Tapping the alert opens the Reminders page and pops the reminder on its
+   own row as a paper note -- the same object class as the file quick note
+   (.qnote-bubble above), so the two read as one idea. No dimmed backdrop:
+   the list behind it is the point. The catcher is an invisible full-screen
+   layer purely so a tap anywhere else closes the note.
+   ============================================================ */
+.rnote-catcher {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;        /* over the reminders panel, which sits at 9999 */
+    background: transparent;
+}
+.rnote-sticky {
+    position: fixed;
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    width: 262px;
+    max-height: 46vh;
+    background: #fdf6d3;
+    border: 1px solid #d9c98a;
+    border-radius: 6px;
+    padding: 9px 8px 9px 11px;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.55);
+    animation: rnotePop 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/* Grows out of the row it belongs to -- transform-origin is set in JS to the
+   row's centre, so it opens from the reminder rather than from nowhere. */
+@keyframes rnotePop {
+    from { opacity: 0; transform: scale(0.86); }
+    to   { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .rnote-sticky { animation: none; } }
+body.reduce-motion .rnote-sticky { animation: none; }
+
+.rnote-arrow {
+    position: absolute;
+    top: -6px;
+    width: 11px; height: 11px;
+    background: #fdf6d3;
+    border-left: 1px solid #d9c98a;
+    border-top: 1px solid #d9c98a;
+    transform: rotate(45deg);
+}
+/* Flipped above the row when there is no space below it. */
+.rnote-sticky.rnote-above .rnote-arrow {
+    top: auto;
+    bottom: -6px;
+    border-left: none; border-top: none;
+    border-right: 1px solid #d9c98a;
+    border-bottom: 1px solid #d9c98a;
+}
+
+.rnote-main { flex: 1; min-width: 0; overflow-y: auto; }
+.rnote-label {
+    display: flex; align-items: center; gap: 4px;
+    color: #6b5b12;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-family: Inter, sans-serif;
+    margin-bottom: 3px;
+}
+.rnote-label i { font-size: 0.6rem; }
+.rnote-title {
+    color: #2f2a12;
+    font-size: 0.88rem;
+    font-weight: 700;
+    line-height: 1.35;
+    font-family: Inter, sans-serif;
+    word-break: break-word;
+}
+.rnote-when {
+    color: #7a5c0a;
+    font-size: 0.73rem;
+    font-weight: 600;
+    font-family: Inter, sans-serif;
+    margin-top: 3px;
+}
+.rnote-place {
+    display: flex; align-items: center; gap: 4px;
+    color: #6b5b12;
+    font-size: 0.71rem;
+    font-family: Inter, sans-serif;
+    margin-top: 3px;
+    opacity: 0.9;
+}
+.rnote-place i { font-size: 0.62rem; }
+
+/* Close sits on its own rail, clear of the text. Nothing destructive is on
+   the note: delete stayed on the row, where it cannot be hit by someone
+   reaching to dismiss what just popped up. */
+.rnote-side {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    flex-shrink: 0;
+    padding-left: 8px;
+    border-left: 1px solid rgba(0, 0, 0, 0.12);
+}
+.rnote-side-btn {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    background: rgba(0, 0, 0, 0.04);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+    font-family: Inter, sans-serif;
+}
+.rnote-close { color: #8a7c3f; font-size: 0.72rem; line-height: 1; }
+
+/* The row the note came from stays marked after it is closed: a steady amber
+   banner with its own edge bar, never a blink. It also outranks the due
+   row's pulse, so the one reminder that was alerted stops moving while the
+   note is on screen and after. :not(.tear-away) leaves the delete
+   animation free to run. */
+.reminder-row.reminder-banner:not(.tear-away) {
+    animation: none !important;
+    position: relative;
+    padding-left: 20px !important;
+    border-color: rgba(249, 115, 22, 0.85) !important;
+    box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.3), 0 6px 18px rgba(249, 115, 22, 0.16);
+}
+/* A reminder that has been read carries only the trash -- the row the alert
+   led to, and every row whose time has passed and been acknowledged. Edit is
+   a thing you go looking for (the long press still opens it); once a reminder
+   has done its job, the useful answer is "deal with it", not "change it". */
+/* !important because the button carries its own display:flex inline, from the
+   panel's inline-styled markup -- an inline declaration outranks a plain rule
+   here, so the first attempt at this hid nothing at all. */
+.reminder-row.reminder-banner .reminder-edit,
+.reminder-row.reminder-seen .reminder-edit { display: none !important; }
+.reminder-row.reminder-banner:not(.tear-away)::before {
+    content: '';
+    position: absolute;
+    left: 6px; top: 8px; bottom: 8px;
+    width: 3px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #f97316, #ec4899);
+}
+
+
+/* ============================================================
+   A LOCKED DEPARTMENT
+   The count circle carries the padlock and the item count is withheld --
+   amber on near-black, so the word never looks faint the way the old 0.7rem
+   corner icon did. That icon sat on the pill's rounded corner, half of it
+   outside the shape, which is why it was hard to see at all.
+   ============================================================ */
+/* The circle keeps the same pearl-white face as every other one, gloss and
+   all -- only what sits in it changes: a padlock instead of the count, since
+   how much is inside a locked department is what locking it was meant to keep
+   to yourself. Amber reads on white; the gold used on a dark circle did not. */
+.dept-count-lock {
+    font-size: 1.2rem;
+    color: #d97706;
+    line-height: 1;
+    /* A hairline of black around the glyph. On the pale circle it gives the
+       padlock an edge to sit against, so it reads as an object rather than a
+       flat amber shape. */
+    -webkit-text-stroke: 0.6px rgba(0, 0, 0, 0.8);
+    /* the circle paints its highlight in ::before at z-index 2 */
+    position: relative;
+    z-index: 3;
+}
+/* style.css:1679 hides every direct <i> in this circle -- an old rule from when
+   an icon could land there by accident. The padlock IS a direct <i>, so without
+   this it was hidden and the circle looked empty. */
+.dept-pill-icon-locked > i.dept-count-lock { display: block !important; }
+/* No word at all. The padlock says it on its own, and a small label in that
+   circle was the part that read as faint. */
+.dept-pill-icon-locked .dept-count-label { display: none !important; }
+
+
+/* ============================================================
+   BY DEPARTMENT, AS A BAR GRAPH
+   The track was a hairline under the name; it is the measurement, so it now
+   carries the weight. Departments holding nothing collapse to a single line:
+   a run of "Empty" rows breaks the very comparison the bars exist to make.
+   Columns were considered and rejected -- a phone's width is fixed while its
+   height scrolls, so columns get worse as departments are added, not better.
+   ============================================================ */
+.dash-dep-track {
+    height: 9px !important;
+    border-radius: 99px !important;
+    background: rgba(255, 255, 255, 0.09) !important;
+    overflow: hidden;
+}
+.dash-dep-fill {
+    height: 100% !important;
+    border-radius: 99px !important;
+    min-width: 4px;
+}
+.dash-dep-bare {
+    padding: 11px 16px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-family: Inter, sans-serif;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+
+/* ============================================================
+   DASHBOARD CARDS NEED AN EDGE
+   On the plum wallpaper each card sat at almost the same value as the ground
+   behind it, so the sections ran together. A hairline is enough to separate
+   them without turning the page into a grid of boxes.
+   ============================================================ */
+.dash-depts,
+.dash-doc,
+.dash-backup,
+.dash-exp,
+.dash-expiry,
+.dash-hero2 {
+    border: 1px solid rgba(255, 255, 255, 0.28) !important;
+}
+/* ============================================================
+   BUSY OVERLAY — THE FILLING GLASS
+   A ring that only spins says "something is happening"; over the minute a
+   large cloud file can take, that is no news at all. The circle fills with
+   water instead, so the level is the progress. One colour and one surface:
+   an earlier version stacked two translucent ellipses and the overlap read
+   as a second, false water line. Before a size is known the water rests
+   near the bottom (.busy-ring-idle) rather than drawing a number nobody
+   has. Driven by setBusyFill() in app.js.
+   ============================================================ */
+.busy-ring {
+    position: relative;
+    width: 104px; height: 104px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    overflow: hidden;
+    /* Near-black in both themes: the empty part of the glass should read as
+       empty, not as a tinted panel. */
+    background: #05060a;
+    border: 2px solid #4ea3ff;
+}
+.busy-fill {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 0;
+    background: #2b8cf0;
+    transition: height 0.25s linear;
+}
+/* The surface. The SVG holds two full wave periods across its viewBox and is
+   drawn at twice the ring's width, so sliding it by half its width lands on
+   an identical phase -- the loop has no seam. */
+.busy-surf {
+    position: absolute;
+    left: 0; top: -9px;
+    width: 200%; height: 18px;
+    animation: busyWaveSlide 2.6s linear infinite;
+}
+.busy-surf svg { display: block; width: 100%; height: 100%; }
+.busy-surf path { fill: #2b8cf0; }
+@keyframes busyWaveSlide {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+}
+.busy-ring-idle .busy-fill { animation: busyIdle 2.8s ease-in-out infinite; }
+@keyframes busyIdle {
+    0%, 100% { height: 12%; }
+    50%      { height: 18%; }
+}
+.busy-ico {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2rem;
+    color: #fff;
+}
+.busy-pct {
+    position: absolute;
+    left: 0; right: 0; bottom: 9px;
+    font-size: 0.76rem;
+    font-weight: 800;
+    font-family: Inter, sans-serif;
+    color: #fff;
+}
+.busy-pct:empty { display: none; }
+body.reduce-motion .busy-surf,
+body.reduce-motion .busy-ring-idle .busy-fill { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+    .busy-surf, .busy-ring-idle .busy-fill { animation: none; }
+}
+
+
+/* ============================================================
+   THE CARD AN EXPIRY ROW LED TO
+   Tapping a document in the dashboard's Expiring soon list opens its
+   folder, not the document, because everything you would want to do
+   about an expiry lives on the card's own menu. Three slow pulses in
+   the expiry badge's amber are enough to find it; then it stops, so
+   it marks the card without nagging.
+   ============================================================ */
+.file-card.file-card-flash {
+    /* outline, not box-shadow: a shadow was invisible here, and outline is a
+       property nothing else in this file touches, so nothing can outrank it.
+       It also sits outside the border box and is not clipped by the grid. */
+    animation: fileCardFlash 0.8s ease-in-out 3 !important;
+    outline-offset: 2px;
+    position: relative;
+    z-index: 5;
+}
+@keyframes fileCardFlash {
+    0%, 100% { outline: 3px solid rgba(245, 158, 11, 0); transform: scale(1); }
+    50%      { outline: 3px solid rgba(245, 158, 11, 0.95); transform: scale(1.04); }
+}
+body.reduce-motion .file-card.file-card-flash {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.9);
+}
+@media (prefers-reduced-motion: reduce) {
+    .file-card.file-card-flash {
+        animation: none;
+        box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.9);
+    }
+}
+
+/* A note that has a reminder waiting on it gets the same small flag treatment
+   as favourite and lock -- enough to spot in a list, not enough to crowd the
+   title. Amber, matching the reminder language used on rows and the sticky
+   note, rather than the yellow reserved for favourites. */
+.card-remind-indicator {
+    font-size: 0.68rem;
+    color: #f59e0b;
+    flex-shrink: 0;
+    margin-left: 6px;
+}
+
+/* The way back from a note's reminder to the note itself. Sits in the sticky
+   note's body under the due line, styled as paper-coloured ink rather than a
+   filled button: the note is a piece of paper, not a dialog. */
+.rnote-open-note {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-top: 8px;
+    padding: 5px 11px;
+    border-radius: 40px;
+    border: 1px solid rgba(138, 124, 63, 0.45);
+    background: rgba(255, 255, 255, 0.35);
+    color: #6b5b12;
+    font-family: Inter, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.rnote-open-note i { font-size: 0.66rem; }
+.rnote-open-note:active { background: rgba(255, 255, 255, 0.6); }
+
+/* ============================================================
+   FROZEN TOP -- everything above the list stays put and only the files
+   scroll, the way a spreadsheet freezes its header rows. The DOCMAN panel
+   and the folder bar are two separate elements, so they are stacked stickies:
+   the panel sits at the safe-area inset and the folder bar sits directly
+   below it, at a height measured in JS (--top-panel-h) because the panel is
+   taller inside a folder than on the home screen.
+   ============================================================ */
+#folderChrome:not(:empty) {
+    position: sticky;
+    top: var(--safe-top, 0px);
+    z-index: 40;
+    background: var(--frozen-bar);
+    /* Full-bleed to the screen edges while the content box keeps its width,
+       so nothing inside shifts: the negative margin and padding cancel out.
+       .app clips the overhang. */
+    margin-left: -40px;
+    margin-right: -40px;
+    padding: 4px 40px 8px;
+    box-shadow: 0 12px 20px -10px rgba(0, 0, 0, 0.8);
+}
+/* The WebView draws under the status bar, so without this cards would slide
+   through the strip above the frozen panel. Uses ::after, not ::before --
+   body::before is already the app wallpaper (a fixed, full-screen layer), and
+   redefining it shrank the wallpaper to this strip and left the rest black. */
+body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--safe-top, 0px);
+    background: var(--frozen-bar);
+    z-index: 50;
+    pointer-events: none;
+}
+
+/* The folder header was a picture card with the folder art and a big name on
+   it. Frozen in place it ate too much of the screen for what it says, so it
+   is just its text now -- the path on one line, the folder name under it. */
+.current-folder-card {
+    background: none !important;
+    background-image: none !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 2px 0 0 !important;
+    margin: 4px 0 2px !important;
+    overflow: visible !important;
+}
+.current-folder-card::before,
+.current-folder-card::after { display: none !important; }
+.current-folder-card .cf-bottom-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+.current-folder-card .cf-folder-name {
+    font-size: 1.02rem !important;
+    font-weight: 700 !important;
+    line-height: 1.25 !important;
+}
+.current-folder-card .cf-folder-icon {
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    background: none !important;
+    box-shadow: none !important;
+}
+
+/* The big white folder name repeated what the path line already ends with,
+   and frozen in place it was just height. Dropped -- but not the star beside
+   it: the toolbar's Favourite button opens the favourites LIST, so this is
+   still the only way to favourite the folder you are standing in. It moves to
+   the end of the path line rather than keeping a row to itself. */
+.current-folder-card .cf-folder-name { display: none !important; }
+.current-folder-card .cf-bottom-row {
+    position: absolute !important;
+    right: 0 !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    margin: 0 !important;
+    gap: 0 !important;
+}
+.current-folder-card .cf-path-row { padding-right: 34px !important; }
+.current-folder-card { padding-bottom: 2px !important; }
+
+/* Stacked stickies only move as one if nothing sits between them in flow.
+   The panel's 4px margin and the empty breadcrumb/search slots left a gap
+   that closed as you scrolled, so the two bars looked elastic before they
+   locked together. Zero it inside a folder; the breathing room moves inside
+   the frozen bar's own padding, where it travels with it. */
+body.in-folder .top-panel { margin-bottom: 0 !important; }
+body.in-folder #breadcrumb,
+body.in-folder #departmentsSection,
+body.in-folder #searchInfo {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+body.in-folder #breadcrumb:empty,
+body.in-folder #departmentsSection:empty { display: none !important; }
+
+
+
+/* The path line is built as the same kind of container as the Back toolbar
+   right above it -- same width and bleed, same navy fill, same thin orange
+   edge drawn with the gradient-mask trick (a real border cannot hold a
+   gradient), same light-mode white. Two bars of the same family, stacked. */
+.current-folder-card { margin: 4px 0 0 !important; padding: 0 !important; }
+.current-folder-card .cf-path-row {
+    width: calc(100% + 26px) !important;
+    box-sizing: border-box !important;
+    margin: 0 -13px !important;
+    padding: 8px 40px 8px 12px !important;
+    border-radius: 12px !important;
+    border: none !important;
+    background: linear-gradient(180deg, #172040 0%, #10182e 40%, #0b1120 100%) !important;
+    box-shadow: 0 12px 26px rgba(0,0,0,0.6), 0 2px 0 rgba(255,255,255,0.1) inset, 0 -3px 6px rgba(0,0,0,0.5) inset, 0 1px 0 rgba(255,255,255,0.06) !important;
+    position: relative !important;
+    overflow: visible !important;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.current-folder-card .cf-path-row::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 0.6px;
+    background: linear-gradient(135deg, #ffb347, #ff8f1f, #ffa337, #ffb347);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 0;
+}
+.current-folder-card .cf-path-row > * { position: relative; z-index: 1; }
+body.light-mode .current-folder-card .cf-path-row {
+    background: #ffffff !important;
+    box-shadow: 0 2px 8px rgba(150, 110, 60, 0.10) !important;
+}
+.current-folder-card .cf-bottom-row { right: 2px !important; z-index: 2 !important; }
+
+/* The FILES/NOTES row reserved 82px of height while the toggle inside a
+   folder is only 43.4px tall, so roughly 39px sat empty between the
+   "Document Manager" line and the row -- the widest blank band in the panel,
+   and wasted height now that the whole panel is frozen on screen. Give the
+   row just enough for the tallest thing in it (the 45.4px home button). */
+body.in-folder .type-selector { min-height: 48px !important; }
+/* The panel stacks its rows with a 4px gap; inside a folder every pixel of
+   panel height is a pixel the frozen list does not get, so close it. */
+body.in-folder .top-panel { gap: 0 !important; }
+/* The tray art is nudged 7px down by a transform, so it already overhangs
+   the header box -- the row below can start that much higher without the
+   home button ever touching it. */
+body.in-folder .header { padding-top: 0 !important; padding-bottom: 0 !important; }
+
+/* Recent / Sort / Dashboard / Recycle Bin box: 1mm of air above and below the
+   icons instead of the old 8px. 1mm = 5.4 CSS px on this screen, the same
+   conversion the home-button sizing above already uses. */
+.stats-bar {
+    padding-top: 5.4px !important;
+    padding-bottom: 5.4px !important;
+}
+
+/* Closing the panel's row gap to 0 inside a folder also closed the one gap
+   that was doing useful work -- the Recent/Sort box ended up flush against
+   the search row. Give that one seam 0.8mm back (0.8 x 5.4 = 4.3 CSS px).
+   The other seams stay closed. */
+body.in-folder .stats-bar {
+    margin-top: 5.4px !important;
+}
+
+/* Home button and FILES/NOTES pill nudged 1mm down (5.4 CSS px), putting a
+   little air between them and the tray logo above. Offset with relative
+   positioning, not margin: .top-bar is a wrapping flex row, and a margin
+   there re-flowed it badly enough to throw the toggle and Upload out of
+   place. Relative shifts where they paint and where taps land without
+   touching the layout, and there is ~28px of clearance to the search row
+   below, so nothing collides. */
+body.in-folder.tabs-visible .top-bar > #homeBtn,
+body.in-folder.tabs-visible .top-bar > .type-selector {
+    margin-top: 5.4px !important;
+}
+
+/* ============================================================
+   SMALLER FILE ROWS
+   The file-type badge was 34px, which with the card's 4px padding made every
+   row 42px tall. At 28px the row is 36px -- about two more files on screen in
+   a folder -- and it still sits comfortably above the 26px note/folder icon.
+   Everything drawn inside the badge is scaled by the same 0.82 so the sheet
+   fold, the glyph and the "PDF" label keep their proportions.
+   ============================================================ */
+.file-icon-badge {
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 7px !important;
+}
+.file-icon-badge-fold {
+    border-width: 0 9px 9px 0 !important;
+}
+.file-icon-badge svg {
+    width: 12.5px !important;
+    height: 12.5px !important;
+}
+.file-icon-badge-label {
+    font-size: 0.36rem !important;
+}
+/* The photo placeholder's mountains and sun are absolutely placed, so they
+   need the same reduction or they overflow the smaller tile. */
+.photo-sun { top: 4px !important; right: 6px !important; width: 6px !important; height: 6px !important; }
+.photo-mtn1 { border-width: 0 10px 13px 10px !important; }
+.photo-mtn2 { border-width: 0 11px 10px 11px !important; }
+
+
+/* File rows 1mm shorter (5.4 CSS px): 44px -> 38.6px. The height was never
+   the icon or the padding -- .file-card carried a min-height of 44px, which
+   clamped the row no matter what was trimmed inside it. Note and folder rows
+   already sit at 36px, so this also brings the three closer together instead
+   of leaving files standing taller than everything else. */
+.file-card { min-height: 38.6px !important; }
+
+/* The home button alone sits 1mm lower than the FILES/NOTES pill beside it
+   (5.4px on top of the 5.4px the whole row already carries). */
+body.in-folder.tabs-visible .top-bar > #homeBtn {
+    margin-top: 10.8px !important;
+}
+
+/* The first file card was tucked right against the frozen bar, so the bar's
+   drop shadow fell across the card's top border and cut it off. Push the list
+   clear of the bar and pull the shadow in so it lands on the gap, not on the
+   card. */
+body.in-folder #content {
+    padding-top: 7px !important;
+}
+#folderChrome:not(:empty) {
+    box-shadow: 0 6px 10px -8px rgba(0, 0, 0, 0.7) !important;
+}
+
+/* Home button 1mm lower again (10.8 -> 16.2px). */
+body.in-folder.tabs-visible .top-bar > #homeBtn {
+    margin-top: 16.2px !important;
+}
+
+/* File row edge down to a true hairline. It was a 0.6px line carrying a 2px
+   glow around it, and the glow is what gave it weight -- at a glance the edge
+   read two or three pixels thick. The glow goes, the line thins, and the
+   light-mode edge is thinned to match so the two themes stay siblings. */
+body:not(.light-mode) .card.file-card {
+    border: 0.4px solid rgba(190, 215, 255, 0.5) !important;
+    box-shadow: none !important;
+}
+body.light-mode .card.file-card {
+    border: 0.4px solid rgba(120, 95, 65, 0.35) !important;
+    box-shadow: none !important;
+}
+
+/* File rows wear the same neon rim as the ... button on them -- the same
+   blue-to-magenta gradient, drawn the same way (a masked ring, because a real
+   border cannot hold a gradient) -- but at 0.5px instead of the button's
+   1.4px, so it reads as a hairline rather than a tube. The glow is kept very
+   faint: at 2px of blur it tints the edge without spilling onto the row. */
+body:not(.light-mode) .card.file-card {
+    border: none !important;
+    box-shadow: none !important;
+}
+body:not(.light-mode) .file-card::after {
+    display: block !important;
+    padding: 0.5px !important;
+    background: linear-gradient(100deg,
+        #3b82f6 0%, #6366f1 32%, #8b5cf6 62%, #c026d3 100%) !important;
+    box-shadow: 0 0 2px rgba(99, 102, 241, 0.45) !important;
+}
+body.light-mode .card.file-card {
+    border: none !important;
+    box-shadow: none !important;
+}
+body.light-mode .file-card::after {
+    display: block !important;
+    padding: 0.5px !important;
+    background: linear-gradient(100deg,
+        #2563eb 0%, #4f46e5 32%, #7c3aed 62%, #a21caf 100%) !important;
+    box-shadow: none !important;
+}
+
+/* The hairline rim was there but too faint to read at arm's length. Still a
+   hairline -- 0.7px, half the ... button's 1.4px -- but with brighter stops
+   and a little more glow behind it so the colour actually registers. */
+body:not(.light-mode) .file-card::after {
+    padding: 0.7px !important;
+    background: linear-gradient(100deg,
+        #60a5fa 0%, #818cf8 32%, #a78bfa 62%, #e879f9 100%) !important;
+    box-shadow: 0 0 4px rgba(129, 140, 248, 0.65) !important;
+}
+body.light-mode .file-card::after {
+    padding: 0.7px !important;
+    background: linear-gradient(100deg,
+        #1d4ed8 0%, #4338ca 32%, #6d28d9 62%, #a21caf 100%) !important;
+}
+
+/* The ... button was landing next to the phone's own Back control on the
+   last rows of a list. Moving it LEFT was the wrong way round -- Back sits
+   left of it, so left is toward the problem. The row now stretches further
+   RIGHT (a negative margin past the app's own padding, with the inner padding
+   pulled in to match) and the button rides out with it, away from Back. The
+   list also gets clearance at the bottom so the final row never finishes
+   underneath the navigation bar. */
+.card {
+    padding-right: 8px !important;
+    margin-right: -10px !important;
+}
+body.in-folder #content {
+    /* The WebView itself now stops above the navigation bar (MainActivity
+       pads it by the bottom inset), so this only needs to be a comfortable
+       end-of-list margin, not a nav-bar dodge. */
+    padding-bottom: 12px !important;
+}
+
+/* ============================================================
+   BREADCRUMB AS PILLS
+   Each step is its own rounded chip with an orange rim and its own icon,
+   chevrons sitting bare between them. The outer container goes transparent so
+   the chips are the only shapes -- it was a single bar before, which made the
+   three steps read as one block of text.
+   ============================================================ */
+.current-folder-card .cf-path-row {
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 2px 34px 2px 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none;
+}
+.current-folder-card .cf-path-row::-webkit-scrollbar { display: none; }
+.current-folder-card .cf-path-row::before { display: none !important; }
+
+.current-folder-card .cf-home,
+.current-folder-card .cf-part {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex: 0 0 auto !important;
+    padding: 6px 13px !important;
+    border-radius: 999px !important;
+    background: linear-gradient(180deg, #172040 0%, #0b1120 100%) !important;
+    border: 1px solid #f59e0b !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+    font-size: 0.8rem !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+    max-width: 46vw;
+    overflow: hidden;
+}
+.current-folder-card .cf-home > span,
+.current-folder-card .cf-part > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.current-folder-card .cf-home { color: #f59e0b !important; }
+.current-folder-card .cf-home i { color: #f59e0b !important; }
+.current-folder-card .cf-part-nav { color: #dbe4f5 !important; }
+.current-folder-card .cf-part-nav i { color: #fbbf24 !important; }
+.current-folder-card .cf-part-current { color: #f59e0b !important; }
+.current-folder-card .cf-part-current i { color: #fbbf24 !important; }
+.current-folder-card .cf-home i,
+.current-folder-card .cf-part i { font-size: 0.82rem !important; }
+
+/* The chevrons are just punctuation -- no chip, no colour of their own. */
+.current-folder-card .cf-sep {
+    flex: 0 0 auto !important;
+    padding: 0 !important;
+    background: none !important;
+    border: none !important;
+    color: #7a8699 !important;
+    font-size: 0.62rem !important;
+}
+
+body.light-mode .current-folder-card .cf-home,
+body.light-mode .current-folder-card .cf-part {
+    background: #ffffff !important;
+    border-color: #e09b2d !important;
+    box-shadow: 0 2px 6px rgba(150, 110, 60, 0.12) !important;
+}
+body.light-mode .current-folder-card .cf-part-nav { color: #4a3b2a !important; }
+body.light-mode .current-folder-card .cf-home,
+body.light-mode .current-folder-card .cf-part-current { color: #c2710c !important; }
+
+/* The crumbs a size down and sitting closer together. */
+.current-folder-card .cf-home,
+.current-folder-card .cf-part {
+    padding: 4px 10px !important;
+    font-size: 0.72rem !important;
+    gap: 5px !important;
+}
+.current-folder-card .cf-home i,
+.current-folder-card .cf-part i { font-size: 0.72rem !important; }
+.current-folder-card .cf-path-row { gap: 2px !important; }
+.current-folder-card .cf-sep { font-size: 0.55rem !important; }
+
+/* The crumbs were wrapping onto a second line once the path got long enough.
+   The row already scrolls sideways; it just needed to be told not to wrap,
+   and the chips not to be squeezed. One line, swipe to see the rest. */
+.current-folder-card .cf-path-row {
+    flex-wrap: nowrap !important;
+}
+.current-folder-card .cf-home,
+.current-folder-card .cf-part,
+.current-folder-card .cf-sep {
+    flex-shrink: 0 !important;
+}
+.current-folder-card .cf-part-current { max-width: none !important; }
+
+/* ============================================================
+   NOTE EDITOR
+   Head (icon + heading + close), fields that carry their own icon and
+   character count, a six-colour picker, and a footer whose Save button leads
+   with the chosen colour. The colour is a real field on the note -- the body
+   here tints to it and so does the note's row in the list.
+   ============================================================ */
+.note-modal-card {
+    /* The old blue halo was left behind when every dialog moved to the shared
+       hairline; it is the only one still glowing blue. */
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65) !important;
+    max-width: 440px !important;
+}
+/* The head holds the note title now. "Edit Note / Change what you wrote"
+   told nobody anything they had not just done, and cost a row the writing
+   area wanted. */
+.note-modal-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 16px 10px;
+}
+/* In the head the title reads as a heading, and a heading does not look
+   like something you can type into. The rule under it says the word is a
+   field without turning it back into a boxed input, and it brightens on
+   focus so the caret has somewhere obvious to belong. */
+.note-modal-head .note-title-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 1.12rem !important;
+    font-weight: 800;
+    padding: 8px 0 1px !important;
+    border-bottom: 1.5px solid rgba(167, 139, 250, 0.4) !important;
+    border-radius: 0 !important;
+    transition: border-color .18s ease;
+}
+.note-modal-head .note-title-input:focus {
+    border-bottom-color: rgba(167, 139, 250, 0.95) !important;
+}
+/* Reading a note is not editing it, so the rule stays out of the way until
+   the writing starts. */
+#noteModal.note-reading .note-modal-head .note-title-input {
+    border-bottom-color: rgba(167, 139, 250, 0.22) !important;
+}
+body.light-mode .note-modal-head .note-title-input {
+    border-bottom-color: rgba(120, 95, 65, 0.4) !important;
+}
+.note-modal-head .note-count {
+    position: static;
+    flex: 0 0 auto;
+    transform: none;
+    opacity: 0.75;
+}
+.note-modal-icon {
+    width: 36px; height: 36px;
+    flex: 0 0 36px;
+    border-radius: 13px;
+    background: linear-gradient(135deg, #a855f7, #6366f1);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 1rem;
+    box-shadow: 0 6px 16px rgba(124, 58, 237, 0.45);
+}
+.note-modal-titles { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.note-modal-h { font-size: 1.22rem; font-weight: 800; color: #f8fafc; line-height: 1.15; }
+.note-modal-sub { font-size: 0.82rem; color: #a5b4fc; }
+.note-modal-x {
+    flex: 0 0 34px;
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.09);
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+.note-modal-x:active { background: rgba(255, 255, 255, 0.18); }
+
+.modal-body-note { padding: 14px 18px 4px !important; display: flex; flex-direction: column; gap: 12px; }
+
+.note-field {
+    position: relative;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 12px 14px 12px 42px;
+}
+.note-field-ico {
+    position: absolute;
+    left: 14px; top: 15px;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.85rem;
+}
+.note-field-body { padding-bottom: 26px; }
+.note-count {
+    position: absolute;
+    right: 12px; bottom: 7px;
+    font-size: 0.68rem;
+    color: rgba(255, 255, 255, 0.65);
+    pointer-events: none;
+}
+.note-field-title .note-count { bottom: 50%; transform: translateY(50%); }
+
+.note-title-input,
+.note-content-input {
+    width: 100%;
+    background: none !important;
+    border: none !important;
+    outline: none !important;
+    color: #ffffff !important;
+    font-family: Inter, sans-serif;
+    padding: 0 !important;
+    resize: none;
+}
+.note-title-input { font-size: 1.02rem; font-weight: 700; padding-right: 48px !important; }
+/* Pinned in px, not left as a ratio: the ruled page draws one band per
+   line, and a ratio rounds differently as the font renders, so the rules
+   would drift away from the words further down the page. */
+.note-content-input { font-size: 0.92rem; min-height: 240px; line-height: 22px; }
+.note-title-input::placeholder,
+.note-content-input::placeholder { color: rgba(255, 255, 255, 0.55); }
+
+.note-colors { display: flex; gap: 10px; padding: 2px 0 6px; }
+.note-color-dot {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+.note-color-dot-on {
+    border-color: #ffffff;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18), 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+
+.note-modal-foot { padding: 6px 18px 18px !important; display: flex; gap: 12px; }
+.note-modal-foot > button {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 13px 0 !important;
+    border-radius: 999px !important;
+    font-family: Inter, sans-serif;
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+.note-modal-foot > #noteCancelBtn {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    color: #e2e8f0 !important;
+}
+.note-modal-foot #saveNoteBtn {
+    background: linear-gradient(100deg, #8b5cf6, #3b82f6) !important;
+    border: none !important;
+    color: #ffffff !important;
+    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4) !important;
+}
+
+body.light-mode .note-modal-h { color: #1e293b; }
+body.light-mode .note-modal-sub { color: #6d28d9; }
+body.light-mode .note-field { border-color: rgba(120, 95, 65, 0.3); background: rgba(120, 95, 65, 0.05); }
+body.light-mode .note-field-ico { color: #6b5b45; }
+body.light-mode .note-title-input,
+body.light-mode .note-content-input { color: #1e293b !important; }
+body.light-mode .note-title-input::placeholder,
+body.light-mode .note-content-input::placeholder { color: rgba(60, 50, 40, 0.5); }
+body.light-mode .note-field-body .note-title-input,
+body.light-mode .note-field-body .note-content-input { color: #ffffff !important; }
+body.light-mode .note-modal-x { background: rgba(120, 95, 65, 0.12); color: #4a3b2a; }
+body.light-mode .note-modal-foot > #noteCancelBtn {
+    background: #ffffff !important;
+    border-color: rgba(120, 95, 65, 0.3) !important;
+    color: #4a3b2a !important;
+}
+
+/* The colour a note was saved with shows as a stripe down its row, so the
+   picker means something once the dialog is closed. */
+
+   The row is a pill -- 60px of corner radius on a 44px-tall card, so its
+   left edge is a half circle. A straight bar at left:0 therefore sat
+   OUTSIDE the card for most of its length: six pixels down from the top the
+   edge has already curved 6.9px inwards. .card is overflow:visible
+   !important (the row menu has to escape it) so nothing clipped it either,
+   and it read as a loose line floating beside the row. Inset and rounded
+   instead: across the middle half the curve reaches at most 0.067 x height
+   inwards, under 3px here, and 5px clears that at any height while still
+   leaving room before the icon, which starts 12px in.
+.note-card { position: relative; }
+.note-card::before {
+    content: '';
+    position: absolute;
+    left: 5px; top: 25%; bottom: 25%;
+    width: 3px;
+    border-radius: 999px;
+    background: var(--note-stripe, transparent);
+    /* .card::before already draws a stripe here but keeps it at opacity 0 --
+       without this the colour is set and never seen. */
+    opacity: 1;
+}
+
+/* Keyboard-safe note editor.
+   1. The card was one scrolling box with a max-height of 80vh, so once the
+      keyboard opened, Save and Cancel were simply below the fold. It is a
+      flex column now: head and footer are fixed children, only the middle
+      scrolls, and the cap follows the VISIBLE viewport (dvh), which shrinks
+      with the keyboard.
+   2. The first letter was clipped on its left. The icon is absolutely placed
+      and the text began exactly at the padding edge, so a glyph with any left
+      bearing (a capital H) lost a sliver. A few more pixels of room fixes it. */
+.note-modal-card {
+    display: flex !important;
+    flex-direction: column !important;
+    max-height: calc(100vh - 24px) !important;
+    max-height: calc(100dvh - 24px) !important;
+    overflow: hidden !important;
+}
+.note-modal-head,
+.note-modal-foot { flex: 0 0 auto !important; }
+.modal-body-note {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+}
+.note-field { padding-left: 48px !important; }
+.note-title-input,
+.note-content-input { padding-left: 2px !important; }
+.note-content-input { min-height: 190px; }
+/* The overlay must not park the card under the status bar either. */
+#noteModal.modal {
+    align-items: center !important;
+    padding: max(12px, env(safe-area-inset-top)) 14px 12px !important;
+}
+
+/* Size the note editor from the VISIBLE viewport, not the window: with the
+   keyboard up those differ by its whole height, which is why Save and Cancel
+   were off screen. --vvh is published from visualViewport in app.js. */
+#noteModal.modal {
+    top: 0 !important;
+    bottom: auto !important;
+    height: var(--vvh, 100dvh) !important;
+}
+/* The cap has to leave room for the overlay's OWN padding, which is a
+   status-bar inset at the top (34px on this phone), not the flat 12 it was
+   written against. A card capped 24px under the viewport could not fit
+   between 34 + 12 of padding, so the centred overflow pushed its head up
+   under the status bar and the title was clipped. Subtract what the overlay
+   actually reserves. */
+.note-modal-card {
+    max-height: calc(var(--vvh, 100dvh) - max(12px, env(safe-area-inset-top)) - 12px) !important;
+}
+
+/* Compact note editor. Everything was sized for a tablet: a 160px writing
+   box, 42px head icon, 36px swatches and 13px-tall buttons added up to a card
+   that filled the screen before a word was typed. */
+/* 13 -> 9 at the top: four pixels taken off a title row that was 66px tall
+   for one line of text, and spent below on the gap between the swatches and
+   the toggles. */
+.note-modal-head { padding: 9px 14px 2px !important; gap: 10px !important; }
+.note-modal-icon {
+    width: 32px !important; height: 32px !important; flex: 0 0 32px !important;
+    border-radius: 10px !important; font-size: 0.8rem !important;
+}
+.note-modal-h { font-size: 1rem !important; }
+.note-modal-sub { font-size: 0.72rem !important; }
+.note-modal-x { width: 28px !important; height: 28px !important; flex: 0 0 28px !important; font-size: 0.78rem !important; }
+
+/* Same trade: 10 -> 6 above the page. */
+.modal-body-note { padding: 6px 14px 2px !important; gap: 9px !important; }
+.note-field { padding: 9px 12px 9px 40px !important; border-radius: 13px !important; }
+.note-field-ico { left: 12px !important; top: 11px !important; font-size: 0.78rem !important; }
+.note-field-body { padding-bottom: 20px !important; }
+.note-title-input { font-size: 0.92rem !important; }
+.note-content-input { font-size: 0.86rem !important; min-height: 150px !important; }
+.note-count { font-size: 0.62rem !important; right: 10px !important; bottom: 5px !important; }
+
+.note-colors { gap: 8px !important; padding: 0 0 2px !important; }
+.note-color-dot { width: 27px !important; height: 27px !important; }
+
+.note-modal-foot { padding: 4px 14px 12px !important; gap: 10px !important; }
+.note-modal-foot > button {
+    padding: 9px 0 !important;
+    font-size: 0.85rem !important;
+    gap: 6px !important;
+}
+
+/* The clip was inside the input, not the field: the text box began 2px from
+   its own edge, and a glyph like G or H leans a little left of where its line
+   starts, so that sliver fell outside and was cut. Give the text its own
+   breathing room and take the same amount off the field so nothing shifts. */
+.note-field { padding-left: 34px !important; }
+.note-title-input,
+.note-content-input { padding-left: 7px !important; }
+
+/* The title bar is one line of text; it does not need the same vertical room
+   as the writing box below it. */
+.note-field-title { padding-top: 6px !important; padding-bottom: 6px !important; }
+.note-field-title .note-field-ico { top: 50% !important; transform: translateY(-50%) !important; }
+
+/* Cancel and Save sized to their words, sitting together on the right, rather
+   than each stretching across half the card. */
+.note-modal-foot { justify-content: flex-end !important; }
+.note-modal-foot > button {
+    flex: 0 0 auto !important;
+    padding: 9px 20px !important;
+}
+
+/* Footer buttons down to a normal dialog size: smaller type, a tighter pill,
+   and the tick/cross at the size of the words rather than beside them. */
+/* 2px above this row left the toggles sitting right under the swatches with
+   nothing between them, and 10px below put them hard against the card edge --
+   which a 36px square shows far more than Cancel and Save do. 10 and 12. */
+/* Wraps on purpose. Two toggles, Cancel and Save need 285px plus 28 of
+   padding; a 320px-wide phone -- or any phone with Display size turned up,
+   which is the same thing to CSS -- gives the row 292, and the line ran off
+   the card. Allowed to wrap, the toggles take their own line there and keep
+   Save reachable. At 360 and up it stays one row. */
+.note-modal-foot { padding: 10px 14px 12px !important; gap: 8px !important; flex-wrap: wrap; row-gap: 8px; }
+.note-modal-foot > button {
+    padding: 7px 16px !important;
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    gap: 5px !important;
+}
+.note-modal-foot > button i { font-size: 0.72rem !important; }
+.note-modal-foot #saveNoteBtn { box-shadow: 0 4px 12px rgba(99, 102, 241, 0.32) !important; }
+
+/* Outline icons and lit edges, matching the reference: a magenta-to-blue rim
+   around the card (drawn as a masked ring, since a border cannot hold a
+   gradient) and a bright hairline around the writing box so it reads as lit
+   rather than just filled. */
+.note-modal-card { position: relative; border: none !important; }
+.note-modal-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.4px;
+    background: linear-gradient(145deg, #d946ef 0%, #8b5cf6 40%, #3b82f6 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 2;
+}
+.note-field-body {
+    border: 1.5px solid rgba(255, 255, 255, 0.62) !important;
+    box-shadow: 0 0 14px rgba(139, 92, 246, 0.35);
+}
+.note-field-title { border-color: rgba(167, 139, 250, 0.45) !important; }
+.note-field-ico { opacity: 0.95; }
+
+/* A little more room to write in. */
+.note-content-input { min-height: 200px !important; }
+
+/* ...and with the keyboard up it takes most of what is left over.
+   This was 150px, from when the toggles still sat in the style row and 200
+   pushed the controls under the card's own bottom edge. The toggles have since
+   moved into the footer beside Save, which gave a whole row back, and the card
+   was left 60px short of its own cap -- measured with the keyboard genuinely
+   open: viewport 465, cap 419, card 359. The card centres itself, so that 60
+   showed up as a band of empty card above AND below the page.
+   206 hands those 60px to the writing area and still stops 4px short of the
+   cap. Do not take that last slack: going over the cap is what put the card's
+   head under the status bar (see the note on --vvh above). */
+/* 208 is right for a 465px keyboard viewport and far too tall for a short
+   one, where a fixed floor pushed the page past the card's own capped height
+   and the content was cut. Whichever is smaller: the 208 this phone wants, or
+   a fixed share of whatever viewport is actually there. */
+.modal.keyboard-open .note-content-input { min-height: min(208px, calc(var(--vvh, 100dvh) * 0.45)) !important; }
+
+/* Title row: one line of text, no counter, no divider above the footer.
+   The 100-character cap still applies -- maxlength does the work; the readout
+   was only noise on a field that holds a few words. */
+#noteTitleCount { display: none !important; }
+.note-field-title {
+    padding-top: 3px !important;
+    padding-bottom: 3px !important;
+    padding-right: 12px !important;
+}
+.note-title-input { font-size: 0.88rem !important; line-height: 1.5 !important; }
+.note-modal-foot { border-top: none !important; }
+
+/* Cancel reads as a button, not as text: a visible rim of its own. */
+.note-modal-foot > #noteCancelBtn {
+    border: 1px solid rgba(255, 255, 255, 0.5) !important;
+}
+body.light-mode .note-modal-foot > #noteCancelBtn {
+    border-color: rgba(120, 95, 65, 0.55) !important;
+}
+
+/* The title row's rim was barely there next to the lit writing box below it. */
+.note-field-title {
+    border: 1px solid rgba(167, 139, 250, 0.75) !important;
+    box-shadow: 0 0 8px rgba(139, 92, 246, 0.2);
+}
+body.light-mode .note-field-title {
+    border-color: rgba(109, 40, 217, 0.45) !important;
+    box-shadow: none;
+}
+
+/* The reminder bell sat right against the "..." button, so a thumb aiming for
+   the menu kept landing on the gap between them. Both indicators now keep
+   clear of it. The bell is only a marker -- nothing to tap -- so the space
+   belongs to the button. */
+.card-remind-indicator { margin-left: 8px !important; margin-right: 6px !important; }
+.card-fav-indicator { margin-right: 4px !important; }
+.card .row-menu { margin-left: 10px !important; }
+
+
+/* ============================================================
+   --- Statistics panel, rebuilt 2026-10-07 ---
+   Every selector here is scoped to .st-* and used only inside
+   #settingsPanel-statistics, so none of it can reach the other
+   settings panels that share .settings-header / .settings-card.
+   ============================================================ */
+
+/* The band has to reach the screen edges, but .settings-page-inner already
+   pads the panel by 20px/16px -- so the header is pulled back out by that
+   much and pays it back as padding, which keeps the title exactly where it
+   sat before while the colour runs edge to edge. overflow:hidden then clips
+   the bloom to this box instead of letting it wash over the first card. */
+#settingsPanel-statistics .st-head {
+    position: relative;
+    overflow: hidden;
+    margin: -20px -16px 10px;
+    padding: 46px 18px 22px;
+    border-radius: 0 0 26px 26px;
+}
+/* Behind the title: a soft magenta/violet bloom and two thin waves. Both are
+   decoration only -- pointer-events:none so the Back button keeps its whole
+   hit area, which a full-width overlay would otherwise steal. */
+#settingsPanel-statistics .st-head-aurora {
+    position: absolute;
+    inset: -30% -10% auto -10%;
+    height: 260px;
+    pointer-events: none;
+    background:
+        radial-gradient(60% 60% at 78% 58%, rgba(236,72,153,0.45) 0%, rgba(236,72,153,0) 70%),
+        radial-gradient(55% 55% at 28% 42%, rgba(147,51,234,0.34) 0%, rgba(147,51,234,0) 72%);
+    filter: blur(6px);
+}
+#settingsPanel-statistics .st-head-wave {
+    position: absolute;
+    left: -10%; right: -10%; top: 42px;
+    height: 110px;
+    opacity: 0.5;
+    pointer-events: none;
+}
+#settingsPanel-statistics .st-head-art {
+    position: absolute;
+    right: 8px; top: 28px;
+    width: 104px; height: 104px;
+    opacity: 0.9;
+    pointer-events: none;
+}
+#settingsPanel-statistics .st-head .settings-back-btn,
+#settingsPanel-statistics .st-head .settings-header-title { position: relative; z-index: 1; }
+/* The art sits top-right, so the subtitle must stop before it or the two
+   overlap on a narrow phone. */
+#settingsPanel-statistics .st-head .settings-header-title { padding-right: 92px; }
+
+.st-card {
+    /* 16px let the three cards drift apart; 10px keeps them reading as one
+       stack. */
+    margin: 0 0 7px;
+    padding: 13px 13px 14px;
+    border-radius: 22px;
+    background: linear-gradient(165deg, rgba(72,30,86,0.52) 0%, rgba(40,14,52,0.60) 55%, rgba(26,8,34,0.66) 100%);
+    border: 1px solid rgba(255,255,255,0.11);
+    box-shadow: 0 16px 34px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.07);
+}
+.st-card-head { display: flex; align-items: center; gap: 9px; margin-bottom: 13px; }
+.st-card-ico { font-size: 1rem; width: 22px; text-align: center; flex: 0 0 22px; }
+.st-ico-ov { color: #818cf8; }
+.st-ico-big { color: #e879f9; }
+.st-ico-store { color: #38bdf8; }
+.st-card-title {
+    font-size: 0.84rem; font-weight: 800; letter-spacing: 1.5px;
+    flex: 1; min-width: 0; color: var(--text-primary);
+    font-family: Inter, sans-serif;
+}
+/* The chip is a label wrapping a real <select>: Android then draws its own
+   picker, which behaves correctly with the keyboard and back button -- a
+   hand-rolled popup here would have to re-solve all of that. */
+.st-chip, .st-link {
+    position: relative;
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 12px; border-radius: 999px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.14);
+    font-size: 0.74rem; font-weight: 600; color: rgba(255,255,255,0.88);
+    font-family: Inter, sans-serif; white-space: nowrap; cursor: pointer;
+}
+.st-chip i, .st-link i { font-size: 0.6rem; opacity: 0.8; }
+.st-chip-select {
+    position: absolute; inset: 0;
+    opacity: 0; width: 100%; height: 100%;
+    border: none; background: none; cursor: pointer;
+}
+
+/* ---------- overview ---------- */
+.st-ov { display: flex; align-items: center; gap: 11px; }
+.st-ring { position: relative; width: 126px; height: 126px; flex: 0 0 126px; }
+.st-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.st-ring-track { fill: none; stroke: rgba(255,255,255,0.07); stroke-width: 13; }
+.st-ring-arc {
+    fill: none; stroke: url(#statRingGrad); stroke-width: 13; stroke-linecap: round;
+    transition: stroke-dasharray 0.6s cubic-bezier(0.22,1,0.36,1);
+}
+.st-ring-val {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.st-ring-num {
+    font-size: 2rem; font-weight: 800; letter-spacing: -1px; line-height: 1;
+    color: var(--text-primary); font-family: Inter, sans-serif;
+}
+.st-ring-lbl {
+    font-size: 0.57rem; letter-spacing: 1.2px; font-weight: 700; margin-top: 5px;
+    color: rgba(255,255,255,0.55); font-family: Inter, sans-serif;
+}
+.st-tiles {
+    flex: 1; min-width: 0;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 16px; overflow: hidden;
+}
+.st-tile { background: rgba(26,9,34,0.72); padding: 9px 8px 10px; min-width: 0; }
+.st-tile-ico {
+    width: 29px; height: 29px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.78rem; color: #fff; margin-bottom: 7px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+}
+.st-ic-files   { background: linear-gradient(140deg, #f43f5e, #be123c); }
+.st-ic-folders { background: linear-gradient(140deg, #10b981, #047857); }
+.st-ic-notes   { background: linear-gradient(140deg, #f59e0b, #d97706); }
+.st-ic-depts   { background: linear-gradient(140deg, #8b5cf6, #6d28d9); }
+.st-tile-num {
+    font-size: 1.35rem; font-weight: 800; letter-spacing: -0.5px; line-height: 1;
+    color: var(--text-primary); font-family: Inter, sans-serif;
+}
+/* DEPARTMENTS is the longest label and overflowed its half of the grid at
+   0.6rem; it is allowed to shrink rather than be clipped. */
+.st-tile-lbl {
+    font-size: 0.53rem; letter-spacing: 0.3px; font-weight: 700; margin-top: 4px;
+    color: rgba(255,255,255,0.52); font-family: Inter, sans-serif;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ---------- largest items ---------- */
+.st-row {
+    display: flex; align-items: center; gap: 11px;
+    padding: 10px 9px; border-radius: 16px;
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.07);
+    margin-bottom: 9px; cursor: pointer;
+}
+.st-row:last-child { margin-bottom: 0; }
+.st-row:active { background: rgba(255,255,255,0.075); }
+.st-row-ico {
+    width: 44px; height: 44px; flex: 0 0 44px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.15rem; color: #fff; box-shadow: 0 6px 14px rgba(0,0,0,0.38);
+}
+.st-ic-file-lg   { background: linear-gradient(140deg, #f43f5e, #be123c); }
+.st-ic-folder-lg { background: linear-gradient(140deg, #8b5cf6, #4f46e5); }
+.st-row-txt { flex: 1; min-width: 0; }
+.st-row-t {
+    font-size: 0.93rem; font-weight: 700;
+    color: var(--text-primary); font-family: Inter, sans-serif;
+}
+.st-row-s {
+    font-size: 0.76rem; color: rgba(255,255,255,0.58); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-family: Inter, sans-serif;
+}
+.st-pill {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 7px;
+    padding: 4px 10px; border-radius: 999px;
+    font-size: 0.7rem; font-weight: 700; font-family: Inter, sans-serif;
+}
+.st-pill i { font-size: 0.58rem; }
+.st-pill-size  { background: rgba(244,63,94,0.18);  color: #fb7185; border: 1px solid rgba(244,63,94,0.3); }
+.st-pill-count { background: rgba(139,92,246,0.18); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.3); }
+.st-row-arrow { font-size: 0.78rem; color: rgba(255,255,255,0.4); flex: 0 0 auto; }
+
+/* ---------- storage ---------- */
+.st-store-top { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 15px; }
+.st-store-num {
+    font-size: 2.2rem; font-weight: 800; letter-spacing: -1.5px; line-height: 1;
+    color: var(--text-primary); font-family: Inter, sans-serif;
+}
+.st-store-lbl {
+    font-size: 0.78rem; color: rgba(255,255,255,0.55); font-weight: 600; margin-top: 3px;
+    font-family: Inter, sans-serif;
+}
+.st-store-side {
+    flex: 1; min-width: 0;
+    display: flex; align-items: center; gap: 9px;
+    padding: 10px 11px; border-radius: 14px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+}
+.st-store-side-ico {
+    width: 34px; height: 34px; flex: 0 0 34px; border-radius: 11px;
+    background: linear-gradient(140deg, #38bdf8, #0284c7);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.9rem; color: #fff;
+}
+.st-store-side-v {
+    font-size: 0.88rem; font-weight: 700; color: var(--text-primary);
+    font-family: Inter, sans-serif; white-space: nowrap;
+}
+.st-store-side-l {
+    font-size: 0.68rem; color: rgba(255,255,255,0.52); margin-top: 1px;
+    font-family: Inter, sans-serif;
+}
+.st-bar {
+    height: 13px; border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden; display: flex;
+}
+.st-bar > div { transition: width 0.6s cubic-bezier(0.22,1,0.36,1); }
+.st-bar-pdf, .st-dot-pdf { background: linear-gradient(90deg, #22d3ee, #6366f1); }
+.st-bar-img, .st-dot-img { background: linear-gradient(90deg, #8b5cf6, #d946ef); }
+.st-bar-oth, .st-dot-oth { background: linear-gradient(90deg, #ec4899, #f43f5e); }
+.st-legend { display: flex; gap: 13px; margin-top: 11px; flex-wrap: wrap; }
+.st-legend > span {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.7rem; color: rgba(255,255,255,0.62); font-weight: 600;
+    font-family: Inter, sans-serif;
+}
+.st-dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; flex: 0 0 9px; }
+.st-bar-foot {
+    display: flex; justify-content: space-between; gap: 10px; margin-top: 10px;
+    font-size: 0.76rem; color: rgba(255,255,255,0.6); font-weight: 600;
+    font-family: Inter, sans-serif;
+}
+
+/* The light theme keeps the same shapes; only the surfaces and text flip, so
+   the cards stay readable instead of staying dark on a pale page. */
+body.light-mode .st-card {
+    background: linear-gradient(165deg, rgba(255,255,255,0.95) 0%, rgba(248,244,252,0.95) 100%);
+    border-color: rgba(0,0,0,0.08);
+    box-shadow: 0 10px 26px rgba(80,20,80,0.10);
+}
+body.light-mode .st-card-title,
+body.light-mode .st-ring-num,
+body.light-mode .st-tile-num,
+body.light-mode .st-row-t,
+body.light-mode .st-store-num,
+body.light-mode .st-store-side-v { color: #1e1b2e; }
+body.light-mode .st-tile { background: rgba(255,255,255,0.9); }
+body.light-mode .st-tiles { background: rgba(0,0,0,0.08); border-color: rgba(0,0,0,0.08); }
+body.light-mode .st-ring-track { stroke: rgba(0,0,0,0.07); }
+body.light-mode .st-ring-lbl,
+body.light-mode .st-tile-lbl,
+body.light-mode .st-row-s,
+body.light-mode .st-store-lbl,
+body.light-mode .st-store-side-l,
+body.light-mode .st-legend > span,
+body.light-mode .st-bar-foot { color: #5b5370; }
+body.light-mode .st-chip,
+body.light-mode .st-link,
+body.light-mode .st-row,
+body.light-mode .st-store-side {
+    background: rgba(0,0,0,0.04);
+    border-color: rgba(0,0,0,0.09);
+    color: #3a3350;
+}
+body.light-mode .st-bar { background: rgba(0,0,0,0.08); }
+
+/* ============================================================
+   Date + time card on a short screen (2026-10-08)
+
+   On a 640dp-tall phone -- the old 16:9 shape, 1080x1920 at 480dpi, still
+   common on budget Android -- the card did not fit: "+ Add end time" and the
+   whole Repeat row (Never / Every month / Every year) fell below the fold.
+   The card does scroll, but nothing says so, so a repeating reminder was
+   effectively unreachable on those phones.
+
+   Everything below only takes height out: smaller day circles, a tighter
+   grid, a shorter time wheel. Nothing moves or is hidden. !important is
+   needed because showDateModal() writes these as inline styles.
+   ============================================================ */
+@media (max-height: 700px) {
+    #customDateModal .cal-day {
+        width: 22px !important;
+        height: 22px !important;
+        font-size: 0.68rem !important;
+    }
+    #customDateModal #calDays { gap: 1px !important; }
+    #customDateModal #calWeekdays {
+        gap: 1px !important;
+        margin-bottom: 2px !important;
+    }
+    #customDateModal #calMonthLabel { font-size: 0.92rem !important; }
+    #customDateModal #dateModalSelectedLabel { margin: -6px 0 5px !important; }
+    /* The wheel's centre highlight is a fixed 42px band, so the inner padding
+       has to stay (height - 42) / 2 or the selected row stops lining up. */
+    #customDateModal .time-wheel-col,
+    #customDateModal .ampm-col { height: 84px !important; }
+    #customDateModal .time-wheel-inner,
+    #customDateModal .ampm-inner { padding: 21px 0 !important; }
+    /* Smaller chips and buttons buy the last few pixels the Repeat row needs,
+       and keep the three chips on one line instead of wrapping onto two. */
+    #customDateModal .date-repeat-chip {
+        padding: 5px 12px !important;
+        font-size: 0.74rem !important;
+    }
+    #customDateModal #dateModalCancel,
+    #customDateModal #dateModalSave,
+    #customDateModal #dateModalClear { padding: 7px 18px !important; }
+}
+
+/* ============================================================
+   Statistics tile + card labels on a narrow phone (2026-10-08)
+
+   Found by sweeping 300dp to 640dp and asking the page itself which text no
+   longer fits (scrollWidth > clientWidth), not by looking at screenshots --
+   by eye this was invisible. "DEPARTMENTS" overflowed its tile all the way up
+   to 360dp, which is the commonest Android width there is, and "OVERVIEW"
+   overflowed below 320dp.
+
+   Both are all-caps labels carrying wide letter-spacing, so the spacing is
+   what goes first; the type follows only as far as it has to.
+   ============================================================ */
+/* 370px, not 400: DEPARTMENTS only overflowed at 360dp and below, so a
+   384dp phone (the S23 this was designed on) keeps the full-size donut it
+   had. Shrinking it there would have been a change nothing asked for. */
+@media (max-width: 370px) {
+    .st-tile-lbl { font-size: 0.5rem; letter-spacing: 0.1px; }
+    .st-card-title { letter-spacing: 1px; }
+    /* Shrinking the type alone was not enough for DEPARTMENTS. The donut is
+       a fixed 126px beside the tiles, so taking a little off it hands the
+       whole difference to the labels, which is where it is needed. */
+    .st-ring { width: 104px; height: 104px; flex: 0 0 104px; }
+    .st-ring-num { font-size: 1.7rem; }
+}
+/* 300-320dp is what a small phone turns into once Display size is set to
+   its largest step, so it is worth clearing rather than calling it out of
+   range. */
+@media (max-width: 340px) {
+    /* The WebView clamps font-size to a floor of 8px, so 0.43rem renders as
+       8px just like 0.5rem does -- shrinking the type further buys nothing.
+       The room has to come from the tile instead. */
+    .st-tile-lbl { font-size: 0.5rem; letter-spacing: 0; }
+    .st-tile { padding: 8px 4px 9px; }
+    .st-card-title { font-size: 0.72rem; letter-spacing: 0.2px; }
+    .st-ring-lbl { font-size: 0.5rem; letter-spacing: 0.4px; }
+    .st-ring { width: 90px; height: 90px; flex: 0 0 90px; }
+    .st-ring-num { font-size: 1.4rem; }
+}
+
+/* ============================================================
+   Reminder delivery setup (2026-10-08)
+
+   Android gates a reminder behind three separate settings, two of which have
+   no permission dialog at all -- the most an app may do is open the screen.
+   Reported from a second phone where reminders only appeared once the app was
+   opened: the alarm had been downgraded to an inexact one and Doze sat on it.
+
+   MainActivity used to throw the user at the system toggle on first launch,
+   before the intro, with nothing to explain it; a back press out of that
+   screen then disabled reminders permanently, since it only ever asked once.
+   This says why first, and can be returned to from Settings.
+   ============================================================ */
+.aset-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    background: rgba(0,0,0,0.72);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    /* Same reason as .intro-overlay: the inset is not reported here, so the
+       real bar height has to come from --nav-bottom. */
+    padding: 20px 16px calc(16px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)));
+    padding-top: max(7vh, calc(18px + env(safe-area-inset-top)));
+    overflow-y: auto;
+}
+.aset-overlay.hidden { display: none; }
+
+.aset-sheet {
+    position: relative;
+    background: var(--card-bg);
+    border: 1.5px solid rgba(247,138,20,0.45);
+    border-radius: 20px;
+    padding: 22px 18px 18px;
+    width: 100%;
+    max-width: 360px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 30px rgba(247,138,20,0.18);
+    overflow: hidden;
+}
+.aset-wave { position: absolute; left: 0; bottom: 0; width: 100%; height: 130px; pointer-events: none; opacity: 0.45; }
+
+.aset-hd { display: flex; align-items: flex-start; gap: 13px; position: relative; }
+.aset-hd-ic {
+    width: 50px; height: 50px; border-radius: 16px; flex-shrink: 0;
+    background: linear-gradient(135deg,#fbab2c 0%,#f78a14 46%,#ef7009 100%);
+    border: 1px solid rgba(255,255,255,0.25);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3), 0 0 18px rgba(247,138,20,0.4);
+}
+.aset-hd-ic i { color: #fff; font-size: 1.25rem; }
+.aset-hd-t { color: var(--text-primary); font-size: 1.02rem; font-weight: 800; line-height: 1.25; padding-top: 3px; }
+.aset-hd-s { color: var(--text-secondary); font-size: 0.79rem; line-height: 1.45; margin-top: 3px; }
+
+.aset-rows { position: relative; margin: 16px 0 4px; }
+.aset-row {
+    display: flex; align-items: center; gap: 11px;
+    padding: 11px 12px; border-radius: 14px;
+    background: var(--glass-bg); border: 1px solid var(--glass-border);
+    margin-bottom: 9px;
+}
+.aset-row.done { border-color: rgba(34,197,94,0.45); background: rgba(34,197,94,0.10); }
+.aset-tick {
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 0.72rem;
+}
+.aset-tick.on { background: linear-gradient(135deg,#22c55e,#16a34a); color: #fff; box-shadow: 0 0 12px rgba(34,197,94,0.45); }
+.aset-tick.off { background: rgba(255,255,255,0.07); border: 1.5px dashed rgba(255,255,255,0.35); color: transparent; }
+.aset-txt { min-width: 0; flex: 1; }
+.aset-nm { color: var(--text-primary); font-size: 0.86rem; font-weight: 700; line-height: 1.3; }
+.aset-ds { color: var(--text-secondary); font-size: 0.735rem; line-height: 1.4; margin-top: 2px; }
+.aset-go {
+    flex-shrink: 0; border: none; border-radius: 10px; padding: 7px 13px;
+    font-family: Inter, sans-serif; font-size: 0.76rem; font-weight: 700; color: #fff;
+    cursor: pointer; white-space: nowrap;
+    background: linear-gradient(135deg,#8b5cf6,#7c3aed);
+    box-shadow: 0 4px 12px rgba(124,58,237,0.4);
+}
+.aset-go.muted {
+    background: rgba(255,255,255,0.10); border: 1px solid var(--glass-border);
+    color: var(--text-secondary); box-shadow: none;
+}
+.aset-done-lbl { flex-shrink: 0; font-size: 0.73rem; font-weight: 700; color: #4ade80; white-space: nowrap; }
+
+.aset-note {
+    position: relative; color: var(--text-secondary); font-size: 0.72rem; line-height: 1.5;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px; padding: 9px 11px; margin-top: 4px;
+}
+.aset-note b { color: var(--text-primary); }
+
+.aset-btns { position: relative; display: flex; gap: 9px; margin-top: 16px; }
+.aset-btn {
+    flex: 1; border: none; border-radius: 13px; padding: 12px;
+    font-family: Inter, sans-serif; font-size: 0.88rem; font-weight: 700; cursor: pointer;
+}
+.aset-btn.aset-sec { background: rgba(255,255,255,0.09); border: 1px solid var(--glass-border); color: var(--text-secondary); }
+.aset-btn.aset-pri {
+    color: #fff; background: linear-gradient(135deg,#fbab2c 0%,#f78a14 46%,#ef7009 100%);
+    box-shadow: 0 6px 18px rgba(247,138,20,0.38);
+}
+
+/* Narrow phones: the action button drops under the text rather than squeezing
+   the description into a two-word column. */
+@media (max-width: 360px) {
+    .aset-row { flex-wrap: wrap; }
+    .aset-go { margin-left: 37px; }
+}
+
+/* "optional" chip on the battery row. Reminders were verified arriving on
+   time with battery optimisation still on, so that row must not read as
+   another thing standing between the user and a working reminder. */
+.aset-opt {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+
+/* ============================================================
+   Bottom clearance (2026-10-08)
+
+   Every rule above that holds content clear of the navigation bar now reads
+   max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px)) rather than
+   the inset alone.
+
+   The inset resolves to 0 in this WebView -- targetSdk 35+ draws edge-to-edge
+   and Android does not publish it -- so each of those rules was reserving only
+   its own literal padding while the bar is 48px tall. Measured on a Galaxy
+   S23: Favourites reserved 0px, the image editor's Save row 10px, toasts
+   20px. --nav-bottom is the height MainActivity reads from the real window
+   insets and writes onto the root element.
+
+   This was already the pattern in six other places; these had simply been
+   written before --nav-bottom existed (it arrived on 2026-09-25, and the
+   oldest of these dates from 2026-08-31).
+   ============================================================ */
+
+/* ============================================================
+   REMINDERS PANEL -- the add action beside the tab track
+   A segmented pair, a circled plus and a label only all fit down to about
+   377px: measured on the phone, the row is 295px at 384px, the two tabs need
+   173 of it and the action the rest. Below that the circle goes and the word
+   stays, not the other way round -- "Add reminder" says what the button does
+   without having to be recognised first, and the plus does not.
+   ============================================================ */
+@media (max-width: 376px) {
+    #expdocAddReminder > span:first-child { display: none; }
+    #expdocAddReminder { padding: 5px 11px !important; gap: 0 !important; }
+}
+
+/* ============================================================
+   NOTE SEARCH SNIPPET
+   The line of a note's body that a search matched, under its title. One line
+   only -- the card is a row in a list, not a preview -- with the match itself
+   picked out by .search-highlight, same as in the title.
+   ============================================================ */
+.card-note-snippet {
+    font-size: 0.68rem;
+    line-height: 1.35;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ============================================================
+   NOTE PAGE
+   The writing area is a tinted page now, not a saturated gradient with the
+   text fighting it. Everything sitting on that page has to turn dark to
+   match: the text and its placeholder are set to white with !important
+   further up, so these need the same weight and more specificity to win.
+   One ink colour for all six papers -- they are all pale enough to take it,
+   which is the point of choosing them that way.
+   ============================================================ */
+.note-field-body.note-paper .note-content-input { color: #0b1220 !important; font-weight: 500; }
+.note-field-body.note-paper .note-content-input::placeholder { color: rgba(31, 41, 55, 0.45) !important; }
+.note-field-body.note-paper .note-field-ico { color: rgba(31, 41, 55, 0.5); }
+.note-field-body.note-paper .note-count { color: rgba(31, 41, 55, 0.5); }
+
+/* Light mode sets the body text dark with !important too, by a rule that is
+   no more specific than the one above -- so say it again here rather than
+   leave the winner to source order. */
+body.light-mode .note-field-body.note-paper .note-content-input { color: #0b1220 !important; font-weight: 500; }
+body.light-mode .note-field-body.note-paper .note-field-ico { color: rgba(31, 41, 55, 0.5); }
+
+/* ============================================================
+   NOTE PAGE -- ruling
+   The toggle sits with the colours, because it is the same kind of choice:
+   what the page looks like. Square against their circles so the two do not
+   read as one row of seven options.
+   ============================================================ */
+.note-style-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.note-style-row .note-colors { flex: 1 1 auto; min-width: 0; }
+.note-lined-btn {
+    flex: 0 0 auto;
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 11px;
+    /* A visible white hairline. At 0.18 the controls read as holes in the
+       card rather than as buttons you can press. */
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.06);
+    color: #cbd5e1;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 0;
+    transition: background .16s ease, color .16s ease, border-color .16s ease, transform .12s ease;
+}
+/* Both glyphs are small and fine-stroked at 0.85rem, which is most of why
+   they were hard to tell apart at a glance. */
+.note-lined-btn i { font-size: 0.95rem; }
+.note-lined-btn:active { transform: scale(0.94); }
+.note-lined-btn.note-lined-on {
+    background: rgba(124, 58, 237, 0.9);
+    border-color: transparent;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
+}
+body.light-mode .note-lined-btn {
+    border-color: rgba(120, 95, 65, 0.3);
+    background: rgba(120, 95, 65, 0.06);
+    color: #4a3b2a;
+}
+@media (max-width: 376px) {
+    .note-lined-btn { width: 30px; height: 30px; font-size: 0.78rem; border-radius: 9px; }
+}
+
+
+
+
+
+/* The text size, in px, a step at a time. It sits with the colours and the
+   ruling because it is the same kind of choice -- what the page looks like.
+   The row wraps rather than squeezing: six swatches, a stepper and a toggle
+   do not fit one line on a narrow phone. */
+/* One row, measured rather than assumed: the six swatches come to 202px and
+   the stepper to 105px, which with the 10px gap is 317 of the 328 this row
+   has. The old note here said the two could not share a line -- that was
+   written when the toggles were in this row too, and they have since moved
+   down into the footer beside Save. */
+.note-style-row { flex-wrap: wrap; row-gap: 4px; }
+/* 0 0, not 0 1: allowed to shrink, the swatch row collapsed narrower
+   than the swatches themselves and they ran straight through the stepper on
+   any phone reporting less than ~376px. Held at its own width it simply sends
+   the stepper to the next line where there is no room for both -- which is
+   what the rule this replaced was getting at, and what one device talked me
+   out of. */
+.note-style-row .note-colors { flex: 0 0 auto; }
+.note-style-row .note-size { margin-left: auto; margin-right: 0; }
+
+/* The toggles share the footer row with Cancel and Save. The auto margin is
+   what holds them at the left while those two stay right. */
+.note-modal-foot .note-toggles {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: auto;
+}
+
+/* The footer also carries the generic .modal-footer class, whose rules are
+   written for a footer holding exactly Cancel and Save:
+      .modal-footer button              radius 999px, padding 10px 20px
+      .modal-footer button:first-child  grey
+      .modal-footer button:last-child   amber
+   `:last-child` means last child of its OWN parent, so the second toggle is
+   one -- which is how the bullet button came out amber and pill-shaped, and
+   how the 20px side padding pushed both to 40px wide. Those selectors score
+   (0,2,1) and .note-lined-btn only (0,1,0), so they win wherever they overlap
+   no matter what order the file is in. Restated here at (0,3,0), which does
+   outrank them. */
+.note-modal-foot .note-toggles .note-lined-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.06);
+    color: #cbd5e1;
+}
+.note-modal-foot .note-toggles .note-lined-btn.note-lined-on {
+    background: rgba(124, 58, 237, 0.9);
+    border-color: transparent;
+    color: #fff;
+}
+.note-size {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 11px;
+    /* A visible white hairline. At 0.18 the controls read as holes in the
+       card rather than as buttons you can press. */
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.06);
+}
+.note-size button {
+    width: 28px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    border: none;
+    background: transparent;
+    color: #cbd5e1;
+    font-family: Inter, sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1;
+    border-radius: 9px;
+    cursor: pointer;
+    padding: 0;
+}
+.note-size button:active { background: rgba(255, 255, 255, 0.14); }
+.note-size button:disabled { opacity: 0.32; cursor: default; }
+#noteFontValue {
+    min-width: 40px;
+    text-align: center;
+    font-family: Inter, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+body.light-mode .note-size {
+    border-color: rgba(120, 95, 65, 0.3);
+    background: rgba(120, 95, 65, 0.06);
+}
+body.light-mode .note-size button,
+body.light-mode #noteFontValue { color: #4a3b2a; }
+
+/* A note that is only being read has nothing to save and nothing to cancel,
+   so the footer stays away until something is actually changed. The dialog's
+   own X is the way out until then. */
+#noteModal.note-reading .note-modal-foot { display: none; }
+/* The footer carried the card's bottom padding. With it gone the last row of
+   controls sat 2px off the edge -- inside the card, but reading as clipped. */
+#noteModal.note-reading .modal-body-note { padding-bottom: 18px !important; }
+
+/* ============================================================
+   --- Note page, full screen (2026-10-13) ---
+   Asked for: opening a note should fill the screen, not sit in a
+   half-height card with the writing box capped at 200px while the
+   rest of the card stood empty.
+   The card already had a max-height for the keyboard case; giving it
+   that same value as its HEIGHT makes it fill the screen, and the
+   writing box -- not the card -- is what takes up the slack. So the
+   keyboard case still works unchanged: --vvh shrinks, the card
+   shrinks with it, and the writing box gives back the difference
+   instead of overflowing.
+   ============================================================ */
+.note-modal-card {
+    height: calc(var(--vvh, 100dvh) - max(12px, env(safe-area-inset-top)) - 12px) !important;
+}
+/* The body is already the flex child that stretches; the writing box has to
+   pass that stretch on to the textarea inside it, or the box grows and the
+   text stays 200px tall in the top of it. */
+.modal-body-note .note-field-body {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+}
+.note-field-body .note-content-input {
+    flex: 1 1 auto !important;
+    height: auto !important;
+    /* The old fixed floors (200px, and 208 with the keyboard up) now fight
+       the flex stretch: the box has to be allowed to SHRINK rather than push
+       the footer off the card. But removing the floor outright collapsed it
+       to 2px on a 320px phone with the keyboard open -- Save was reachable
+       and there was nothing left to write in. So: a floor that is itself a
+       share of the viewport, which the body's own scroll then absorbs. */
+    min-height: min(120px, calc(var(--vvh, 100dvh) * 0.3)) !important;
+}
+.modal.keyboard-open .note-content-input {
+    min-height: min(140px, calc(var(--vvh, 100dvh) * 0.38)) !important;
+}
+
+/* The hint only belongs on a note being read; once editing starts the
+   keyboard is already up and the line would only take room from the text. */
+.note-read-hint { display: none; }
+#noteModal.note-reading .note-read-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: rgba(226, 232, 240, 0.72);
+    padding: 2px 0 0;
+}
+#noteModal.note-reading .note-read-hint i { font-size: 0.68rem; opacity: 0.85; }
+body.light-mode #noteModal.note-reading .note-read-hint { color: rgba(74, 59, 42, 0.78); }
+
+/* The card now reaches the bottom of the viewport, and on this phone the
+   bottom of the viewport is UNDER the gesture/back bar: targetSdk 35+ draws
+   edge-to-edge and env(safe-area-inset-bottom) resolves to 0 here, which is
+   why the rest of the app reads --nav-bottom (measured by MainActivity from
+   the real window insets) instead. The card never met this before because it
+   was content-sized and centred, so it stopped well short. Reserve the bar's
+   own height, at both ends: the overlay's padding, and the card's height. */
+#noteModal.modal {
+    padding-bottom: calc(12px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px))) !important;
+}
+.note-modal-card {
+    height: calc(var(--vvh, 100dvh)
+        - max(12px, env(safe-area-inset-top))
+        - 12px
+        - max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px))) !important;
+    max-height: calc(var(--vvh, 100dvh)
+        - max(12px, env(safe-area-inset-top))
+        - 12px
+        - max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px))) !important;
+}
+
+
+/* ============================================================
+   EXPIRY CARDS -- one card per document in the Expiring panel, and the small
+   pictures in the app-open popup. The card keeps its own deep-navy look in both
+   themes: magenta glow down the left, blue at the top right, a thin rim.
+   ============================================================ */
+.dc-card {
+    position: relative;
+    border-radius: 22px;
+    padding: 16px 16px 12px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    color: #fff;
+    background:
+        radial-gradient(70% 70% at 0% 22%, rgba(222, 64, 206, 0.95) 0%, rgba(205, 52, 130, 0.6) 24%, rgba(150, 40, 150, 0.18) 48%, transparent 68%),
+        radial-gradient(55% 55% at 0% 100%, rgba(150, 56, 236, 0.85) 0%, rgba(110, 40, 190, 0.35) 40%, transparent 70%),
+        radial-gradient(60% 45% at 100% 0%, rgba(34, 98, 196, 0.7) 0%, rgba(30, 60, 150, 0.25) 50%, transparent 75%),
+        radial-gradient(90% 40% at 45% 0%, rgba(58, 40, 160, 0.45) 0%, transparent 70%),
+        linear-gradient(165deg, #0a1230 0%, #060c26 55%, #050a1e 100%);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+}
+.dc-card::before {
+    content: "";
+    position: absolute; inset: 0;
+    border-radius: 22px;
+    padding: 1.3px;
+    pointer-events: none;
+    background: linear-gradient(120deg, rgba(236, 90, 220, 0.9) 0%, rgba(150, 80, 230, 0.25) 35%, rgba(70, 120, 230, 0.35) 70%, rgba(60, 130, 240, 0.7) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+}
+.dc-top { display: flex; align-items: center; gap: 16px; }
+.dc-pic {
+    position: relative;
+    flex: none;
+    width: 72px; height: 90px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #0a1230;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+}
+.dc-pic > svg { display: block; width: 100%; height: 100%; }
+.dc-pic .dc-img { background: #0a1230; }
+.dc-pic .dc-img.dc-img-wide { object-fit: contain; }
+.dc-mid { flex: 1 1 auto; min-width: 0; }
+.dc-name {
+    font-family: Inter, sans-serif;
+    font-size: 1.1rem; font-weight: 600; line-height: 1.2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dc-where {
+    font-family: Inter, sans-serif;
+    font-size: 0.68rem; color: rgba(255, 255, 255, 0.55); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dc-exp {
+    display: flex; align-items: center; gap: 7px;
+    margin-top: 7px;
+    font-family: Inter, sans-serif; font-size: 0.84rem; font-weight: 600;
+}
+.dc-exp svg { width: 16px; height: 16px; flex: none; }
+.dc-red   { --dc: #f5465b; }
+.dc-amber { --dc: #ffb020; }
+.dc-green { --dc: #34d399; }
+.dc-exp { color: var(--dc); }
+.dc-bar { height: 7px; border-radius: 4px; background: #2a2e5c; margin-top: 10px; overflow: hidden; }
+.dc-bar b { display: block; height: 100%; border-radius: 4px; background: var(--dc); }
+.dc-acts { display: flex; justify-content: space-around; margin-top: 12px; }
+.dc-act {
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+    background: none; border: none; color: #fff; cursor: pointer;
+    font-family: Inter, sans-serif; font-size: 0.74rem; font-weight: 500;
+    -webkit-tap-highlight-color: transparent;
+}
+.dc-act span {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: rgba(58, 46, 128, 0.62);
+    display: flex; align-items: center; justify-content: center;
+}
+.dc-act:active span { background: rgba(98, 76, 200, 0.8); }
+.dc-act svg { width: 21px; height: 21px; stroke: #fff; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+/* The app-open popup: the documents as small pictures with their days. */
+.dc-strip { display: flex; justify-content: center; gap: 10px; margin: 12px 0 2px; }
+.dc-strip-item { text-align: center; }
+.dc-strip-item .dc-pic { width: 52px; height: 66px; }
+.dc-strip-days {
+    font-family: Inter, sans-serif; font-size: 0.66rem; font-weight: 800;
+    margin-top: 5px; color: var(--dc);
 }
