@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/sacramento/sacramento.css">
-<link rel="stylesheet" href="style.css?v=629">
+<link rel="stylesheet" href="style.css?v=645">
 
 </head>
 <body>
@@ -1441,6 +1441,10 @@ border: 1px solid rgba(255,255,255,0.2);
         <textarea id="noteContent" placeholder="Write your note here..." class="note-content-input" maxlength="1000"></textarea>
         <span class="note-count" id="noteContentCount">0/1000</span>
       </div>
+      <!-- Nothing on screen said a double tap is what opens the keyboard.
+           Shown only while the note is being read; CSS hides it the moment
+           editing starts. -->
+      <div class="note-read-hint"><i class="far fa-hand-pointer"></i> Double tap the text to edit</div>
       <div class="note-style-row">
         <div class="note-colors" id="noteColors" role="radiogroup" aria-label="Note colour"></div>
         <div class="note-size" role="group" aria-label="Text size">
@@ -1448,12 +1452,28 @@ border: 1px solid rgba(255,255,255,0.2);
           <span id="noteFontValue" aria-live="polite">15px</span>
           <button type="button" id="noteFontPlus" aria-label="Larger text">+</button>
         </div>
-        <button type="button" id="noteLinedBtn" class="note-lined-btn" aria-pressed="false"
-                aria-label="Ruled lines" title="Ruled lines"><i class="fas fa-align-justify"></i></button>
       </div>
     </div>
     <div class="modal-footer note-modal-foot">
-      <button onclick="closeNoteModal()"><i class="fas fa-times"></i>Cancel</button>
+      <!-- The toggles live in the footer so they share the row with Save, and
+           they are nested in their own box on purpose: the footer's button
+           rules are written as `> button`, which this keeps them out of, so
+           they stay 36px squares instead of taking Cancel's pill shape. -->
+      <div class="note-toggles">
+        <!-- Both share .note-lined-btn deliberately: same size, same pressed
+             look, and they pick up the small-screen rule that shrinks that
+             button, which a class of their own would have had to repeat.
+             Ruled page first, bullets second -- the order asked for.
+             The page icon shows ruling on a sheet rather than another stack of
+             bare lines: fa-align-justify sat beside fa-list-ul as two
+             near-identical sets of horizontal strokes and neither said what
+             it did. -->
+        <button type="button" id="noteLinedBtn" class="note-lined-btn" aria-pressed="false"
+                aria-label="Ruled lines" title="Ruled lines"><i class="fas fa-file-lines"></i></button>
+        <button type="button" id="noteBulletBtn" class="note-lined-btn" aria-pressed="false"
+                aria-label="Bullet list" title="Bullet list"><i class="fas fa-list-ul"></i></button>
+      </div>
+      <button id="noteCancelBtn" onclick="closeNoteModal()"><i class="fas fa-times"></i>Cancel</button>
       <button id="saveNoteBtn"><i class="fas fa-check"></i>Save Note</button>
     </div>
   </div>
@@ -1721,7 +1741,7 @@ border: 1px solid rgba(255,255,255,0.2);
     '</div>';
 })();
 </script>
-<script src="app.js?v=583"></script>
+<script src="app.js?v=603"></script>
 
 
 <script>

@@ -12,13 +12,14 @@ index a1c896f..c84d4b7 100644
  
          mBuilder.setSmallIcon(localNotification.getSmallIcon(context, getDefaultSmallIcon(context)));
 diff --git a/node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.java b/node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.java
-index 0a5c0ad..0066ea0 100644
+index 0a5c0ad..7b7a5ab 100644
 --- a/node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.java
 +++ b/node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.java
-@@ -47,6 +47,29 @@ public class TimedNotificationPublisher extends BroadcastReceiver {
+@@ -46,7 +46,56 @@ public class TimedNotificationPublisher extends BroadcastReceiver {
+         NotificationStorage storage = new NotificationStorage(context);
          JSObject notificationJson = storage.getSavedNotificationAsJSObject(Integer.toString(id));
          LocalNotificationsPlugin.fireReceived(notificationJson);
-         notificationManager.notify(id, notification);
+-        notificationManager.notify(id, notification);
 +        // DOCMAN: an expiry alert repeats every 30 minutes and each repeat is a
 +        // separate scheduled id, so the tray filled up with dozens of copies of
 +        // the same document. They all share one group, so the id posted for a
@@ -29,15 +30,42 @@ index 0a5c0ad..0066ea0 100644
 +        // earlier ones, so there was nothing to cancel. Plugin file: restore
 +        // from TimedNotificationPublisher.java.docman-backup, and reapply after
 +        // any npm install.
++        //
++        // Several documents expiring on the same day now share ONE group (the app
++        // words the text as "3 documents expire today"). Their alarms all fire
++        // within the same second, so a sibling arriving within 90 s of the first
++        // is posted UNDER the first one's id: that updates it in place, and
++        // setOnlyAlertOnce keeps it from sounding again. A later repeat (30 min
++        // on) is outside that window, so it still arrives fresh and replaces.
 +        String docmanGroup = notification.getGroup();
++        int docmanPostId = id;
++        boolean docmanSibling = false;
++        android.content.SharedPreferences docmanPrefs = null;
++        int docmanPrevious = Integer.MIN_VALUE;
++        long docmanNow = System.currentTimeMillis();
 +        if (docmanGroup != null) {
 +            try {
-+                android.content.SharedPreferences prefs = context.getSharedPreferences("docman_notif_groups", Context.MODE_PRIVATE);
-+                int previous = prefs.getInt(docmanGroup, Integer.MIN_VALUE);
-+                if (previous != Integer.MIN_VALUE && previous != id) {
-+                    notificationManager.cancel(previous);
++                docmanPrefs = context.getSharedPreferences("docman_notif_groups", Context.MODE_PRIVATE);
++                docmanPrevious = docmanPrefs.getInt(docmanGroup, Integer.MIN_VALUE);
++                long lastAt = docmanPrefs.getLong(docmanGroup + "_t", 0L);
++                if (docmanPrevious != Integer.MIN_VALUE && docmanPrevious != id
++                        && docmanNow >= lastAt && docmanNow - lastAt < 90000L) {
++                    docmanSibling = true;
++                    docmanPostId = docmanPrevious;
 +                }
-+                prefs.edit().putInt(docmanGroup, id).apply();
++            } catch (Exception e) {
++                Logger.error(Logger.tags("LN"), "DOCMAN group lookup failed", e);
++            }
++        }
++        notificationManager.notify(docmanPostId, notification);
++        if (docmanGroup != null && docmanPrefs != null) {
++            try {
++                if (!docmanSibling && docmanPrevious != Integer.MIN_VALUE && docmanPrevious != id) {
++                    notificationManager.cancel(docmanPrevious);
++                }
++                android.content.SharedPreferences.Editor ed = docmanPrefs.edit().putInt(docmanGroup, docmanPostId);
++                if (!docmanSibling) ed.putLong(docmanGroup + "_t", docmanNow);
++                ed.apply();
 +            } catch (Exception e) {
 +                Logger.error(Logger.tags("LN"), "DOCMAN group cleanup failed", e);
 +            }

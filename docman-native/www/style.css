@@ -2819,14 +2819,27 @@ border-bottom-color: rgba(0, 0, 0, 0.1);
 @keyframes floatIcon { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
 
-#searchInfo { margin: 0 0 16px 0; padding: 10px 18px; font-size: 0.85rem; font-weight: 500; background: var(--glass-bg); border-radius: var(--radius-full); border: 1px solid var(--glass-border); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); display: inline-flex; align-items: center; gap: 10px; }
+/* The results pill sits directly under the search field, so it now wears that
+   field's own skin: the same #101216 fill and the same 1px #ff8c28 edge the
+   .search-container override further down gives it. It was glass with a faint
+   grey border, which read as a third unrelated thing between the field and the
+   cards.
+   Block-level flex, not inline-flex: inline-flex shrink-wrapped it to its text
+   and left it 60px short of the result cards. The -10px right margin is the
+   bleed the cards themselves carry, so both now end on the same line.
+   Height came down 50px -> 38px; the Clear button is pushed to the far edge by
+   its own auto margin rather than sitting against the text. */
+#searchInfo { margin: 0 -10px 16px 0; padding: 6px 8px 6px 16px; font-size: 0.85rem; font-weight: 500; background: #101216; border-radius: var(--radius-full); border: 1px solid #ff8c28; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); display: flex; align-items: center; gap: 10px; }
 #searchInfo button {
+    /* auto margin, not a gap: it holds Clear against the pill's right edge
+       however long the "Found N result(s) for ..." line turns out to be. */
+    margin-left: auto;
     border: 1px solid #ff8c28;
     background: transparent;
     color: #ff8c28;
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     font-weight: 600;
-    padding: 6px 14px 6px 10px;
+    padding: 4px 12px 4px 9px;
     border-radius: 999px;
     cursor: pointer;
     display: inline-flex;
@@ -10222,7 +10235,7 @@ body.light-mode .note-modal-head .note-title-input {
 }
 
 .note-modal-foot { padding: 6px 18px 18px !important; display: flex; gap: 12px; }
-.note-modal-foot button {
+.note-modal-foot > button {
     flex: 1;
     display: flex; align-items: center; justify-content: center; gap: 8px;
     padding: 13px 0 !important;
@@ -10232,7 +10245,7 @@ body.light-mode .note-modal-head .note-title-input {
     font-weight: 700;
     cursor: pointer;
 }
-.note-modal-foot button:first-child {
+.note-modal-foot > #noteCancelBtn {
     background: rgba(255, 255, 255, 0.06) !important;
     border: 1px solid rgba(255, 255, 255, 0.22) !important;
     color: #e2e8f0 !important;
@@ -10255,7 +10268,7 @@ body.light-mode .note-content-input::placeholder { color: rgba(60, 50, 40, 0.5);
 body.light-mode .note-field-body .note-title-input,
 body.light-mode .note-field-body .note-content-input { color: #ffffff !important; }
 body.light-mode .note-modal-x { background: rgba(120, 95, 65, 0.12); color: #4a3b2a; }
-body.light-mode .note-modal-foot button:first-child {
+body.light-mode .note-modal-foot > #noteCancelBtn {
     background: #ffffff !important;
     border-color: rgba(120, 95, 65, 0.3) !important;
     color: #4a3b2a !important;
@@ -10328,14 +10341,23 @@ body.light-mode .note-modal-foot button:first-child {
     bottom: auto !important;
     height: var(--vvh, 100dvh) !important;
 }
+/* The cap has to leave room for the overlay's OWN padding, which is a
+   status-bar inset at the top (34px on this phone), not the flat 12 it was
+   written against. A card capped 24px under the viewport could not fit
+   between 34 + 12 of padding, so the centred overflow pushed its head up
+   under the status bar and the title was clipped. Subtract what the overlay
+   actually reserves. */
 .note-modal-card {
-    max-height: calc(var(--vvh, 100dvh) - 24px) !important;
+    max-height: calc(var(--vvh, 100dvh) - max(12px, env(safe-area-inset-top)) - 12px) !important;
 }
 
 /* Compact note editor. Everything was sized for a tablet: a 160px writing
    box, 42px head icon, 36px swatches and 13px-tall buttons added up to a card
    that filled the screen before a word was typed. */
-.note-modal-head { padding: 13px 14px 2px !important; gap: 10px !important; }
+/* 13 -> 9 at the top: four pixels taken off a title row that was 66px tall
+   for one line of text, and spent below on the gap between the swatches and
+   the toggles. */
+.note-modal-head { padding: 9px 14px 2px !important; gap: 10px !important; }
 .note-modal-icon {
     width: 32px !important; height: 32px !important; flex: 0 0 32px !important;
     border-radius: 10px !important; font-size: 0.8rem !important;
@@ -10344,7 +10366,8 @@ body.light-mode .note-modal-foot button:first-child {
 .note-modal-sub { font-size: 0.72rem !important; }
 .note-modal-x { width: 28px !important; height: 28px !important; flex: 0 0 28px !important; font-size: 0.78rem !important; }
 
-.modal-body-note { padding: 10px 14px 2px !important; gap: 9px !important; }
+/* Same trade: 10 -> 6 above the page. */
+.modal-body-note { padding: 6px 14px 2px !important; gap: 9px !important; }
 .note-field { padding: 9px 12px 9px 40px !important; border-radius: 13px !important; }
 .note-field-ico { left: 12px !important; top: 11px !important; font-size: 0.78rem !important; }
 .note-field-body { padding-bottom: 20px !important; }
@@ -10356,7 +10379,7 @@ body.light-mode .note-modal-foot button:first-child {
 .note-color-dot { width: 27px !important; height: 27px !important; }
 
 .note-modal-foot { padding: 4px 14px 12px !important; gap: 10px !important; }
-.note-modal-foot button {
+.note-modal-foot > button {
     padding: 9px 0 !important;
     font-size: 0.85rem !important;
     gap: 6px !important;
@@ -10378,21 +10401,29 @@ body.light-mode .note-modal-foot button:first-child {
 /* Cancel and Save sized to their words, sitting together on the right, rather
    than each stretching across half the card. */
 .note-modal-foot { justify-content: flex-end !important; }
-.note-modal-foot button {
+.note-modal-foot > button {
     flex: 0 0 auto !important;
     padding: 9px 20px !important;
 }
 
 /* Footer buttons down to a normal dialog size: smaller type, a tighter pill,
    and the tick/cross at the size of the words rather than beside them. */
-.note-modal-foot { padding: 2px 14px 10px !important; gap: 8px !important; }
-.note-modal-foot button {
+/* 2px above this row left the toggles sitting right under the swatches with
+   nothing between them, and 10px below put them hard against the card edge --
+   which a 36px square shows far more than Cancel and Save do. 10 and 12. */
+/* Wraps on purpose. Two toggles, Cancel and Save need 285px plus 28 of
+   padding; a 320px-wide phone -- or any phone with Display size turned up,
+   which is the same thing to CSS -- gives the row 292, and the line ran off
+   the card. Allowed to wrap, the toggles take their own line there and keep
+   Save reachable. At 360 and up it stays one row. */
+.note-modal-foot { padding: 10px 14px 12px !important; gap: 8px !important; flex-wrap: wrap; row-gap: 8px; }
+.note-modal-foot > button {
     padding: 7px 16px !important;
     font-size: 0.78rem !important;
     font-weight: 600 !important;
     gap: 5px !important;
 }
-.note-modal-foot button i { font-size: 0.72rem !important; }
+.note-modal-foot > button i { font-size: 0.72rem !important; }
 .note-modal-foot #saveNoteBtn { box-shadow: 0 4px 12px rgba(99, 102, 241, 0.32) !important; }
 
 /* Outline icons and lit edges, matching the reference: a magenta-to-blue rim
@@ -10424,6 +10455,22 @@ body.light-mode .note-modal-foot button:first-child {
 /* A little more room to write in. */
 .note-content-input { min-height: 200px !important; }
 
+/* ...and with the keyboard up it takes most of what is left over.
+   This was 150px, from when the toggles still sat in the style row and 200
+   pushed the controls under the card's own bottom edge. The toggles have since
+   moved into the footer beside Save, which gave a whole row back, and the card
+   was left 60px short of its own cap -- measured with the keyboard genuinely
+   open: viewport 465, cap 419, card 359. The card centres itself, so that 60
+   showed up as a band of empty card above AND below the page.
+   206 hands those 60px to the writing area and still stops 4px short of the
+   cap. Do not take that last slack: going over the cap is what put the card's
+   head under the status bar (see the note on --vvh above). */
+/* 208 is right for a 465px keyboard viewport and far too tall for a short
+   one, where a fixed floor pushed the page past the card's own capped height
+   and the content was cut. Whichever is smaller: the 208 this phone wants, or
+   a fixed share of whatever viewport is actually there. */
+.modal.keyboard-open .note-content-input { min-height: min(208px, calc(var(--vvh, 100dvh) * 0.45)) !important; }
+
 /* Title row: one line of text, no counter, no divider above the footer.
    The 100-character cap still applies -- maxlength does the work; the readout
    was only noise on a field that holds a few words. */
@@ -10437,10 +10484,10 @@ body.light-mode .note-modal-foot button:first-child {
 .note-modal-foot { border-top: none !important; }
 
 /* Cancel reads as a button, not as text: a visible rim of its own. */
-.note-modal-foot button:first-child {
+.note-modal-foot > #noteCancelBtn {
     border: 1px solid rgba(255, 255, 255, 0.5) !important;
 }
-body.light-mode .note-modal-foot button:first-child {
+body.light-mode .note-modal-foot > #noteCancelBtn {
     border-color: rgba(120, 95, 65, 0.55) !important;
 }
 
@@ -10995,7 +11042,7 @@ body.light-mode .st-bar { background: rgba(0,0,0,0.08); }
    One ink colour for all six papers -- they are all pale enough to take it,
    which is the point of choosing them that way.
    ============================================================ */
-.note-field-body.note-paper .note-content-input { color: #1f2937 !important; }
+.note-field-body.note-paper .note-content-input { color: #0b1220 !important; font-weight: 500; }
 .note-field-body.note-paper .note-content-input::placeholder { color: rgba(31, 41, 55, 0.45) !important; }
 .note-field-body.note-paper .note-field-ico { color: rgba(31, 41, 55, 0.5); }
 .note-field-body.note-paper .note-count { color: rgba(31, 41, 55, 0.5); }
@@ -11003,7 +11050,7 @@ body.light-mode .st-bar { background: rgba(0,0,0,0.08); }
 /* Light mode sets the body text dark with !important too, by a rule that is
    no more specific than the one above -- so say it again here rather than
    leave the winner to source order. */
-body.light-mode .note-field-body.note-paper .note-content-input { color: #1f2937 !important; }
+body.light-mode .note-field-body.note-paper .note-content-input { color: #0b1220 !important; font-weight: 500; }
 body.light-mode .note-field-body.note-paper .note-field-ico { color: rgba(31, 41, 55, 0.5); }
 
 /* ============================================================
@@ -11023,7 +11070,9 @@ body.light-mode .note-field-body.note-paper .note-field-ico { color: rgba(31, 41
     width: 36px; height: 36px;
     display: flex; align-items: center; justify-content: center;
     border-radius: 11px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    /* A visible white hairline. At 0.18 the controls read as holes in the
+       card rather than as buttons you can press. */
+    border: 1px solid rgba(255, 255, 255, 0.55);
     background: rgba(255, 255, 255, 0.06);
     color: #cbd5e1;
     font-size: 0.85rem;
@@ -11031,6 +11080,9 @@ body.light-mode .note-field-body.note-paper .note-field-ico { color: rgba(31, 41
     padding: 0;
     transition: background .16s ease, color .16s ease, border-color .16s ease, transform .12s ease;
 }
+/* Both glyphs are small and fine-stroked at 0.85rem, which is most of why
+   they were hard to tell apart at a glance. */
+.note-lined-btn i { font-size: 0.95rem; }
 .note-lined-btn:active { transform: scale(0.94); }
 .note-lined-btn.note-lined-on {
     background: rgba(124, 58, 237, 0.9);
@@ -11055,17 +11107,55 @@ body.light-mode .note-lined-btn {
    ruling because it is the same kind of choice -- what the page looks like.
    The row wraps rather than squeezing: six swatches, a stepper and a toggle
    do not fit one line on a narrow phone. */
-/* Two deliberate rows, not a squeeze. Six swatches, a stepper and a toggle
-   come to well over the 328px a phone gives this dialog, and left to wrap on
-   their own the toggle dropped onto a second line the card had no height
-   for -- it was cut in half by the card
-'
-s own bottom edge. So the colours
-   take a line and the two controls take the next, with the card given room
-   for both. */
-.note-style-row { flex-wrap: wrap; row-gap: 10px; }
-.note-style-row .note-colors { flex: 1 0 100%; }
-.note-style-row .note-size { margin-right: auto; }
+/* One row, measured rather than assumed: the six swatches come to 202px and
+   the stepper to 105px, which with the 10px gap is 317 of the 328 this row
+   has. The old note here said the two could not share a line -- that was
+   written when the toggles were in this row too, and they have since moved
+   down into the footer beside Save. */
+.note-style-row { flex-wrap: wrap; row-gap: 4px; }
+/* 0 0, not 0 1: allowed to shrink, the swatch row collapsed narrower
+   than the swatches themselves and they ran straight through the stepper on
+   any phone reporting less than ~376px. Held at its own width it simply sends
+   the stepper to the next line where there is no room for both -- which is
+   what the rule this replaced was getting at, and what one device talked me
+   out of. */
+.note-style-row .note-colors { flex: 0 0 auto; }
+.note-style-row .note-size { margin-left: auto; margin-right: 0; }
+
+/* The toggles share the footer row with Cancel and Save. The auto margin is
+   what holds them at the left while those two stay right. */
+.note-modal-foot .note-toggles {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: auto;
+}
+
+/* The footer also carries the generic .modal-footer class, whose rules are
+   written for a footer holding exactly Cancel and Save:
+      .modal-footer button              radius 999px, padding 10px 20px
+      .modal-footer button:first-child  grey
+      .modal-footer button:last-child   amber
+   `:last-child` means last child of its OWN parent, so the second toggle is
+   one -- which is how the bullet button came out amber and pill-shaped, and
+   how the 20px side padding pushed both to 40px wide. Those selectors score
+   (0,2,1) and .note-lined-btn only (0,1,0), so they win wherever they overlap
+   no matter what order the file is in. Restated here at (0,3,0), which does
+   outrank them. */
+.note-modal-foot .note-toggles .note-lined-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.06);
+    color: #cbd5e1;
+}
+.note-modal-foot .note-toggles .note-lined-btn.note-lined-on {
+    background: rgba(124, 58, 237, 0.9);
+    border-color: transparent;
+    color: #fff;
+}
 .note-size {
     flex: 0 0 auto;
     display: flex;
@@ -11073,7 +11163,9 @@ s own bottom edge. So the colours
     gap: 2px;
     padding: 2px;
     border-radius: 11px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    /* A visible white hairline. At 0.18 the controls read as holes in the
+       card rather than as buttons you can press. */
+    border: 1px solid rgba(255, 255, 255, 0.55);
     background: rgba(255, 255, 255, 0.06);
 }
 .note-size button {
@@ -11111,8 +11203,177 @@ body.light-mode #noteFontValue { color: #4a3b2a; }
    so the footer stays away until something is actually changed. The dialog's
    own X is the way out until then. */
 #noteModal.note-reading .note-modal-foot { display: none; }
-/* The footer carried the card
-'
-s bottom padding. With it gone the last row of
+/* The footer carried the card's bottom padding. With it gone the last row of
    controls sat 2px off the edge -- inside the card, but reading as clipped. */
 #noteModal.note-reading .modal-body-note { padding-bottom: 18px !important; }
+
+/* ============================================================
+   --- Note page, full screen (2026-10-13) ---
+   Asked for: opening a note should fill the screen, not sit in a
+   half-height card with the writing box capped at 200px while the
+   rest of the card stood empty.
+   The card already had a max-height for the keyboard case; giving it
+   that same value as its HEIGHT makes it fill the screen, and the
+   writing box -- not the card -- is what takes up the slack. So the
+   keyboard case still works unchanged: --vvh shrinks, the card
+   shrinks with it, and the writing box gives back the difference
+   instead of overflowing.
+   ============================================================ */
+.note-modal-card {
+    height: calc(var(--vvh, 100dvh) - max(12px, env(safe-area-inset-top)) - 12px) !important;
+}
+/* The body is already the flex child that stretches; the writing box has to
+   pass that stretch on to the textarea inside it, or the box grows and the
+   text stays 200px tall in the top of it. */
+.modal-body-note .note-field-body {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+}
+.note-field-body .note-content-input {
+    flex: 1 1 auto !important;
+    height: auto !important;
+    /* The old fixed floors (200px, and 208 with the keyboard up) now fight
+       the flex stretch: the box has to be allowed to SHRINK rather than push
+       the footer off the card. But removing the floor outright collapsed it
+       to 2px on a 320px phone with the keyboard open -- Save was reachable
+       and there was nothing left to write in. So: a floor that is itself a
+       share of the viewport, which the body's own scroll then absorbs. */
+    min-height: min(120px, calc(var(--vvh, 100dvh) * 0.3)) !important;
+}
+.modal.keyboard-open .note-content-input {
+    min-height: min(140px, calc(var(--vvh, 100dvh) * 0.38)) !important;
+}
+
+/* The hint only belongs on a note being read; once editing starts the
+   keyboard is already up and the line would only take room from the text. */
+.note-read-hint { display: none; }
+#noteModal.note-reading .note-read-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: rgba(226, 232, 240, 0.72);
+    padding: 2px 0 0;
+}
+#noteModal.note-reading .note-read-hint i { font-size: 0.68rem; opacity: 0.85; }
+body.light-mode #noteModal.note-reading .note-read-hint { color: rgba(74, 59, 42, 0.78); }
+
+/* The card now reaches the bottom of the viewport, and on this phone the
+   bottom of the viewport is UNDER the gesture/back bar: targetSdk 35+ draws
+   edge-to-edge and env(safe-area-inset-bottom) resolves to 0 here, which is
+   why the rest of the app reads --nav-bottom (measured by MainActivity from
+   the real window insets) instead. The card never met this before because it
+   was content-sized and centred, so it stopped well short. Reserve the bar's
+   own height, at both ends: the overlay's padding, and the card's height. */
+#noteModal.modal {
+    padding-bottom: calc(12px + max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px))) !important;
+}
+.note-modal-card {
+    height: calc(var(--vvh, 100dvh)
+        - max(12px, env(safe-area-inset-top))
+        - 12px
+        - max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px))) !important;
+    max-height: calc(var(--vvh, 100dvh)
+        - max(12px, env(safe-area-inset-top))
+        - 12px
+        - max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px))) !important;
+}
+
+
+/* ============================================================
+   EXPIRY CARDS -- one card per document in the Expiring panel, and the small
+   pictures in the app-open popup. The card keeps its own deep-navy look in both
+   themes: magenta glow down the left, blue at the top right, a thin rim.
+   ============================================================ */
+.dc-card {
+    position: relative;
+    border-radius: 22px;
+    padding: 16px 16px 12px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    color: #fff;
+    background:
+        radial-gradient(70% 70% at 0% 22%, rgba(222, 64, 206, 0.95) 0%, rgba(205, 52, 130, 0.6) 24%, rgba(150, 40, 150, 0.18) 48%, transparent 68%),
+        radial-gradient(55% 55% at 0% 100%, rgba(150, 56, 236, 0.85) 0%, rgba(110, 40, 190, 0.35) 40%, transparent 70%),
+        radial-gradient(60% 45% at 100% 0%, rgba(34, 98, 196, 0.7) 0%, rgba(30, 60, 150, 0.25) 50%, transparent 75%),
+        radial-gradient(90% 40% at 45% 0%, rgba(58, 40, 160, 0.45) 0%, transparent 70%),
+        linear-gradient(165deg, #0a1230 0%, #060c26 55%, #050a1e 100%);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+}
+.dc-card::before {
+    content: "";
+    position: absolute; inset: 0;
+    border-radius: 22px;
+    padding: 1.3px;
+    pointer-events: none;
+    background: linear-gradient(120deg, rgba(236, 90, 220, 0.9) 0%, rgba(150, 80, 230, 0.25) 35%, rgba(70, 120, 230, 0.35) 70%, rgba(60, 130, 240, 0.7) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+}
+.dc-top { display: flex; align-items: center; gap: 16px; }
+.dc-pic {
+    position: relative;
+    flex: none;
+    width: 72px; height: 90px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #0a1230;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+}
+.dc-pic > svg { display: block; width: 100%; height: 100%; }
+.dc-pic .dc-img { background: #0a1230; }
+.dc-pic .dc-img.dc-img-wide { object-fit: contain; }
+.dc-mid { flex: 1 1 auto; min-width: 0; }
+.dc-name {
+    font-family: Inter, sans-serif;
+    font-size: 1.1rem; font-weight: 600; line-height: 1.2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dc-where {
+    font-family: Inter, sans-serif;
+    font-size: 0.68rem; color: rgba(255, 255, 255, 0.55); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dc-exp {
+    display: flex; align-items: center; gap: 7px;
+    margin-top: 7px;
+    font-family: Inter, sans-serif; font-size: 0.84rem; font-weight: 600;
+}
+.dc-exp svg { width: 16px; height: 16px; flex: none; }
+.dc-red   { --dc: #f5465b; }
+.dc-amber { --dc: #ffb020; }
+.dc-green { --dc: #34d399; }
+.dc-exp { color: var(--dc); }
+.dc-bar { height: 7px; border-radius: 4px; background: #2a2e5c; margin-top: 10px; overflow: hidden; }
+.dc-bar b { display: block; height: 100%; border-radius: 4px; background: var(--dc); }
+.dc-acts { display: flex; justify-content: space-around; margin-top: 12px; }
+.dc-act {
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+    background: none; border: none; color: #fff; cursor: pointer;
+    font-family: Inter, sans-serif; font-size: 0.74rem; font-weight: 500;
+    -webkit-tap-highlight-color: transparent;
+}
+.dc-act span {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: rgba(58, 46, 128, 0.62);
+    display: flex; align-items: center; justify-content: center;
+}
+.dc-act:active span { background: rgba(98, 76, 200, 0.8); }
+.dc-act svg { width: 21px; height: 21px; stroke: #fff; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+/* The app-open popup: the documents as small pictures with their days. */
+.dc-strip { display: flex; justify-content: center; gap: 10px; margin: 12px 0 2px; }
+.dc-strip-item { text-align: center; }
+.dc-strip-item .dc-pic { width: 52px; height: 66px; }
+.dc-strip-days {
+    font-family: Inter, sans-serif; font-size: 0.66rem; font-weight: 800;
+    margin-top: 5px; color: var(--dc);
+}

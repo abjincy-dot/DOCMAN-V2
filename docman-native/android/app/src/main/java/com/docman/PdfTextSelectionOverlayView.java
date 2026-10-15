@@ -116,12 +116,27 @@ public class PdfTextSelectionOverlayView extends View {
     private final float handleTouchRadiusPx;
 
     private float downX, downY;
+    // Where PDFView's page actually sat when the finger went down. The slop
+    // above answers "did the FINGER move", which a slow, deliberate scroll can
+    // stay inside for the whole 500ms. The long-press then fired in the middle
+    // of that scroll and turned it into a text selection (reported 2026-10-13:
+    // "while pdf scrolling text selection happens"). Whether the PAGE moved is
+    // the real question, and PDFView has already applied its own scroll slop
+    // before it moves anything, so this cannot bring back the hand-tremor
+    // problem the generous slop was added to fix. It also covers the case
+    // where no further MOVE arrives at all: a finger landing on a page still
+    // flinging from the previous gesture, then held still.
+    private float downPageXOffset, downPageYOffset;
+    private final float pageMovedCancelPx;
     private boolean longPressFired = false;
     private boolean draggingStartHandle = false;
     private boolean draggingEndHandle = false;
     private final Runnable longPressRunnable = new Runnable() {
         @Override
         public void run() {
+            // The page moved under the finger while it was held: that is a
+            // scroll (or a fling still settling), not a request to select.
+            if (pageMovedSinceDown()) return;
             longPressFired = true;
             if (pdfView != null) {
                 MotionEvent cancel = MotionEvent.obtain(
@@ -195,6 +210,7 @@ public class PdfTextSelectionOverlayView extends View {
         longPressTimeoutMs = ViewConfiguration.getLongPressTimeout();
         float density = context.getResources().getDisplayMetrics().density;
         longPressCancelSlopPx = 18f * density;
+        pageMovedCancelPx = 2f * density;
         handleRadiusPx = 6f * density;
         handleTouchRadiusPx = 24f * density;
 
@@ -717,6 +733,15 @@ public class PdfTextSelectionOverlayView extends View {
         if (pdfView != null) pdfView.dispatchTouchEvent(event);
     }
 
+    // True once the page has travelled far enough since ACTION_DOWN that this
+    // gesture is plainly a scroll. A couple of pixels of leeway so a rounding
+    // wobble in PDFView's own offsets does not read as movement.
+    private boolean pageMovedSinceDown() {
+        if (pdfView == null) return false;
+        return Math.abs(pdfView.getCurrentXOffset() - downPageXOffset) > pageMovedCancelPx
+                || Math.abs(pdfView.getCurrentYOffset() - downPageYOffset) > pageMovedCancelPx;
+    }
+
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         if (pdfView == null || markModeActive) return false;
@@ -759,6 +784,8 @@ public class PdfTextSelectionOverlayView extends View {
                 suppressDragUntilUp = false;
                 downX = event.getX();
                 downY = event.getY();
+                downPageXOffset = pdfView.getCurrentXOffset();
+                downPageYOffset = pdfView.getCurrentYOffset();
                 longPressFired = false;
                 draggingStartHandle = hasSelection && startHandleHit.contains(downX, downY);
                 draggingEndHandle = !draggingStartHandle && hasSelection && endHandleHit.contains(downX, downY);
@@ -786,7 +813,9 @@ public class PdfTextSelectionOverlayView extends View {
                     updateMovingHandle(event.getX(), event.getY());
                     return true;
                 }
-                if (Math.abs(event.getX() - downX) > longPressCancelSlopPx || Math.abs(event.getY() - downY) > longPressCancelSlopPx) {
+                if (pageMovedSinceDown()
+                        || Math.abs(event.getX() - downX) > longPressCancelSlopPx
+                        || Math.abs(event.getY() - downY) > longPressCancelSlopPx) {
                     removeCallbacks(longPressRunnable);
                 }
                 forwardToPdfView(event);

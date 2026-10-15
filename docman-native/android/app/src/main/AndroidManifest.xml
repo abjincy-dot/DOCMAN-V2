@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
     <!-- largeHeap: PDFBox loading/re-serializing a large (400+ page) PDF
          in memory to save annotations blew the default heap and crashed
          the whole process. Raises the ceiling; PDDocument.save() also
@@ -59,6 +60,29 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Android drops every pending alarm an app owns when the app is
+             updated, and the plugin's own receiver listens for the three boot
+             actions only. So each release silently disarmed every expiry
+             alert until someone happened to open the app, and any slot whose
+             time had passed by then was skipped for good. A document set to
+             expire the next day lost its 09:00 alert exactly this way.
+             The receiver ignores which action woke it: it rebuilds everything
+             from its own storage and re-fires anything already due 15 seconds
+             later. It only needs to be told about the update. Declared with
+             tools:node="merge" so this filter is ADDED to the plugin's own
+             declaration instead of replacing it.
+             (Note for future edits: XML forbids a double hyphen inside a
+             comment, which is why the prose here avoids the dash style used
+             everywhere else in this project.) -->
+        <receiver
+            android:name="com.capacitorjs.plugins.localnotifications.LocalNotificationRestoreReceiver"
+            android:exported="false"
+            tools:node="merge">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
     <!-- Permissions -->

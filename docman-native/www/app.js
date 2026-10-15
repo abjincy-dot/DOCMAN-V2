@@ -3255,9 +3255,36 @@ function imgNotificationIdFor(folderPath, fileName, offset) {
 // reschedule cancels exactly what it replaces, with nothing orphaned.
 // ============================================================
 const EXPIRY_ALERT_HOUR = 9;        // the 7-day, 3-day and overdue alerts
-// The expiry day's own alerts, by hour. Morning, then late afternoon for a
-// document still not dealt with -- both inside waking hours, neither at night.
-const EXPIRY_DAY_HOURS = [9, 17];
+
+// The expiry day's own alerts: every 30 minutes from 07:00 to 21:00.
+//
+// This was cut to [9, 17] after the user reported being interrupted all day.
+// That read the complaint wrong. What they objected to was the tray filling
+// with dozens of copies of the SAME document -- the repeats themselves are
+// wanted, and a document expiring today should keep asking until it is
+// answered. The stacking is handled in the plugin patch
+// (patches/@capacitor+local-notifications+6.1.3.patch): every repeat shares one
+// group, the id posted for a group is remembered, and the previous one is
+// cancelled as the next arrives. One banner, refreshed every half hour.
+//
+// Nothing at night: 21:00 is the last, 07:00 the first.
+const EXPIRY_DAY_SLOTS = (() => {
+    const slots = [];
+    for (let h = 7; h <= 21; h++) {
+        slots.push({ hour: h, minute: 0 });
+        if (h < 21) slots.push({ hour: h, minute: 30 });
+    }
+    return slots;                   // 29 of them, which is why the legacy
+})();                               // cancel range below is 29 wide
+
+// Those 29 slots are only armed for a document whose day is actually close.
+// Android caps how many alarms an app may keep pending, and arming the dense
+// day for every dated document is what once exhausted it -- past about a dozen
+// documents the rest quietly got nothing at all. The 7-day, 3-day, tomorrow and
+// overdue alerts are single and always armed; they are what brings the person
+// back into the app, and every launch re-runs the scheduler, which is where a
+// document that has come close picks its dense slots up.
+const EXPIRY_DENSE_WITHIN_DAYS = 3;
 // Ids 1000..1028 were handed out by the old every-30-minutes schedule. A phone
 // upgrading from an earlier build already has them armed, and a cancel list
 // covering only the ids now in use would leave the rest firing every half hour
@@ -3288,7 +3315,7 @@ const ALERT_CHANNEL_ID_OLD = 'docman-alerts';
 // How many of the day's slots to clear. Not how many are scheduled -- see
 // EXPIRY_LEGACY_DAY_SLOTS for why this is the larger of the two.
 function expiryDaySlotsToCancel() {
-    return Math.max(EXPIRY_DAY_HOURS.length, EXPIRY_LEGACY_DAY_SLOTS);
+    return Math.max(EXPIRY_DAY_SLOTS.length, EXPIRY_LEGACY_DAY_SLOTS);
 }
 
 // Every id a document can own, so a reschedule can clear the whole set.
@@ -3317,6 +3344,27 @@ function todayIsoDate() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Documents, not yet answered with "Got it", that share this expiry date.
+function expiryDocsOnDate(dateStr) {
+    let n = 0;
+    for (const folderPath in allFiles) {
+        for (const file of allFiles[folderPath] || []) {
+            if (file.expiryDate === dateStr && !isExpiryAcknowledged(file)) n++;
+        }
+    }
+    return n;
+}
+
+// A document's wording depends on how many others share its date, so adding,
+// moving, renewing, deleting or acknowledging one changes the text on the rest.
+// Rather than chase every date a change touches, re-arm them all shortly after:
+// the scheduler is the same one that already runs at every launch.
+let expiryRefreshTimer = null;
+function queueExpiryAlertRefresh() {
+    clearTimeout(expiryRefreshTimer);
+    expiryRefreshTimer = setTimeout(() => { rescheduleAllExpiryNotifications(); }, 1500);
+}
+
 async function imgScheduleExpiryNotification(folderPath, fileName, dateStr, opts) {
     const plugin = window.Capacitor?.Plugins?.LocalNotifications;
     if (!plugin) return; // plugin not installed -- in-app reminders still work
@@ -3325,42 +3373,67 @@ async function imgScheduleExpiryNotification(folderPath, fileName, dateStr, opts
         await plugin.cancel({ notifications: expiryNotificationIds(folderPath, fileName).map(id => ({ id })) });
     } catch (e) { /* nothing scheduled yet -- fine */ }
 
+    // Other documents on the same date word their alert by how many there are,
+    // so a change here has to reach them too -- see queueExpiryAlertRefresh.
+    if (!(opts && opts.noRefresh)) queueExpiryAlertRefresh();
     if (!dateStr || (opts && opts.acknowledged)) return;
 
     const now = new Date();
-    const extra = { kind: 'expiry', folderPath, fileName, expiryDate: dateStr };
+    // How many documents share this expiry date. Their alerts fire together, so
+    // they are ONE banner that says so ("3 documents expire today") instead of
+    // three identical ones nobody can tell apart. Names stay off the lock screen.
+    const sharing = expiryDocsOnDate(dateStr);
+    const many = sharing > 1;
+    const extra = { kind: 'expiry', folderPath, fileName, expiryDate: dateStr, count: sharing };
     const notifications = [];
     // Every alert for this document carries the same group. Each repeat has to
     // be scheduled under its own id -- two alarms cannot share one -- so the
     // group is what ties them together once they fire, and the publisher uses
     // it to drop the previous one instead of stacking another copy.
-    const group = `docman-expiry-${imgNotificationIdFor(folderPath, fileName, 0)}`;
-    const add = (id, title, body, at, withActions) => {
+    // One group per expiry date and kind of alert, shared by every document on
+    // that date: the plugin keeps a single banner per group, and the repeats of
+    // one slot after another still replace each other.
+    const add = (id, kind, title, body, titleMany, bodyMany, at, withActions) => {
         if (at <= now) return; // a slot already in the past is simply skipped
-        const n = { id, title, body, schedule: { at, allowWhileIdle: true }, autoCancel: true, extra,
-            channelId: ALERT_CHANNEL_ID, visibility: 1, group };
-        if (withActions) n.actionTypeId = EXPIRY_ACTION_TYPE;
+        const n = { id, title: many ? titleMany : title, body: many ? bodyMany : body,
+            schedule: { at, allowWhileIdle: true }, autoCancel: true, extra,
+            channelId: ALERT_CHANNEL_ID, visibility: 1, group: `docman-expiry-${dateStr}-${kind}` };
+        // "Got it" and "Renew" name one document; on a banner for several they
+        // would silently pick one. Tapping opens the list instead.
+        if (withActions && !many) n.actionTypeId = EXPIRY_ACTION_TYPE;
         notifications.push(n);
     };
 
     const dayAtAlertHour = expiryAtHour(dateStr, EXPIRY_ALERT_HOUR);
-    add(imgNotificationIdFor(folderPath, fileName, 7), 'Document expiring soon',
-        'A document expires in 7 days. Open DOCMAN to see which.', new Date(dayAtAlertHour.getTime() - 7 * 86400000));
-    add(imgNotificationIdFor(folderPath, fileName, 3), 'Document expiring soon',
-        'A document expires in 3 days. Open DOCMAN to see which.', new Date(dayAtAlertHour.getTime() - 3 * 86400000));
+    add(imgNotificationIdFor(folderPath, fileName, 7), 'd7', 'Document expiring soon',
+        'A document expires in 7 days. Open DOCMAN to see which.', 'Documents expiring soon',
+        `${sharing} documents expire in 7 days. Open DOCMAN to see which.`, new Date(dayAtAlertHour.getTime() - 7 * 86400000));
+    add(imgNotificationIdFor(folderPath, fileName, 3), 'd3', 'Document expiring soon',
+        'A document expires in 3 days. Open DOCMAN to see which.', 'Documents expiring soon',
+        `${sharing} documents expire in 3 days. Open DOCMAN to see which.`, new Date(dayAtAlertHour.getTime() - 3 * 86400000));
     // Nothing used to be said between "in 3 days" and "today", which are the
     // last two days anything can still be renewed in time.
-    add(imgNotificationIdFor(folderPath, fileName, 1), 'Document expiring tomorrow',
-        'A document expires tomorrow. Open DOCMAN to see which.', new Date(dayAtAlertHour.getTime() - 86400000));
+    add(imgNotificationIdFor(folderPath, fileName, 1), 'd1', 'Document expiring tomorrow',
+        'A document expires tomorrow. Open DOCMAN to see which.', 'Documents expiring tomorrow',
+        `${sharing} documents expire tomorrow. Open DOCMAN to see which.`, new Date(dayAtAlertHour.getTime() - 86400000));
 
-    EXPIRY_DAY_HOURS.forEach((hour, i) => {
-        add(imgNotificationIdFor(folderPath, fileName, 1000 + i), 'Document expires today',
-            'A document expires today. Open DOCMAN to see which.', expiryAtHour(dateStr, hour), true);
-    });
+    // Armed only once the day is close -- see EXPIRY_DENSE_WITHIN_DAYS. The
+    // ids stay 1000+i whatever the gap, so a reschedule clears the same set.
+    const daysOut = Math.ceil((expiryAtHour(dateStr, 0).getTime() - now.getTime()) / 86400000);
+    if (daysOut <= EXPIRY_DENSE_WITHIN_DAYS) {
+        EXPIRY_DAY_SLOTS.forEach((slot, i) => {
+            add(imgNotificationIdFor(folderPath, fileName, 1000 + i), 'today', 'Document expires today',
+                'A document expires today. Open DOCMAN to see which.', 'Documents expire today',
+                `${sharing} documents expire today. Open DOCMAN to see which.`,
+                expiryAtHour(dateStr, slot.hour, slot.minute), true);
+        });
+    }
 
     for (let d = 1; d <= EXPIRY_OVERDUE_DAYS; d++) {
-        add(imgNotificationIdFor(folderPath, fileName, 2000 + d), 'Document expired',
-            `A document expired ${d} day${d > 1 ? 's' : ''} ago. Open DOCMAN to see which.`, new Date(dayAtAlertHour.getTime() + d * 86400000), true);
+        add(imgNotificationIdFor(folderPath, fileName, 2000 + d), 'over' + d, 'Document expired',
+            `A document expired ${d} day${d > 1 ? 's' : ''} ago. Open DOCMAN to see which.`, 'Documents expired',
+            `${sharing} documents expired ${d} day${d > 1 ? 's' : ''} ago. Open DOCMAN to see which.`,
+            new Date(dayAtAlertHour.getTime() + d * 86400000), true);
     }
 
     if (!notifications.length) return;
@@ -3383,7 +3456,7 @@ async function rescheduleAllExpiryNotifications() {
         for (const file of allFiles[folderPath] || []) {
             if (!file.expiryDate) continue;
             await imgScheduleExpiryNotification(folderPath, file.name, file.expiryDate,
-                { acknowledged: isExpiryAcknowledged(file) });
+                { acknowledged: isExpiryAcknowledged(file), noRefresh: true });
         }
     }
     await sweepOrphanedExpiryAlarms();
@@ -3489,12 +3562,25 @@ async function registerExpiryNotificationActions() {
 let notificationTapListenerAttached = false;
 let notificationDataReady = false;
 let pendingNotificationActions = [];
+// Set the moment a tap arrives, before anything is done about it. Opening the
+// app by tapping a notification is an answer to that alert, and the launch
+// dialog is a second alert about the same kind of thing -- tapping a reminder
+// put its sticky note on screen and then, 1.2s later, the expiry dialog landed
+// on top of it (reported 2026-10-13 with a screenshot of both at once).
+// The notification has already done the telling, and the tap already chose
+// where to go.
+let launchedFromNotification = false;
 
 function attachNotificationTapListener() {
     const plugin = window.Capacitor?.Plugins?.LocalNotifications;
     if (!plugin || !isNativePlatform() || notificationTapListenerAttached) return;
     notificationTapListenerAttached = true;
     plugin.addListener('localNotificationActionPerformed', (event) => {
+        launchedFromNotification = true;
+        // The dialog can already be up if the tap reaches us late; it is about
+        // to be answered by the notification's own destination, so take it off.
+        const openConfirm = document.getElementById('customConfirm');
+        if (openConfirm) openConfirm.remove();
         if (!notificationDataReady) { pendingNotificationActions.push(event); return; }
         handleNotificationAction(event);
     });
@@ -3528,6 +3614,16 @@ async function handleNotificationAction(event) {
         if (extra.kind !== 'expiry') return;
         if (event.actionId === 'expiry-ack') { await acknowledgeExpiry(extra.folderPath, extra.fileName); return; }
         if (event.actionId === 'expiry-renew') { renewExpiryDate(extra.folderPath, extra.fileName); return; }
+        // A banner that spoke for several documents opens the whole set.
+        if (extra.count > 1 && extra.expiryDate) {
+            const set = [];
+            for (const fp in allFiles) {
+                for (const f of allFiles[fp] || []) {
+                    if (f.expiryDate === extra.expiryDate && !isExpiryAcknowledged(f)) set.push({ folderPath: fp, file: f });
+                }
+            }
+            if (set.length) { showExpiryTodayModal(set); return; }
+        }
         const file = (allFiles[extra.folderPath] || []).find(f => f.name === extra.fileName);
         if (file) { showExpiryTodayModal([{ folderPath: extra.folderPath, file }]); return; }
         // Renamed, moved or deleted since the alert was scheduled. Saying so
@@ -3621,12 +3717,24 @@ function showReminderStickyNote(reminder, anchorEl) {
             ? anchorEl.getBoundingClientRect()
             : { left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 3, bottom: innerHeight / 3, width: 0, height: 0 };
         const bw = sticky.offsetWidth, bh = sticky.offsetHeight;
+        // innerHeight runs to the bottom of the SCREEN, not the bottom of what
+        // can be used: this WebView draws edge-to-edge, so the navigation bar
+        // sits inside it. Measured against innerHeight the note "fitted" below
+        // a bottom row and was drawn across the back and home keys (reported
+        // 2026-10-13 with a screenshot). Against the real bottom it does not
+        // fit, and flips above the row where it belongs. Same pair the row
+        // menu uses; see the comment there.
+        const cs = getComputedStyle(document.documentElement);
+        const navBottom = Math.max(
+            parseFloat(cs.getPropertyValue('--safe-bottom')) || 0,
+            parseFloat(cs.getPropertyValue('--nav-bottom')) || 0);
+        const usableBottom = innerHeight - navBottom;
         let left = Math.min(Math.max(M, r.left + r.width / 2 - bw / 2), innerWidth - bw - M);
         let top = r.bottom + 10;
         let above = false;
-        if (top + bh > innerHeight - M) {
+        if (top + bh > usableBottom - M) {
             const up = r.top - bh - 10;
-            if (up > M) { top = up; above = true; } else { top = Math.max(M, innerHeight - bh - M); }
+            if (up > M) { top = up; above = true; } else { top = Math.max(M, usableBottom - bh - M); }
         }
         sticky.style.left = left + 'px';
         sticky.style.top = top + 'px';
@@ -3715,6 +3823,13 @@ function showExpiryTodayModal(items, onDone) {
 }
 
 function checkExpiryTodayOnLoad(onDone) {
+    // Same reason as checkLaunchAlertsOnLoad: a launch that came from tapping
+    // a notification has already had its alert, and the tap already said where
+    // to go. Nothing is lost -- an expiry that was not acknowledged is still on
+    // the home screen's own banner and in the Expiring panel, and this modal
+    // runs again on the next ordinary launch. Tapping an EXPIRY notification
+    // opens this same modal from handleNotificationAction anyway.
+    if (launchedFromNotification) { if (onDone) onDone(); return; }
     const today = todayIsoDate();
     const items = [];
     for (const folderPath in allFiles) {
@@ -4141,6 +4256,8 @@ function deleteReminder(reminderId) {
 // the same question twice on a single launch. Same red/black confirm modal as
 // before -- only the two have been folded into one line.
 function checkLaunchAlertsOnLoad(onDone) {
+    // See launchedFromNotification: this launch already carried its own alert.
+    if (launchedFromNotification) { if (onDone) onDone(); return; }
     // Only documents still ahead of their date. Today's and overdue ones are
     // handled by the modal above, which can actually acknowledge them --
     // counting them here too would put both on screen, one after the other,
@@ -4180,9 +4297,15 @@ function checkLaunchAlertsOnLoad(onDone) {
     // it is actually opened and a repeat must keep its later alarms.
     due.forEach(r => { removeReminderFromTray(r.id); });
 
+    // The documents themselves, as the small pictures they have on their cards.
+    const stripItems = expiring.slice(0, 4).map(e =>
+        '<div class="dc-strip-item" data-dc-folder="' + escapeHtml(e.folderPath) + '" data-dc-file="' + escapeHtml(e.file.name) + '">' +
+        docPictureHtml(e.file) + '<div class="dc-strip-days dc-' + docExpiryTone(e.days) + '">' + (e.days === 0 ? 'Today' : e.days + 'd') + '</div></div>'
+    ).join('');
+    const strip = stripItems ? '<div class="dc-strip">' + stripItems + '</div>' : '';
     const lines = parts.map(t =>
         `<span style="display:block;color:#eef2f9;font-size:0.92rem;font-weight:700;line-height:1.5;">${t}</span>`
-    ).join('');
+    ).join('') + strip;
     showConfirmModal(lines, (view) => {
         if (view) {
             // A reminder wins the destination, and goes all the way to the
@@ -4192,7 +4315,10 @@ function checkLaunchAlertsOnLoad(onDone) {
             else openDashboardView(true);
         }
         if (onDone) onDone();
-    }, { okLabel: 'View', okColor: 'linear-gradient(135deg,#fbab2c 0%,#f78a14 46%,#ef7009 100%)' });
+    }, { title: 'Needs your attention', okLabel: 'View',
+         okColor: 'linear-gradient(135deg,#fbab2c 0%,#f78a14 46%,#ef7009 100%)' });
+    const popup = document.getElementById('customConfirm');
+    if (popup) wireDocPictures(popup);
 }
 
 
@@ -4761,6 +4887,18 @@ function positionSearchSuggestions() {
 function renderSearchSuggestions() {
     const box = document.getElementById('searchSuggestions');
     if (!box) return;
+
+    // The dropdown is off. It listed, word for word, the same matches the
+    // result cards were already rendering underneath it as you typed -- two
+    // lists of one thing -- and it floated over the Recent / Sort / Dashboard /
+    // Recycle Bin row to do it. The cards win: they are tappable, they carry
+    // the row menu, and they do not cover anything.
+    // Everything below is left intact so this is one line away from coming
+    // back. The one thing the dropdown showed and the cards do not is each
+    // match's folder path.
+    box.classList.add('hidden');
+    return;
+
     const input = document.getElementById('searchInput');
     const query = input.value.trim();
 
@@ -5439,6 +5577,157 @@ function applyExpdocGlider(overlay, activeTab) {
     expdocLastTab = activeTab;
 }
 
+// ============================================================
+// DOCUMENT PICTURES -- the small picture on an expiry card.
+// A photo or scan shows its OWN image (the same thumbnail the file cards use).
+// A file with no picture of its own gets one that says what kind of document it
+// is: by what the name says first (passport, licence, certificate...), then by
+// file type. Inline SVG, so nothing has to load.
+// ============================================================
+const DOC_PIC_SVG = {
+    passport: '<svg viewBox="0 0 86 108"><defs><linearGradient id="dpPc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0d2a52"/><stop offset="1" stop-color="#071632"/></linearGradient><linearGradient id="dpPg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f1cf7a"/><stop offset="1" stop-color="#c79a3c"/></linearGradient></defs><rect width="86" height="108" fill="url(#dpPc)"/><rect width="6" height="108" fill="#fff" opacity=".07"/><text x="46" y="23" text-anchor="middle" font-family="Georgia,serif" font-size="11" font-weight="700" fill="url(#dpPg)">PASSPORT</text><circle cx="46" cy="52" r="15" fill="none" stroke="url(#dpPg)" stroke-width="1.6"/><ellipse cx="46" cy="52" rx="6.5" ry="15" fill="none" stroke="url(#dpPg)" stroke-width="1.2"/><path d="M31 52h30M33 44h26M33 60h26" stroke="url(#dpPg)" stroke-width="1.1"/><rect x="38" y="81" width="16" height="11" rx="1.8" fill="url(#dpPg)"/><path d="M38 86.5h16M46 81v11M42 81v11M50 81v11" stroke="#0a1f43" stroke-width=".9"/></svg>',
+    licence: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#0e1a38"/><g transform="translate(43 54) rotate(-8) translate(-38 -25)"><rect width="76" height="50" rx="5" fill="#e8f0ff"/><rect width="76" height="11" rx="5" fill="#2f5fd0"/><rect y="7" width="76" height="4" fill="#2f5fd0"/><text x="5" y="8.2" font-size="5.4" font-weight="800" fill="#fff" font-family="Arial,sans-serif">DRIVING LICENCE</text><rect x="5" y="16" width="19" height="25" rx="2" fill="#8aa0cc"/><circle cx="14.5" cy="25" r="4.8" fill="#e8f0ff"/><path d="M6 40c1-7 17-7 18 0z" fill="#e8f0ff"/><rect x="29" y="16" width="38" height="3" rx="1.5" fill="#3f5690"/><rect x="29" y="22" width="30" height="3" rx="1.5" fill="#7d90bd"/><rect x="29" y="28" width="34" height="3" rx="1.5" fill="#7d90bd"/><rect x="29" y="34" width="22" height="3" rx="1.5" fill="#7d90bd"/><rect x="29" y="41" width="14" height="4" rx="1" fill="#f59e0b"/></g></svg>',
+    idcard: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#0c2a30"/><g transform="translate(43 54) rotate(8) translate(-38 -25)"><rect width="76" height="50" rx="5" fill="#d8f4ee"/><rect width="76" height="11" rx="5" fill="#0d9488"/><rect y="7" width="76" height="4" fill="#0d9488"/><text x="5" y="8.2" font-size="5.4" font-weight="800" fill="#fff" font-family="Arial,sans-serif">IDENTITY CARD</text><rect x="5" y="16" width="19" height="25" rx="2" fill="#7fb8ae"/><circle cx="14.5" cy="25" r="4.8" fill="#d8f4ee"/><path d="M6 40c1-7 17-7 18 0z" fill="#d8f4ee"/><rect x="29" y="16" width="38" height="3" rx="1.5" fill="#2f7a70"/><rect x="29" y="22" width="30" height="3" rx="1.5" fill="#6fb0a5"/><rect x="29" y="28" width="34" height="3" rx="1.5" fill="#6fb0a5"/><rect x="58" y="38" width="12" height="8" rx="1.5" fill="#d6a63a"/></g></svg>',
+    pdf: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#f6f3ee"/><rect width="86" height="26" fill="#e5383b"/><text x="43" y="19" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="900" fill="#fff">PDF</text><g fill="#c9c5d2"><rect x="10" y="36" width="66" height="4" rx="2"/><rect x="10" y="45" width="58" height="4" rx="2"/><rect x="10" y="54" width="66" height="4" rx="2"/><rect x="10" y="63" width="48" height="4" rx="2"/><rect x="10" y="76" width="66" height="4" rx="2"/><rect x="10" y="85" width="40" height="4" rx="2"/></g></svg>',
+    word: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#f4f7fd"/><rect width="86" height="26" fill="#2b579a"/><text x="43" y="19" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" font-weight="900" fill="#fff">WORD</text><g fill="#b8c6e4"><rect x="10" y="36" width="66" height="4" rx="2"/><rect x="10" y="45" width="58" height="4" rx="2"/><rect x="10" y="54" width="66" height="4" rx="2"/><rect x="10" y="63" width="48" height="4" rx="2"/></g><rect x="46" y="74" width="30" height="24" rx="4" fill="#2b579a"/><text x="61" y="92" text-anchor="middle" font-family="Georgia,serif" font-size="19" font-weight="800" fill="#fff">W</text></svg>',
+    excel: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#f3faf5"/><rect width="86" height="26" fill="#1d6f42"/><text x="43" y="19" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" font-weight="900" fill="#fff">EXCEL</text><g stroke="#9fcdb2" stroke-width="1" fill="none"><rect x="9" y="34" width="68" height="46"/><path d="M9 45h68M9 57h68M9 69h68M31 34v46M54 34v46"/></g><rect x="9" y="34" width="68" height="11" fill="#cfe9d9"/><rect x="46" y="84" width="30" height="18" rx="4" fill="#1d6f42"/><text x="61" y="98" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="900" fill="#fff">X</text></svg>',
+    note: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#fff3b0"/><path d="M86 0v18L68 0z" fill="#e8d36a"/><g stroke="#e0c64f" stroke-width="1.2"><path d="M8 30h70M8 44h70M8 58h70M8 72h70M8 86h70M8 100h70"/></g><path d="M13 0v108" stroke="#f08a8a" stroke-width="1.2" opacity=".7"/><path d="M18 24c5-6 8 4 13-1s7 3 12-1 8 3 14 0" fill="none" stroke="#3b3a46" stroke-width="1.8" stroke-linecap="round"/><path d="M18 39c6-5 9 3 15-1s8 3 13-1" fill="none" stroke="#3b3a46" stroke-width="1.8" stroke-linecap="round"/><path d="M18 53c5-5 8 3 12-1s7 2 10-1" fill="none" stroke="#3b3a46" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    certificate: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#fbf4df"/><rect x="5" y="5" width="76" height="98" fill="none" stroke="#c79a3c" stroke-width="2"/><rect x="9" y="9" width="68" height="90" fill="none" stroke="#c79a3c" stroke-width=".8"/><text x="43" y="27" text-anchor="middle" font-family="Georgia,serif" font-size="7.2" font-weight="700" fill="#8a6a1f" letter-spacing=".2">CERTIFICATE</text><g fill="#cdb98a"><rect x="20" y="36" width="46" height="2.6" rx="1.3"/><rect x="26" y="43" width="34" height="2.6" rx="1.3"/><rect x="22" y="50" width="42" height="2.6" rx="1.3"/></g><path d="M33 86l-4 14 8-4 4 6 3-17z" fill="#d94a4a"/><path d="M53 86l4 14-8-4-4 6-3-17z" fill="#b83a3a"/><circle cx="43" cy="76" r="12" fill="#e3b94f"/><circle cx="43" cy="76" r="8.5" fill="none" stroke="#fff3c4" stroke-width="1.4"/><path d="M43 70.5l1.8 3.7 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4-2.9-2.8 4-.6z" fill="#fff3c4"/></svg>',
+    medicine: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#e8f7f6"/><rect x="22" y="22" width="42" height="14" rx="3" fill="#0f9d94"/><rect x="20" y="34" width="46" height="62" rx="8" fill="#fff" stroke="#bfe5e2" stroke-width="1.5"/><rect x="20" y="46" width="46" height="34" fill="#0f9d94" opacity=".92"/><path d="M43 52v22M32 63h22" stroke="#fff" stroke-width="6" stroke-linecap="round"/><g transform="translate(60 88) rotate(-35)"><rect x="-13" y="-5" width="26" height="10" rx="5" fill="#e5383b"/><path d="M0 -5h8a5 5 0 0 1 0 10H0z" fill="#fff"/></g></svg>',
+    insurance: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#14574b"/><path d="M43 16l26 9v20c0 20-11 33-26 40C28 78 17 65 17 45V25z" fill="#34d399" fill-opacity=".18" stroke="#6ee7b7" stroke-width="2.4"/><path d="M31 48l9 9 16-18" fill="none" stroke="#6ee7b7" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="24" y="90" width="38" height="5" rx="2.5" fill="#6ee7b7" opacity=".7"/></svg>',
+    receipt: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#2b2f4a"/><path d="M14 8h58v92l-5-4-5 4-5-4-5 4-5-4-5 4-5-4-5 4-5-4-5 4-3-3z" fill="#fbfbfd"/><rect x="22" y="17" width="30" height="5" rx="2" fill="#3b3a46"/><g fill="#c9c5d2"><rect x="22" y="30" width="42" height="3.4" rx="1.7"/><rect x="22" y="38" width="42" height="3.4" rx="1.7"/><rect x="22" y="46" width="42" height="3.4" rx="1.7"/><rect x="22" y="54" width="30" height="3.4" rx="1.7"/></g><path d="M22 68h42" stroke="#9a96ad" stroke-dasharray="3 3"/><rect x="22" y="75" width="16" height="5" rx="2" fill="#3b3a46"/><rect x="46" y="75" width="18" height="5" rx="2" fill="#0f9d94"/></svg>',
+    photo: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#8fbdf5"/><circle cx="62" cy="28" r="9" fill="#ffe08a"/><path d="M0 84l24-34 18 22 14-16 30 28v24H0z" fill="#3b6e4f"/><path d="M0 96l30-26 22 20 34-22v40H0z" fill="#2a5640"/></svg>',
+    other: '<svg viewBox="0 0 86 108"><rect width="86" height="108" fill="#3a3466"/><path d="M24 20h26l16 16v52H24z" fill="#fff" fill-opacity=".92"/><path d="M50 20v16h16" fill="#cfc9ee"/><g fill="#a39dcb"><rect x="32" y="48" width="26" height="3.6" rx="1.8"/><rect x="32" y="58" width="26" height="3.6" rx="1.8"/><rect x="32" y="68" width="18" height="3.6" rx="1.8"/></g></svg>'
+};
+
+// Words in a document's name that say what it is. Checked before the file
+// type, so "Passport.pdf" gets the passport and not a PDF.
+const DOC_NAME_HINTS = [
+    ['passport', /passport/i],
+    ['licence', /(driv(?:ing|er|ers)?[\s_-]*lic|licen[cs]e|\bdl\b)/i],
+    ['idcard', /(\bid[\s_-]*card\b|identity|national[\s_-]*id|aadhaar|aadhar|emirates[\s_-]*id|\bnic\b|resident[\s_-]*card)/i],
+    ['insurance', /(insurance|assurance|policy)/i],
+    ['certificate', /(certificate|certification|diploma|degree|award)/i],
+    ['medicine', /(medicine|medical|prescription|pharma|vaccin|health|\blab\b|\brx\b)/i],
+    ['receipt', /(receipt|invoice|\bbill\b)/i]
+];
+
+// 'photo' means the file is an image and shows its own picture.
+function docPictureKind(fileName) {
+    const ext = (fileName.split('.').pop() || '').toLowerCase();
+    if (getFileIconMeta(fileName).isImage) return 'photo';
+    const stem = fileName.replace(/\.[^.]+$/, '');
+    for (const [kind, re] of DOC_NAME_HINTS) if (re.test(stem)) return kind;
+    if (ext === 'pdf') return 'pdf';
+    if (ext === 'doc' || ext === 'docx') return 'word';
+    if (ext === 'xls' || ext === 'xlsx' || ext === 'csv') return 'excel';
+    if (ext === 'txt' || ext === 'md' || ext === 'rtf') return 'note';
+    return 'other';
+}
+
+// The picture's markup. For an image file it also holds the <img> that
+// wireDocPictures() fills with the real thumbnail; the drawn photo shows until
+// it arrives.
+function docPictureHtml(file) {
+    const kind = docPictureKind(file.name);
+    const img = kind === 'photo' ? '<img class="file-icon-badge-thumb dc-img" alt="">' : '';
+    // Until its own image arrives, a photo named for what it is shows that
+    // document's picture rather than a generic landscape.
+    let shown = kind;
+    if (kind === 'photo') {
+        const stem = file.name.replace(/\.[^.]+$/, '');
+        const hint = DOC_NAME_HINTS.find(h => h[1].test(stem));
+        if (hint) shown = hint[0];
+    }
+    return '<div class="dc-pic dc-pic-' + kind + '">' + DOC_PIC_SVG[shown] + img + '</div>';
+}
+
+// Finds each [data-dc-file] under root and hands its picture its own image.
+function wireDocPictures(root) {
+    root.querySelectorAll('[data-dc-file]').forEach(el => {
+        const folderPath = el.dataset.dcFolder || '';
+        const file = (allFiles[folderPath] || []).find(f => f.name === el.dataset.dcFile);
+        const img = el.querySelector('.dc-img');
+        if (!file || !img) return;
+        // A wide scan (a licence photographed flat) is shown whole, not cropped.
+        img.addEventListener('load', () => {
+            if (img.naturalWidth / (img.naturalHeight || 1) > 1.25) img.classList.add('dc-img-wide');
+        });
+        wireFileIconThumbnail(el, file, folderPath);
+    });
+}
+
+// Red inside two weeks or once expired, amber to a month, green beyond.
+function docExpiryTone(days) {
+    if (days <= 14) return 'red';
+    if (days <= 30) return 'amber';
+    return 'green';
+}
+
+function docExpiryWords(days) {
+    if (days < 0) return 'Expired ' + Math.abs(days) + (Math.abs(days) === 1 ? ' day ago' : ' days ago');
+    if (days === 0) return 'Expires today';
+    if (days === 1) return 'Expires tomorrow';
+    return 'Expires in ' + days + ' days';
+}
+
+const DOC_CARD_ICONS = {
+    cal: '<svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="18" rx="4" fill="currentColor"/><path d="M7.5 2v4M16.5 2v4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><g fill="#0a1230"><rect x="6" y="12" width="3" height="2.4" rx=".6"/><rect x="10.5" y="12" width="3" height="2.4" rx=".6"/><rect x="15" y="12" width="3" height="2.4" rx=".6"/><rect x="6" y="16" width="3" height="2.4" rx=".6"/><rect x="10.5" y="16" width="3" height="2.4" rx=".6"/><rect x="15" y="16" width="3" height="2.4" rx=".6"/></g></svg>',
+    view: '<svg viewBox="0 0 24 24"><path d="M1.8 12S5.5 5 12 5s10.2 7 10.2 7-3.7 7-10.2 7S1.8 12 1.8 12z"/><circle cx="12" cy="12" r="3.2"/></svg>',
+    edit: '<svg viewBox="0 0 24 24"><path d="M4 20l1-4.5L16.5 4a2.6 2.6 0 0 1 3.7 3.7L8.5 19.2z"/><path d="M14.5 6l3.5 3.5"/></svg>',
+    remind: '<svg viewBox="0 0 24 24"><path d="M5.5 17v-6a6 6 0 0 1 10.5-4"/><path d="M5.5 17h13v-4.5"/><path d="M3.8 17h16.4M10 20.5h4"/><path d="M19 3v5M16.5 5.5h5"/></svg>'
+};
+
+// One expiry card: the picture, the name, how long is left, and three actions.
+function docCardHtml({ file, folderPath, days }) {
+    const tone = docExpiryTone(days);
+    const pct = days < 0 ? 100 : Math.max(4, Math.min(100, Math.round((1 - days / 30) * 100)));
+    const name = file.name.replace(/\.[^.]+$/, '') || file.name;
+    const where = (folderPath || '').split('/').join(' / ') || 'Root';
+    return '<div class="dc-card expdoc-row" data-folder="' + escapeHtml(folderPath) + '" data-dc-folder="' + escapeHtml(folderPath) + '" data-dc-file="' + escapeHtml(file.name) + '">' +
+        '<div class="dc-top">' + docPictureHtml(file) +
+        '<div class="dc-mid"><div class="dc-name">' + escapeHtml(name) + '</div>' +
+        '<div class="dc-where">' + escapeHtml(where) + '</div>' +
+        '<div class="dc-exp dc-' + tone + '">' + DOC_CARD_ICONS.cal + '<span>' + docExpiryWords(days) + '</span></div>' +
+        '<div class="dc-bar dc-' + tone + '"><b style="width:' + pct + '%"></b></div></div></div>' +
+        '<div class="dc-acts">' +
+        '<button type="button" class="dc-act" data-act="view"><span>' + DOC_CARD_ICONS.view + '</span>View</button>' +
+        '<button type="button" class="dc-act" data-act="edit"><span>' + DOC_CARD_ICONS.edit + '</span>Edit</button>' +
+        '<button type="button" class="dc-act" data-act="remind"><span>' + DOC_CARD_ICONS.remind + '</span>Remind</button>' +
+        '</div></div>';
+}
+
+// Wires the three buttons on every card under root. closePanel takes the panel
+// down before View opens the file over the top of it.
+function wireDocCardActions(root, closePanel) {
+    root.querySelectorAll('.dc-card').forEach(card => {
+        const folderPath = card.dataset.dcFolder || '';
+        const fileName = card.dataset.dcFile;
+        card.querySelectorAll('.dc-act').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                haptic.press();
+                const file = (allFiles[folderPath] || []).find(f => f.name === fileName);
+                if (!file) return;
+                if (btn.dataset.act === 'view') {
+                    closePanel();
+                    openFile(fileName, folderPath);
+                } else if (btn.dataset.act === 'edit') {
+                    showDateModal('New expiry date for "' + escapeHtml(fileName) + '":', file.expiryDate || '', async (val) => {
+                        if (val === null || val === undefined) return;
+                        await setFileExpiryDate(folderPath, fileName, val);
+                        showExpiringDocumentsPanel('expiring', { rerender: true });
+                    }, { disallowPast: true, minTomorrow: true });
+                } else {
+                    const today = localTodayIso();
+                    const preset = file.expiryDate && file.expiryDate >= today ? file.expiryDate : undefined;
+                    addReminderFlow(preset, null, 'Renew ' + (fileName.replace(/\.[^.]+$/, '') || fileName));
+                }
+            });
+        });
+    });
+}
+
 function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     haptic.press();
     const existing = document.getElementById('expiringDocsOverlay');
@@ -5639,22 +5928,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
         const monthEnd = new Date(nowExp.getFullYear(), nowExp.getMonth() + 1, 0);
         const daysLeftInMonth = Math.round((monthEnd - nowExp) / 86400000);
         const entries = getAllExpiringFiles(daysLeftInMonth);
-        bodyHtml = entries.length ? entries.map(({ file, folderPath, status, days }) => {
-            const pill = status === 'overdue'
-                ? `<span style="background:rgba(239,68,68,0.15);color:#f87171;border-radius:20px;padding:3px 10px;font-size:0.72rem;font-weight:700;white-space:nowrap;">${Math.abs(days)}d overdue</span>`
-                : status === 'soon'
-                    ? `<span style="background:rgba(245,158,11,0.15);color:#d97706;border-radius:20px;padding:3px 10px;font-size:0.72rem;font-weight:700;white-space:nowrap;">${days === 0 ? 'Today' : days + 'd left'}</span>`
-                    : `<span style="background:${c.pillNeutralBg};color:${c.pillNeutralText};border-radius:20px;padding:3px 10px;font-size:0.72rem;font-weight:600;white-space:nowrap;">${days}d left</span>`;
-            return `
-                <div class="expdoc-row" data-folder="${escapeHtml(folderPath)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:${c.rowBg};border:${c.rowBorder};margin-bottom:8px;cursor:pointer;">
-                    <i class="fas ${getFileIcon(file.name)}" style="color:${c.muted};font-size:1.1rem;flex-shrink:0;"></i>
-                    <div style="flex:1;min-width:0;">
-                        <div style="color:${c.rowText};font-size:0.87rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Inter,sans-serif;">${escapeHtml(file.name)}</div>
-                        <div style="color:${c.muted};font-size:0.74rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Inter,sans-serif;">${escapeHtml(folderPath.split('/').join(' / ') || 'Root')}</div>
-                    </div>
-                    ${pill}
-                </div>`;
-        }).join('') : `
+        bodyHtml = entries.length ? entries.map(docCardHtml).join('') : `
             <div class="fav-empty" style="text-align:center;padding:32px 20px 20px;color:${c.muted};">
                 <i class="fas fa-calendar-check" style="font-size:2rem;margin-bottom:12px;display:block;color:${c.mutedIcon};"></i>
                 <p style="margin:0;font-family:Inter,sans-serif;font-size:0.9rem;">No documents have an expiry date set.</p>
@@ -5719,6 +5993,8 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
             render();
         });
     });
+    wireDocPictures(overlay);
+    wireDocCardActions(overlay, close);
     const addBtn = overlay.querySelector('#expdocAddReminder');
     if (addBtn) addBtn.addEventListener('click', () => {
         // Pre-fill the date step with whatever day is selected on the
@@ -5927,23 +6203,93 @@ function noteLineFor(px) {
     return Math.round(px * 1.45);
 }
 
-function noteRuledBackground(c) {
-    const NOTE_LINE_HEIGHT = noteLineFor(noteModalFont);
-    if (!noteModalLined) return c.paper;
-    // The rule sits on the line's own bottom edge, so text rests on it rather
-    // than being struck through by it.
-    return 'repeating-linear-gradient(to bottom,'
+// Paints the page itself: the paper colour on the field, the rules on the
+// TEXTAREA inside it.
+//
+// The rules used to be the field's own background, offset by the field's
+// padding-top so a band began where the first line of text began. That lined
+// up -- but only until the note outgrew the box. The field does not scroll;
+// the textarea inside it does. So the words slid up and the rules stayed where
+// they were, and from the second screenful on, every line sat wrong.
+//
+// Painting them on the textarea with background-attachment: local ties the
+// background to the content instead of to the box, so the rules scroll with
+// the words. The textarea carries padding:0, so there is no padding-top left
+// to correct for -- its first line starts at the top of its own content box.
+// Its line-height is set from this same noteLineFor(), which is what keeps a
+// one-line tile on a line boundary all the way down however the size stepper
+// is set.
+//
+// .note-content-input sets `background: none !important`, so these have to be
+// important to land at all, and removed by name rather than by overwriting.
+const NOTE_RULE_PROPS = ['background-image', 'background-size',
+    'background-position', 'background-repeat', 'background-attachment'];
+
+// How far the text's baseline sits below the top of its own line box, for
+// the font the writing box is actually using. An empty inline-block aligned to
+// the baseline reports exactly that; the alternative is hard-coding a ratio
+// that is wrong on every device whose default sans is not this one.
+const noteBaselineCache = new Map();
+function noteBaselineOffset(field, lh) {
+    const cs = getComputedStyle(field);
+    const key = cs.fontFamily + '|' + cs.fontSize + '|' + cs.fontWeight + '|' + lh;
+    if (noteBaselineCache.has(key)) return noteBaselineCache.get(key);
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;padding:0;border:0;';
+    probe.style.fontFamily = cs.fontFamily;
+    probe.style.fontSize = cs.fontSize;
+    probe.style.fontWeight = cs.fontWeight;
+    probe.style.fontStyle = cs.fontStyle;
+    probe.style.lineHeight = lh + 'px';
+    probe.appendChild(document.createTextNode('xhp'));
+    const marker = document.createElement('span');
+    marker.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline;';
+    probe.appendChild(marker);
+    document.body.appendChild(probe);
+    let base = marker.getBoundingClientRect().top - probe.getBoundingClientRect().top;
+    probe.remove();
+    // A font that fails to load, or a hidden ancestor, can report nonsense.
+    if (!(base > 0) || base > lh) base = lh * 0.8;
+    base = Math.round(base);
+    noteBaselineCache.set(key, base);
+    return base;
+}
+
+function paintNoteRuling(body, c) {
+    body.style.background = c.paper;
+    const field = document.getElementById('noteContent');
+    if (!field) return;
+    if (!noteModalLined) {
+        NOTE_RULE_PROPS.forEach(p => field.style.removeProperty(p));
+        return;
+    }
+    const lh = noteLineFor(noteModalFont);
+    // Where the rule goes INSIDE the line box. It used to be the box's bottom
+    // edge, which is not where writing sits: a 15px font in a 22px line is
+    // centred, so its baseline lands around 16px and the rule at 22 left the
+    // words floating five pixels above their own line (reported 2026-10-13).
+    // Ruled paper puts the line just under the baseline, with descenders
+    // crossing it. Measured rather than guessed, because the baseline's place
+    // in the line box depends on the font's own ascent.
+    const rule = Math.min(lh, noteBaselineOffset(field, lh) + 2);
+    field.style.setProperty('background-image', 'linear-gradient(to bottom,'
         + 'transparent 0px,'
-        + 'transparent ' + (NOTE_LINE_HEIGHT - 1) + 'px,'
-        + c.edge + ' ' + (NOTE_LINE_HEIGHT - 1) + 'px,'
-        + c.edge + ' ' + NOTE_LINE_HEIGHT + 'px)';
+        + 'transparent ' + (rule - 1) + 'px,'
+        + c.edge + ' ' + (rule - 1) + 'px,'
+        + c.edge + ' ' + rule + 'px,'
+        + 'transparent ' + rule + 'px,'
+        + 'transparent ' + lh + 'px)', 'important');
+    field.style.setProperty('background-size', '100% ' + lh + 'px', 'important');
+    field.style.setProperty('background-position', '0 0', 'important');
+    field.style.setProperty('background-repeat', 'repeat', 'important');
+    field.style.setProperty('background-attachment', 'local', 'important');
 }
 
 function paintNoteModalColor() {
     const c = noteColorById(noteModalColor);
     const body = document.querySelector('.note-field-body');
     if (body) {
-        body.style.background = noteRuledBackground(c);
+        paintNoteRuling(body, c);
         body.style.backgroundColor = c.paper;
         // Plain borderColor lost to a rule further down the sheet and the page
         // kept a white rim that belonged to the dark field it used to be.
@@ -5983,10 +6329,10 @@ function wireNoteFontButton() {
     const step = (by) => {
         const next = noteFontPx(noteFontPx(noteModalFont) + by);
         if (next === noteModalFont) return;
-        leaveNoteReadMode();
         noteModalFont = next;
         haptic.toggle();
         paintNoteModalColor();
+        noteStyleChanged();
     };
     [['noteFontMinus', -1], ['noteFontPlus', 1]].forEach(([id, by]) => {
         const btn = document.getElementById(id);
@@ -6008,9 +6354,9 @@ function wireNoteLinedToggle() {
     btn.addEventListener('mousedown', (e) => e.preventDefault());
     btn.onclick = () => {
         haptic.toggle();
-        leaveNoteReadMode();
         noteModalLined = !noteModalLined;
         paintNoteModalColor();
+        noteStyleChanged();
     };
 }
 
@@ -6027,12 +6373,18 @@ function buildNoteColorPicker() {
     // caret back afterwards, so picking a colour never interrupts typing.
     let focusBefore = null;
     row.querySelectorAll('.note-color-dot').forEach(dot => {
-        dot.addEventListener('pointerdown', () => { focusBefore = document.activeElement; });
+        // Only a field that is ALREADY editable is worth putting the caret
+        // back into; one still in read mode must not be focused, or picking a
+        // colour while reading opens the keyboard.
+        dot.addEventListener('pointerdown', () => {
+            const a = document.activeElement;
+            focusBefore = (a && !a.readOnly) ? a : null;
+        });
         dot.onclick = () => {
             haptic.toggle();
-            leaveNoteReadMode();
             noteModalColor = dot.dataset.color;
             paintNoteModalColor();
+            noteStyleChanged();
             if (focusBefore && typeof focusBefore.focus === 'function'
                 && (focusBefore.id === 'noteTitle' || focusBefore.id === 'noteContent')) {
                 focusBefore.focus();
@@ -6093,6 +6445,9 @@ function keepNoteFocus() {
 // to edit, so the keyboard came up anyway. Clicks in the first moments after
 // the editor opens are that one, not a decision.
 let noteReadModeAt = 0;
+// Which folder the note being read belongs to, so a colour or size change
+// made while reading can be saved without going back through the list.
+let editingNoteFolder = null;
 
 function setNoteReadMode(on) {
     const t = document.getElementById('noteTitle');
@@ -6110,9 +6465,179 @@ function setNoteReadMode(on) {
 // nothing to save and nothing to cancel. Anything that does change the note
 // has to bring them back, or it would be a change with no way to keep it: the
 // text, but the colour, the ruling and the size too.
-function leaveNoteReadMode() {
+// Colour, ruling and text size, changed while the note is only being READ.
+// These used to drop read mode so Save and Cancel appeared -- which put a
+// keyboard over the note (the fields were editable again) and two buttons on
+// a screen that is meant to be for reading. Asked for 2026-10-13: no Cancel
+// and no Save while reading.
+// Nothing is lost by that, because none of the three needs a decision: they
+// are single taps with a visible result, so they are simply SAVED as they are
+// made and read mode is never left at all. The text itself is untouched, so
+// there is still nothing to cancel.
+async function noteStyleChanged() {
     const c = document.getElementById('noteContent');
-    if (c && c.readOnly) setNoteReadMode(false);
+    if (!c || !c.readOnly) return;  // already editing: Save does the saving
+    if (!editingNoteId) return;     // a new note is not saved until it is named
+    const t = document.getElementById('noteTitle');
+    await updateNote(editingNoteFolder || currentPath.join('/'), editingNoteId,
+        t ? t.value : '', c.value, noteModalColor);
+}
+
+// --- Bulleted lines -------------------------------------------------------
+// Enter continues a list, and ONLY a list. The marker appears on the next line
+// only when the line being left already carries one, so writing ordinary prose
+// is untouched -- that was the worry when this was asked for, and it is why
+// Enter is not simply made to insert a bullet every time.
+//   start  "- " or "* " at the head of a line becomes a bullet
+//   carry  Enter on a bullet line opens the next one already bulleted
+//   end    Enter on a bullet with nothing after it drops the marker
+const NOTE_BULLET = '• ';
+
+// Every edit goes through execCommand so the textarea keeps its own undo
+// stack. Assigning .value wipes it, and the middle of a note is exactly where
+// someone reaches for undo.
+function noteReplaceSelection(field, text) {
+    field.focus();
+    let ok = false;
+    try {
+        ok = text ? document.execCommand('insertText', false, text)
+                  : document.execCommand('delete');
+    } catch (e) { ok = false; }
+    if (ok) return;
+    const s = field.selectionStart, e2 = field.selectionEnd;
+    field.value = field.value.slice(0, s) + text + field.value.slice(e2);
+    const at = s + text.length;
+    try { field.setSelectionRange(at, at); } catch (e) { /* detached */ }
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function noteLineHead(value, caret) {
+    return value.lastIndexOf('\n', caret - 1) + 1;
+}
+
+function noteBulletKeydown(e) {
+    if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+    const field = e.currentTarget;
+    if (field.readOnly) return;
+    const caret = field.selectionStart;
+    if (caret !== field.selectionEnd) return;   // a selection: leave Enter alone
+    const head = noteLineHead(field.value, caret);
+    const line = field.value.slice(head, caret);
+    if (!line.startsWith(NOTE_BULLET)) return;  // a plain line: nothing to carry
+
+    e.preventDefault();
+    if (line.trim() === NOTE_BULLET.trim()) {
+        // An empty bullet means "done listing": drop the marker instead of
+        // opening one more empty bullet the person then has to delete.
+        try { field.setSelectionRange(head, caret); } catch (err) { return; }
+        noteReplaceSelection(field, '');
+        return;
+    }
+    const insert = '\n' + NOTE_BULLET;
+    // maxlength does not apply to a programmatic edit, so the cap is read here.
+    if (field.maxLength > 0 && field.value.length + insert.length > field.maxLength) {
+        noteReplaceSelection(field, '\n');
+        return;
+    }
+    noteReplaceSelection(field, insert);
+}
+
+const noteIsMarkChar = (ch) => ch === '-' || ch === '*';
+
+// Turns the head of a line into a bullet. It fires on the SECOND character,
+// not on the dash alone, because both of these have to work and converting on
+// the dash by itself breaks one of them:
+//    "- milk"  someone who types the space -- convert "- " to "• "
+//    "-milk"   someone who does not        -- convert "-m" to "• m"
+// Watched on the device: the dash is typed and then a letter, with no space
+// between, every time. Requiring the space meant the marker never appeared at
+// all, which read as "enter bullet not working".
+// Converting the moment the dash lands would instead turn "- milk" into
+// "•  milk", two spaces, since the space is still on its way.
+function noteBulletAutoStart(e) {
+    const field = e.currentTarget;
+    if (field.readOnly) return;
+    // Only a typed character starts a list -- not a paste, and not the
+    // programmatic edits above, which re-enter this handler.
+    if (e.inputType && e.inputType !== 'insertText') return;
+    const caret = field.selectionStart;
+    if (caret !== field.selectionEnd) return;
+    const head = noteLineHead(field.value, caret);
+    const line = field.value.slice(head, caret);
+    if (line.length !== 2 || !noteIsMarkChar(line[0])) return;
+    const second = line[1];
+    // "--" and "*-" are someone drawing a rule, not starting a list.
+    if (second !== ' ' && noteIsMarkChar(second)) return;
+    const replacement = second === ' ' ? NOTE_BULLET : NOTE_BULLET + second;
+    try { field.setSelectionRange(head, caret); } catch (err) { return; }
+    noteReplaceSelection(field, replacement);
+}
+
+// Typing "-" is not something anyone can be expected to guess, so the button
+// is the way in and the typing shortcut is a bonus for whoever finds it.
+// It toggles the caret's own line, and Enter carries the list from there.
+function noteToggleBulletLine() {
+    const field = document.getElementById('noteContent');
+    if (!field || field.readOnly) return;
+    const value = field.value;
+    const head = noteLineHead(value, field.selectionStart);
+    let end = value.indexOf('\n', head);
+    if (end === -1) end = value.length;
+    const line = value.slice(head, end);
+    const on = line.startsWith(NOTE_BULLET);
+    const next = on ? line.slice(NOTE_BULLET.length) : NOTE_BULLET + line;
+    try { field.setSelectionRange(head, end); } catch (e) { return; }
+    noteReplaceSelection(field, next);
+    const at = head + next.length;
+    try { field.setSelectionRange(at, at); } catch (e) { /* empty field */ }
+    syncNoteBulletBtn();
+}
+
+function syncNoteBulletBtn() {
+    const btn = document.getElementById('noteBulletBtn');
+    const field = document.getElementById('noteContent');
+    if (!btn || !field) return;
+    const head = noteLineHead(field.value, field.selectionStart);
+    const on = field.value.slice(head).startsWith(NOTE_BULLET);
+    btn.classList.toggle('note-lined-on', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
+function wireNoteBullets() {
+    const field = document.getElementById('noteContent');
+    if (!field || field.dataset.bullets === '1') return;
+    field.dataset.bullets = '1';
+    field.addEventListener('keydown', noteBulletKeydown);
+    field.addEventListener('input', noteBulletAutoStart);
+    ['input', 'keyup', 'click'].forEach(t =>
+        field.addEventListener(t, syncNoteBulletBtn));
+
+    const btn = document.getElementById('noteBulletBtn');
+    if (btn && btn.dataset.wired !== '1') {
+        btn.dataset.wired = '1';
+        // mousedown, not click: the default action moves focus off the
+        // textarea, which drops the keyboard and loses the caret the toggle
+        // needs to read.
+        btn.addEventListener('mousedown', (ev) => {
+            ev.preventDefault();
+            noteToggleBulletLine();
+        });
+    }
+}
+
+// A note opens to be READ, and a long note is read by scrolling it -- which
+// is one finger on the text, exactly the gesture that used to open the
+// keyboard. So the writing box now asks for a DOUBLE tap before it becomes
+// editable; a single tap scrolls and nothing else. The title is a single line
+// with nothing to scroll, so a plain tap still opens it.
+const NOTE_DOUBLE_TAP_MS = 400;
+function noteEnterEditAt(el) {
+    // Where the tap landed, so the caret arrives where it was asked for
+    // rather than at the start.
+    const at = el.selectionStart;
+    setNoteReadMode(false);
+    el.focus();
+    try { el.setSelectionRange(at, at); } catch (e) { /* empty field */ }
 }
 
 function wireNoteReadToEdit() {
@@ -6120,21 +6645,28 @@ function wireNoteReadToEdit() {
         const el = document.getElementById(id);
         if (!el || el.dataset.readToEdit === '1') return;
         el.dataset.readToEdit = '1';
+        const wantsDouble = id === 'noteContent';
+        let lastTapAt = 0;
         el.addEventListener('click', () => {
             if (!el.readOnly) return;
+            // The tap that OPENED the note must not count as the first half of
+            // a double tap, nor edit the note on its own.
             if (Date.now() - noteReadModeAt < 600) return;
-            // Where the tap landed, so the caret arrives where it was asked
-            // for rather than at the start.
-            const at = el.selectionStart;
-            setNoteReadMode(false);
-            el.focus();
-            try { el.setSelectionRange(at, at); } catch (e) { /* empty field */ }
+            if (!wantsDouble) { noteEnterEditAt(el); return; }
+            const now = Date.now();
+            if (now - lastTapAt < NOTE_DOUBLE_TAP_MS) {
+                lastTapAt = 0;
+                noteEnterEditAt(el);
+            } else {
+                lastTapAt = now;
+            }
         });
     });
 }
 
 function prepareNoteModal(heading, sub, color) {
     wireNoteReadToEdit();
+    wireNoteBullets();
     keepNoteFocus();
     buildNoteColorPicker();
     wireNoteCounters();
@@ -6156,6 +6688,7 @@ async function openNote(note) {
     document.getElementById('noteTitle').value = note.title;
     document.getElementById('noteContent').value = note.content;
     editingNoteId = note.id;
+    editingNoteFolder = folderPath;
     noteModalLined = !!note.lined;
     noteModalFont = noteFontPx(note.fontSize);
     prepareNoteModal('Edit Note', 'Change what you wrote', note.color);
@@ -6191,6 +6724,7 @@ function openNewNoteModal() {
 function closeNoteModal() {
     document.getElementById('noteModal').classList.remove('show');
     editingNoteId = null;
+    editingNoteFolder = null;
 }
 
 // ============================================================
@@ -16262,6 +16796,9 @@ async function importBackupV2(source) {
             lastShown = now;
             const pct = totalBytes ? Math.min(99, Math.floor(doneBytes * 100 / totalBytes)) : 0;
             updateBusyOverlay(`Restoring… ${pct}%  (${formatBytes(doneBytes)} of ${formatBytes(totalBytes)})`);
+            // The water is the progress: without this it stayed at its idle level
+            // while the text climbed to 91%.
+            if (totalBytes) setBusyFill(pct);
         };
         const skip = async () => {};
 

@@ -1,4 +1,34 @@
-# DOCMAN — Project Context
+# DOCMAN Project Instructions
+
+## Before Starting
+Read:
+1. CURRENT_STATE.md
+2. PROGRESS.md
+
+Then inspect the relevant project files.
+
+## Rules
+- Work only on the requested task.
+- Do not modify unrelated files.
+- Do not remove existing working features.
+- Do not redesign the UI unless explicitly requested.
+- Preserve existing functionality.
+- Do not add unnecessary dependencies.
+- Make the smallest safe change necessary.
+
+## After Completing a Task
+Update:
+- CURRENT_STATE.md
+- PROGRESS.md
+
+Record what was changed and what should be done next.
+
+---
+
+Everything below is reference, not a task list: what the app is made of, and the traps this
+codebase has already fallen into. Read the part that touches what you are about to change.
+
+## Project Context
 
 DOCMAN is a native Android document manager app (Capacitor-wrapped web app).
 Package: `com.docman` (renamed from `com.oarcel.docman` on 2026-09-12, before first publish; `applicationId` in android/app/build.gradle).
@@ -28,3 +58,8 @@ All items from the original roadmap (Copy Page Text → Redaction) have shipped.
 - Native code changes should be defensive where a library's exact API surface can't be verified offline (e.g. `PdfPasswordException` detection uses a runtime class-name/message check rather than a hard import, since the exact package path varies across AndroidPdfViewer/pdfium-android versions).
 - When extending `PdfViewerActivity`'s "More" menu, follow the existing pattern: add to the `items` array in `showMoreMenu()`, add a corresponding `case N:` in the switch, keep new methods consistent with the existing ones' structure (Toast on failure, no crashes on missing data).
 - Never use `innerHTML +=` on `#content` (or any container the app has already wired up): it re-parses everything already inside and silently drops every listener attached to those nodes. This killed the folder toolbar's Favourite button whenever a folder had no notes (2026-09-16). Use `insertAdjacentHTML("beforeend", ...)` or `appendChild`, and prefer inline `onclick` for the toolbar buttons, which survives a re-parse.
+- **`env(safe-area-inset-bottom)` is 0 in this WebView** — targetSdk 35+ draws edge-to-edge and never publishes the inset, so anything that trusts it sits under the gesture/back bar. The app's own measurement is `--nav-bottom`, written onto the root by `MainActivity` from the real window insets. Always reserve `max(env(safe-area-inset-bottom, 0px), var(--nav-bottom, 0px))` — the `max()` covers both a phone that does publish the inset and one that does not. Bit the note editor on 2026-10-13 the moment its card was made full height, and the reminder sticky note the same night. **JS has the same trap:** `innerHeight` runs to the bottom of the screen, so anything deciding whether something fits must use `innerHeight - Math.max(--safe-bottom, --nav-bottom)`, as the row menu and `showReminderStickyNote` now do.
+- **`showModal` falls back to the OK button's label for the heading** (`const dlgTitle = title || resolvedOkLabel`). A `showConfirmModal` caller that passes no `title` gets a heading like "View" or "Delete", which reads as a stray verb rather than a title. Always pass `title`.
+- **Scroll versus gesture on the PDF view**: `PdfTextSelectionOverlayView` decides whether a touch is a scroll by asking whether the PAGE moved (`pdfView.getCurrentXOffset()/getCurrentYOffset()` against the values taken at ACTION_DOWN), not by how far the finger travelled. Finger distance cannot tell a slow deliberate scroll from a hold, and the long-press slop there is deliberately generous to survive hand tremor. Reuse the page-offset test for any new gesture that has to coexist with scrolling.
+- **The note editor opens for READING.** Both fields are `readOnly` until asked otherwise: the writing box needs a double tap, the one-line title a single one. Colour, ruling and text size are saved on the spot by `noteStyleChanged()` and never leave read mode, so no Save/Cancel appears while reading. Anything new added to that editor has to decide which of those two it is, or it will open a keyboard over a note somebody is only reading.
+- **A launch that came from tapping a notification skips the launch dialogs** (`launchedFromNotification` guards both `checkExpiryTodayOnLoad` and `checkLaunchAlertsOnLoad`). The tap is already an answer to an alert and already chose a destination; a dialog on top of it is nagging. Any new launch-time popup needs the same guard.
