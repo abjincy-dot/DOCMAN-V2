@@ -56,3 +56,5 @@ Addendum: expiry banners merge per date (see PROGRESS.md 15 Oct). Unverified on 
 **Decision 15 Oct 2026 (user):** the FINAL AAB must be versionName 1.0.0. versionCode stays above 65 (66+; check the App bundle explorer, Play refused 64). Not yet changed in build.gradle — do it at the final-build step, after confirming with the user.
 
 Addendum: expiry cards with document pictures built (see PROGRESS.md 15 Oct). Not installed or seen on device.
+
+Addendum: work committed (02e4617) and pushed to the branch on GitHub. Previously "nothing committed" — now resolved.

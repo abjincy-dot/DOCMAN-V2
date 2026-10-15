@@ -53,7 +53,9 @@ public class PdfSignaturePlacementView extends View {
                 float cx = placementRect.centerX(), cy = placementRect.centerY();
                 float newW = placementRect.width() * factor;
                 float newH = placementRect.height() * factor;
-                float minSize = 24f * getResources().getDisplayMetrics().density;
+                // 8dp, down from 24: on a large drawing a 24dp signature was still far
+                // bigger than the box it had to fit in, and pinching stopped there.
+                float minSize = 8f * getResources().getDisplayMetrics().density;
                 if (newW < minSize || newH < minSize) return true;
                 placementRect.set(cx - newW / 2f, cy - newH / 2f, cx + newW / 2f, cy + newH / 2f);
                 invalidate();

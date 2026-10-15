@@ -3360,6 +3360,9 @@ public class PdfViewerActivity extends AppCompatActivity {
     private static final int SIGNATURE_INK_BLACK = Color.BLACK;
     private static final int SIGNATURE_INK_BLUE = 0xFF1A47B8;
     private static final String PREF_SIGNATURE_INK_BLUE = "signature_ink_blue";
+    // Pen width: 0 thin, 1 medium (the default), 2 bold -- the old fixed pen.
+    private static final String PREF_SIGNATURE_STROKE = "signature_stroke_level";
+    private static final float[] SIGNATURE_STROKE_DP = { 3f, 4.5f, 6f };
     // The drawn signature itself is remembered too (approved 2026-09-17), so
     // signing a second document is one tap instead of drawing again. Kept as
     // a PNG in the app's own private storage -- never in Documents, never
@@ -3562,6 +3565,44 @@ public class PdfViewerActivity extends AppCompatActivity {
         blackChip.setOnClickListener(pickInk);
         blueChip.setOnClickListener(pickInk);
 
+        // Stroke: three pen widths, remembered like the ink colour. A pinch or a
+        // zoom scales the whole signature, so it can never change how heavy the
+        // pen looks against it -- that is what this is for.
+        final int[] strokeLevel = { Math.max(0, Math.min(2, viewerPrefs.getInt(PREF_SIGNATURE_STROKE, 1))) };
+        drawView.setStrokeDp(SIGNATURE_STROKE_DP[strokeLevel[0]]);
+        LinearLayout strokeRow = new LinearLayout(this);
+        strokeRow.setOrientation(LinearLayout.HORIZONTAL);
+        strokeRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams strokeRowParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        strokeRowParams.topMargin = dp(10);
+        container.addView(strokeRow, strokeRowParams);
+
+        TextView strokeLabel = new TextView(this);
+        strokeLabel.setText("Stroke");
+        strokeLabel.setTextColor(0xFFCBD5E1);
+        strokeLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        strokeRow.addView(strokeLabel, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        final LinearLayout[] strokeChips = {
+                makeStrokeChip("Thin", 2f), makeStrokeChip("Medium", 3f), makeStrokeChip("Bold", 4f) };
+        for (int i = 0; i < strokeChips.length; i++) {
+            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            cp.leftMargin = dp(6);
+            strokeRow.addView(strokeChips[i], cp);
+            styleInkChip(strokeChips[i], i == strokeLevel[0]);
+            final int level = i;
+            strokeChips[i].setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    strokeLevel[0] = level;
+                    for (int j = 0; j < strokeChips.length; j++) styleInkChip(strokeChips[j], j == level);
+                    drawView.setStrokeDp(SIGNATURE_STROKE_DP[level]);
+                }
+            });
+        }
+
         // "Save this signature for next time" -- on by default, and the
         // choice is remembered like the ink colour.
         LinearLayout saveRow = new LinearLayout(this);
@@ -3631,6 +3672,7 @@ public class PdfViewerActivity extends AppCompatActivity {
                         // for a colour tried and then cancelled.
                         viewerPrefs.edit()
                                 .putBoolean(PREF_SIGNATURE_INK_BLUE, drawView.getInkColor() == SIGNATURE_INK_BLUE)
+                                .putInt(PREF_SIGNATURE_STROKE, strokeLevel[0])
                                 .putBoolean(PREF_SIGNATURE_SAVE, saveSwitch.isChecked())
                                 .apply();
                         // Switch off means "don't keep this one" -- an older
@@ -3671,6 +3713,37 @@ public class PdfViewerActivity extends AppCompatActivity {
         LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         textParams.leftMargin = dp(8);
+        chip.addView(text, textParams);
+        return chip;
+    }
+
+    // A pill with a short line of the pen's own thickness and a label, for the
+    // signature Stroke row. Laid out like the ink chip (child 0 the mark, child 1
+    // the label) so styleInkChip can style it.
+    private LinearLayout makeStrokeChip(String label, float lineDp) {
+        LinearLayout chip = new LinearLayout(this);
+        chip.setOrientation(LinearLayout.HORIZONTAL);
+        chip.setGravity(Gravity.CENTER_VERTICAL);
+        chip.setPadding(dp(8), 0, dp(10), 0);
+        chip.setMinimumHeight(dp(38));
+        chip.setClickable(true);
+        chip.setContentDescription(label + " stroke");
+
+        View line = new View(this);
+        android.graphics.drawable.GradientDrawable lineShape = new android.graphics.drawable.GradientDrawable();
+        lineShape.setCornerRadius(dp(3));
+        lineShape.setColor(0xFFF8FAFC);
+        line.setBackground(lineShape);
+        int lineH = Math.max(1, Math.round(lineDp * getResources().getDisplayMetrics().density));
+        chip.addView(line, new LinearLayout.LayoutParams(dp(16), lineH));
+
+        TextView text = new TextView(this);
+        text.setText(label);
+        text.setTextColor(0xFFF8FAFC);
+        text.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        textParams.leftMargin = dp(6);
         chip.addView(text, textParams);
         return chip;
     }

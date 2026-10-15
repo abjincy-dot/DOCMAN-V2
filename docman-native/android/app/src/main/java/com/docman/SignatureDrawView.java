@@ -56,6 +56,13 @@ public class SignatureDrawView extends View {
         return inkPaint.getColor();
     }
 
+    // Pen width in dp. Like the colour, it applies to the whole signature, and
+    // the exported bitmap is drawn with whatever is set when Done is pressed.
+    public void setStrokeDp(float dp) {
+        inkPaint.setStrokeWidth(dp * getResources().getDisplayMetrics().density);
+        invalidate();
+    }
+
     public boolean hasInk() {
         return hasInk;
     }

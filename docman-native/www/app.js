@@ -4262,9 +4262,9 @@ function checkLaunchAlertsOnLoad(onDone) {
     // handled by the modal above, which can actually acknowledge them --
     // counting them here too would put both on screen, one after the other,
     // which is the double popup this dialog exists to avoid.
-    const expiring = getAllExpiringFiles(EXPIRY_SOON_DAYS).filter(e => e.days > 0);
-    const overdueCount = 0;
-    const soonCount = expiring.length;
+    // Only what is 3 days away or closer. Further out is in the Expiring panel and
+    // gets its own notification; at launch it is just noise. (Briefly 14 days.)
+    const expiring = getAllExpiringFiles(3).filter(e => e.days > 0);
 
     // A due reminder is raised in this same dialog, exactly as an expiring
     // document is. This dialog is the whole of it: a bar on the home screen
@@ -4276,49 +4276,14 @@ function checkLaunchAlertsOnLoad(onDone) {
 
     if (!expiring.length && !due.length) { if (onDone) onDone(); return; }
 
-    // Only what is actually there gets a mention, so a launch with just
-    // reminders reads exactly as it did before.
-    const parts = [];
-    if (overdueCount && soonCount) parts.push(`⚠️ ${overdueCount} expired, ${soonCount} expiring soon`);
-    else if (overdueCount) parts.push(`⚠️ ${overdueCount} document${overdueCount > 1 ? 's' : ''} expired`);
-    else if (soonCount) parts.push(`${soonCount} document${soonCount > 1 ? 's' : ''} expiring soon`);
-    if (due.length) {
-        // "due" once the time has passed, "today" while it is still ahead of
-        // you -- both worth saying, and saying the wrong one is worse than
-        // saying nothing.
-        const anyPast = due.some(r => isReminderDue(r, now));
-        const word = anyPast ? 'due' : 'today';
-        parts.push(`⏰ ${due.length} reminder${due.length > 1 ? 's' : ''} ${word}`);
-    }
-
     // Saying it on this screen is saying it. Whatever is named in this box has
     // now been read, so its alert comes out of the status bar -- only the tray
     // copy, not the schedule, because the reminder itself is still unseen until
     // it is actually opened and a repeat must keep its later alarms.
     due.forEach(r => { removeReminderFromTray(r.id); });
 
-    // The documents themselves, as the small pictures they have on their cards.
-    const stripItems = expiring.slice(0, 4).map(e =>
-        '<div class="dc-strip-item" data-dc-folder="' + escapeHtml(e.folderPath) + '" data-dc-file="' + escapeHtml(e.file.name) + '">' +
-        docPictureHtml(e.file) + '<div class="dc-strip-days dc-' + docExpiryTone(e.days) + '">' + (e.days === 0 ? 'Today' : e.days + 'd') + '</div></div>'
-    ).join('');
-    const strip = stripItems ? '<div class="dc-strip">' + stripItems + '</div>' : '';
-    const lines = parts.map(t =>
-        `<span style="display:block;color:#eef2f9;font-size:0.92rem;font-weight:700;line-height:1.5;">${t}</span>`
-    ).join('') + strip;
-    showConfirmModal(lines, (view) => {
-        if (view) {
-            // A reminder wins the destination, and goes all the way to the
-            // note on its own row rather than only to the list -- the same
-            // place the notification and the bar both land.
-            if (due.length) openReminderStickyNote(due[0].id);
-            else openDashboardView(true);
-        }
-        if (onDone) onDone();
-    }, { title: 'Needs your attention', okLabel: 'View',
-         okColor: 'linear-gradient(135deg,#fbab2c 0%,#f78a14 46%,#ef7009 100%)' });
-    const popup = document.getElementById('customConfirm');
-    if (popup) wireDocPictures(popup);
+    // Documents about to expire and reminders that are due each get a card.
+    showExpiryCardsPopup(expiring, due, onDone);
 }
 
 
@@ -5605,19 +5570,32 @@ const DOC_PIC_SVG = {
 const DOC_NAME_HINTS = [
     ['passport', /passport/i],
     ['licence', /(driv(?:ing|er|ers)?[\s_-]*lic|licen[cs]e|\bdl\b)/i],
-    ['idcard', /(\bid[\s_-]*card\b|identity|national[\s_-]*id|aadhaar|aadhar|emirates[\s_-]*id|\bnic\b|resident[\s_-]*card)/i],
+    ['idcard', /(\bid[\s_-]*card\b|identity|national[\s_-]*id|aadhaar|aadhar|emirates[\s_-]*id|\bnic\b|resident[\s_-]*card|\bvisa\b|permit|residen[ct])/i],
     ['insurance', /(insurance|assurance|policy)/i],
     ['certificate', /(certificate|certification|diploma|degree|award)/i],
     ['medicine', /(medicine|medical|prescription|pharma|vaccin|health|\blab\b|\brx\b)/i],
-    ['receipt', /(receipt|invoice|\bbill\b)/i]
+    ['receipt', /(receipt|invoice|\bbill\b|statement|\btax\b)/i]
 ];
 
-// 'photo' means the file is an image and shows its own picture.
-function docPictureKind(fileName) {
+// The picture is chosen from what the file is CALLED, then from its type. It is
+// never taken from the file's contents: a card shows a picture that says what
+// the document is, not a preview of what is inside it. An image whose name says
+// nothing gets the plain photo picture.
+// The folder a document sits in says what it is: everything inside a folder
+// called PASSPORT gets the passport picture, whatever the file is named. Only the
+// folder it is directly in counts. The file's own name is the second choice, for
+// a folder that says nothing (Documents, Personal...), and the file type last.
+function docPictureKind(fileName, folderPath) {
     const ext = (fileName.split('.').pop() || '').toLowerCase();
-    if (getFileIconMeta(fileName).isImage) return 'photo';
     const stem = fileName.replace(/\.[^.]+$/, '');
+    const folder = (folderPath || '').split('/').filter(Boolean).pop() || '';
+    // A folder named for several things ("IDs & Certificates") holds all sorts, so
+    // it says nothing about any one document in it: name and type decide instead.
+    if (folder && !/[&,+]|\band\b/i.test(folder)) {
+        for (const [kind, re] of DOC_NAME_HINTS) if (re.test(folder)) return kind;
+    }
     for (const [kind, re] of DOC_NAME_HINTS) if (re.test(stem)) return kind;
+    if (getFileIconMeta(fileName).isImage) return 'photo';
     if (ext === 'pdf') return 'pdf';
     if (ext === 'doc' || ext === 'docx') return 'word';
     if (ext === 'xls' || ext === 'xlsx' || ext === 'csv') return 'excel';
@@ -5625,37 +5603,15 @@ function docPictureKind(fileName) {
     return 'other';
 }
 
-// The picture's markup. For an image file it also holds the <img> that
-// wireDocPictures() fills with the real thumbnail; the drawn photo shows until
-// it arrives.
-function docPictureHtml(file) {
-    const kind = docPictureKind(file.name);
-    const img = kind === 'photo' ? '<img class="file-icon-badge-thumb dc-img" alt="">' : '';
-    // Until its own image arrives, a photo named for what it is shows that
-    // document's picture rather than a generic landscape.
-    let shown = kind;
-    if (kind === 'photo') {
-        const stem = file.name.replace(/\.[^.]+$/, '');
-        const hint = DOC_NAME_HINTS.find(h => h[1].test(stem));
-        if (hint) shown = hint[0];
-    }
-    return '<div class="dc-pic dc-pic-' + kind + '">' + DOC_PIC_SVG[shown] + img + '</div>';
+// The picture's markup.
+function docPictureHtml(file, folderPath) {
+    const kind = docPictureKind(file.name, folderPath);
+    return '<div class="dc-pic dc-pic-' + kind + '">' + DOC_PIC_SVG[kind] + '</div>';
 }
 
-// Finds each [data-dc-file] under root and hands its picture its own image.
-function wireDocPictures(root) {
-    root.querySelectorAll('[data-dc-file]').forEach(el => {
-        const folderPath = el.dataset.dcFolder || '';
-        const file = (allFiles[folderPath] || []).find(f => f.name === el.dataset.dcFile);
-        const img = el.querySelector('.dc-img');
-        if (!file || !img) return;
-        // A wide scan (a licence photographed flat) is shown whole, not cropped.
-        img.addEventListener('load', () => {
-            if (img.naturalWidth / (img.naturalHeight || 1) > 1.25) img.classList.add('dc-img-wide');
-        });
-        wireFileIconThumbnail(el, file, folderPath);
-    });
-}
+// Kept as a no-op so the call sites need no change: pictures are drawn inline and
+// there is nothing to load.
+function wireDocPictures() {}
 
 // Red inside two weeks or once expired, amber to a month, green beyond.
 function docExpiryTone(days) {
@@ -5672,6 +5628,7 @@ function docExpiryWords(days) {
 }
 
 const DOC_CARD_ICONS = {
+    done: '<svg viewBox="0 0 24 24"><path d="M4.5 12.5l5 5L20 6.5"/></svg>',
     cal: '<svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="18" rx="4" fill="currentColor"/><path d="M7.5 2v4M16.5 2v4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><g fill="#0a1230"><rect x="6" y="12" width="3" height="2.4" rx=".6"/><rect x="10.5" y="12" width="3" height="2.4" rx=".6"/><rect x="15" y="12" width="3" height="2.4" rx=".6"/><rect x="6" y="16" width="3" height="2.4" rx=".6"/><rect x="10.5" y="16" width="3" height="2.4" rx=".6"/><rect x="15" y="16" width="3" height="2.4" rx=".6"/></g></svg>',
     view: '<svg viewBox="0 0 24 24"><path d="M1.8 12S5.5 5 12 5s10.2 7 10.2 7-3.7 7-10.2 7S1.8 12 1.8 12z"/><circle cx="12" cy="12" r="3.2"/></svg>',
     edit: '<svg viewBox="0 0 24 24"><path d="M4 20l1-4.5L16.5 4a2.6 2.6 0 0 1 3.7 3.7L8.5 19.2z"/><path d="M14.5 6l3.5 3.5"/></svg>',
@@ -5685,7 +5642,7 @@ function docCardHtml({ file, folderPath, days }) {
     const name = file.name.replace(/\.[^.]+$/, '') || file.name;
     const where = (folderPath || '').split('/').join(' / ') || 'Root';
     return '<div class="dc-card expdoc-row" data-folder="' + escapeHtml(folderPath) + '" data-dc-folder="' + escapeHtml(folderPath) + '" data-dc-file="' + escapeHtml(file.name) + '">' +
-        '<div class="dc-top">' + docPictureHtml(file) +
+        '<div class="dc-top">' + docPictureHtml(file, folderPath) +
         '<div class="dc-mid"><div class="dc-name">' + escapeHtml(name) + '</div>' +
         '<div class="dc-where">' + escapeHtml(where) + '</div>' +
         '<div class="dc-exp dc-' + tone + '">' + DOC_CARD_ICONS.cal + '<span>' + docExpiryWords(days) + '</span></div>' +
@@ -5699,8 +5656,8 @@ function docCardHtml({ file, folderPath, days }) {
 
 // Wires the three buttons on every card under root. closePanel takes the panel
 // down before View opens the file over the top of it.
-function wireDocCardActions(root, closePanel) {
-    root.querySelectorAll('.dc-card').forEach(card => {
+function wireDocCardActions(root, closePanel, opts = {}) {
+    root.querySelectorAll('.dc-card[data-dc-file]').forEach(card => {
         const folderPath = card.dataset.dcFolder || '';
         const fileName = card.dataset.dcFile;
         card.querySelectorAll('.dc-act').forEach(btn => {
@@ -5709,6 +5666,9 @@ function wireDocCardActions(root, closePanel) {
                 haptic.press();
                 const file = (allFiles[folderPath] || []).find(f => f.name === fileName);
                 if (!file) return;
+                // The app-open popup has nothing to come back to, so it goes away
+                // before whatever was chosen opens.
+                if (opts.closeFirst) closePanel();
                 if (btn.dataset.act === 'view') {
                     closePanel();
                     openFile(fileName, folderPath);
@@ -5716,7 +5676,7 @@ function wireDocCardActions(root, closePanel) {
                     showDateModal('New expiry date for "' + escapeHtml(fileName) + '":', file.expiryDate || '', async (val) => {
                         if (val === null || val === undefined) return;
                         await setFileExpiryDate(folderPath, fileName, val);
-                        showExpiringDocumentsPanel('expiring', { rerender: true });
+                        if (!opts.closeFirst) showExpiringDocumentsPanel('expiring', { rerender: true });
                     }, { disallowPast: true, minTomorrow: true });
                 } else {
                     const today = localTodayIso();
@@ -5726,6 +5686,174 @@ function wireDocCardActions(root, closePanel) {
             });
         });
     });
+}
+
+// ---- Reminder cards: the same card as a document, for a reminder that is due.
+const REMINDER_PIC_SVG = '<svg viewBox="0 0 86 108"><defs><linearGradient id="rpBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4a2e0c"/><stop offset="1" stop-color="#241405"/></linearGradient><linearGradient id="rpG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd27a"/><stop offset="1" stop-color="#f59e0b"/></linearGradient></defs><rect width="86" height="108" fill="url(#rpBg)"/><path d="M43 24c-12 0-19 9-19 21v14l-6 9h50l-6-9V45c0-12-7-21-19-21z" fill="url(#rpG)"/><circle cx="43" cy="20" r="4" fill="url(#rpG)"/><path d="M36 73a7 7 0 0 0 14 0z" fill="url(#rpG)"/><circle cx="64" cy="30" r="9" fill="#ef4444"/><path d="M64 25v6M64 34.500v.5" stroke="#fff" stroke-width="2.200" stroke-linecap="round"/></svg>';
+
+const REMINDER_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// { words, tone } for when a reminder is due: red once its time has passed,
+// amber while it is still ahead today.
+function reminderWhen(r, now) {
+    if (!r.dueAt) return { words: 'Reminder', tone: 'amber' };
+    const [y, m, d] = r.dueAt.split('-').map(Number);
+    const [hh, mm] = (r.dueTime || '09:00').split(':').map(Number);
+    const at = new Date(y, m - 1, d, hh, mm);
+    const t12 = ((hh % 12) || 12) + ':' + String(mm).padStart(2, '0') + ' ' + (hh < 12 ? 'AM' : 'PM');
+    const past = at <= now;
+    const day = r.dueAt === localTodayIso() ? (past ? 'Due now' : 'Due today') : 'Due ' + d + ' ' + REMINDER_MONTHS[m - 1];
+    return { words: day + ' · ' + t12, tone: past ? 'red' : 'amber' };
+}
+
+function reminderCardHtml(r, now) {
+    const when = reminderWhen(r, now);
+    return '<div class="dc-card dc-rem-card" data-rem-id="' + escapeHtml(r.id) + '">' +
+        '<div class="dc-top"><div class="dc-pic dc-pic-reminder">' + REMINDER_PIC_SVG + '</div>' +
+        '<div class="dc-mid"><div class="dc-name">' + escapeHtml(r.title || 'Reminder') + '</div>' +
+        '<div class="dc-where">Reminder</div>' +
+        '<div class="dc-exp dc-' + when.tone + '">' + DOC_CARD_ICONS.cal + '<span>' + escapeHtml(when.words) + '</span></div></div></div>' +
+        '<div class="dc-acts">' +
+        '<button type="button" class="dc-act" data-act="view"><span>' + DOC_CARD_ICONS.view + '</span>View</button>' +
+        '<button type="button" class="dc-act" data-act="edit"><span>' + DOC_CARD_ICONS.edit + '</span>Edit</button>' +
+        '<button type="button" class="dc-act" data-act="done"><span>' + DOC_CARD_ICONS.done + '</span>Done</button>' +
+        '</div></div>';
+}
+
+// Every action closes the popup first, like the document cards inside it.
+function wireReminderCardActions(root, closePopup) {
+    root.querySelectorAll('.dc-rem-card').forEach(card => {
+        const id = card.dataset.remId;
+        card.querySelectorAll('.dc-act').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                haptic.press();
+                const r = reminders.find(x => x.id === id);
+                closePopup();
+                if (!r) { showToast('That reminder has been deleted', true); return; }
+                if (btn.dataset.act === 'view') openReminderStickyNote(id);
+                else if (btn.dataset.act === 'edit') editReminderFlow(id);
+                else {
+                    // Same as answering the notification: seen, and the repeats
+                    // still queued behind it are cleared.
+                    r.dueAckFor = reminderOccurrenceKey(r);
+                    saveReminders();
+                    await cancelReminderNotification(id);
+                    showToast('Reminder done');
+                }
+            });
+        });
+    });
+}
+
+// The app-open alert: reminders that are due and documents about to expire.
+// One or two items get the full card. Three or more become compact rows -- a
+// small picture, the name and when -- and tapping a row opens its card in place
+// (View / Edit / Remind or Done), so a dozen items stay scannable. Nothing is cut
+// off: every item is in the list, and "See all" goes to the full panel.
+function showExpiryCardsPopup(expiring, due, onDone) {
+    const existing = document.getElementById('expiryCardsPopup');
+    if (existing) existing.remove();
+    const now = new Date();
+    const items = [
+        ...due.map(r => ({ kind: 'rem', r })),
+        ...expiring.map(e => ({ kind: 'doc', e }))
+    ];
+    const compact = items.length >= 3;
+    const subParts = [];
+    if (expiring.length) subParts.push(expiring.length + ' document' + (expiring.length > 1 ? 's' : '') + ' expiring soon');
+    if (due.length) subParts.push(due.length + ' reminder' + (due.length > 1 ? 's' : '') + ' due');
+
+    const fullHtml = (it) => it.kind === 'rem' ? reminderCardHtml(it.r, now) : docCardHtml(it.e);
+    const rowHtml = (it, idx) => {
+        let pic, name, words, tone;
+        if (it.kind === 'rem') {
+            const w = reminderWhen(it.r, now);
+            pic = '<div class="dc-pic dc-pic-reminder">' + REMINDER_PIC_SVG + '</div>';
+            name = it.r.title || 'Reminder'; words = w.words; tone = w.tone;
+        } else {
+            pic = docPictureHtml(it.e.file, it.e.folderPath);
+            name = it.e.file.name.replace(/\.[^.]+$/, '') || it.e.file.name;
+            words = docExpiryWords(it.e.days); tone = docExpiryTone(it.e.days);
+        }
+        return '<div class="dc-row" data-i="' + idx + '">' + pic +
+            '<div class="dc-rm"><div class="dc-rn">' + escapeHtml(name) + '</div>' +
+            '<div class="dc-rw dc-' + tone + '">' + escapeHtml(words) + '</div></div>' +
+            '<div class="dc-go"><i class="fas fa-chevron-right"></i></div></div>';
+    };
+
+    let body = '';
+    if (!compact) {
+        body = items.map(fullHtml).join('');
+    } else {
+        const remItems = items.map((it, idx) => ({ it, idx })).filter(x => x.it.kind === 'rem');
+        const docItems = items.map((it, idx) => ({ it, idx })).filter(x => x.it.kind === 'doc');
+        const slot = (x) => '<div class="dc-slot" data-i="' + x.idx + '">' + rowHtml(x.it, x.idx) + '</div>';
+        if (remItems.length) body += '<div class="dc-sec">REMINDERS DUE</div>' + remItems.map(slot).join('');
+        if (docItems.length) body += '<div class="dc-sec">EXPIRING SOON</div>' + docItems.map(slot).join('');
+        body += '<button type="button" class="dc-popup-more dc-popup-all">See all in ' + (docItems.length ? 'Expiring Documents' : 'Reminders') + '</button>';
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'expiryCardsPopup';
+    overlay.className = 'dc-popup-overlay';
+    overlay.innerHTML =
+        '<div class="dc-popup" role="dialog" aria-modal="true" aria-label="Needs your attention">' +
+        '<button type="button" class="dc-popup-x" aria-label="Close"><i class="fas fa-times"></i></button>' +
+        '<div class="dc-popup-title">Needs your attention</div>' +
+        '<div class="dc-popup-sub">' + subParts.join(' · ') + '</div>' + body + '</div>';
+    document.body.appendChild(overlay);
+
+    let closed = false;
+    const close = () => {
+        if (closed) return;
+        closed = true;
+        overlay.remove();
+        if (onDone) onDone();
+    };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('.dc-popup-x').onclick = () => { haptic.press(); close(); };
+
+    // Opens one slot into its full card and puts the previous one back to a row.
+    let openIdx = -1;
+    const slots = () => overlay.querySelectorAll('.dc-slot');
+    const setSlot = (idx, expanded) => {
+        const el = overlay.querySelector('.dc-slot[data-i="' + idx + '"]');
+        if (!el) return;
+        el.innerHTML = expanded ? fullHtml(items[idx]) : rowHtml(items[idx], idx);
+        el.classList.toggle('dc-slot-open', expanded);
+        if (expanded) {
+            wireDocCardActions(el, close, { closeFirst: true });
+            wireReminderCardActions(el, close);
+        } else {
+            bindRow(el);
+        }
+    };
+    const bindRow = (el) => {
+        const row = el.querySelector('.dc-row');
+        if (!row) return;
+        row.addEventListener('click', () => {
+            haptic.press();
+            const idx = Number(row.dataset.i);
+            if (openIdx >= 0 && openIdx !== idx) setSlot(openIdx, false);
+            openIdx = idx;
+            setSlot(idx, true);
+        });
+    };
+    if (compact) {
+        slots().forEach(bindRow);
+        setSlot(0, true);              // the first one is already open
+        openIdx = 0;
+        const all = overlay.querySelector('.dc-popup-all');
+        if (all) all.onclick = () => {
+            haptic.press();
+            close();
+            showExpiringDocumentsPanel(expiring.length ? 'expiring' : 'reminders');
+        };
+    } else {
+        wireDocCardActions(overlay, close, { closeFirst: true });
+        wireReminderCardActions(overlay, close);
+    }
 }
 
 function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
@@ -5924,14 +6052,14 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
         titleHtml = `<i class="fas fa-list-check" style="color:#f59e0b;margin-right:6px;"></i>Reminders`;
         summaryHtml = reminders.length ? `<p style="color:${c.muted};font-size:0.8rem;margin:0 0 14px;font-family:Inter,sans-serif;">${reminders.length} total reminder${reminders.length === 1 ? '' : 's'}</p>` : '<div style="margin-bottom:10px;"></div>';
     } else {
-        const nowExp = new Date(); nowExp.setHours(0, 0, 0, 0);
-        const monthEnd = new Date(nowExp.getFullYear(), nowExp.getMonth() + 1, 0);
-        const daysLeftInMonth = Math.round((monthEnd - nowExp) / 86400000);
-        const entries = getAllExpiringFiles(daysLeftInMonth);
+        // Only what is 3 days away or closer, plus anything already expired. Dates
+        // set further out are kept and alert on their own schedule; they just do not
+        // crowd this page until they are close. (Used to run to the end of the month.)
+        const entries = getAllExpiringFiles(3);
         bodyHtml = entries.length ? entries.map(docCardHtml).join('') : `
             <div class="fav-empty" style="text-align:center;padding:32px 20px 20px;color:${c.muted};">
                 <i class="fas fa-calendar-check" style="font-size:2rem;margin-bottom:12px;display:block;color:${c.mutedIcon};"></i>
-                <p style="margin:0;font-family:Inter,sans-serif;font-size:0.9rem;">No documents have an expiry date set.</p>
+                <p style="margin:0;font-family:Inter,sans-serif;font-size:0.9rem;">Nothing expires in the next 3 days.</p>
                 <p style="margin:8px 0 0;font-family:Inter,sans-serif;font-size:0.78rem;color:${c.muted};">Tap ⋯ on a file → Set Expiry Date to get reminders here before it lapses.</p>
             </div>`;
 
@@ -16006,6 +16134,12 @@ function reportSaveProgress(written, total) {
 function updateBusyOverlay(message) {
     const text = document.getElementById('busyOverlay')?.querySelector('#busyOverlayText');
     if (text) text.textContent = message;
+    // A message that carries a percentage ("Backing up… 71%  (…)") also sets the
+    // water, so the glass always agrees with the words. Backup and the safety
+    // snapshot only ever updated the text, and the water sat near the bottom
+    // while the number climbed.
+    const m = /(\d{1,3})%/.exec(message || '');
+    if (m && Number(m[1]) <= 100) setBusyFill(Number(m[1]));
 }
 function hideBusyOverlay() {
     document.getElementById('busyOverlay')?.remove();
