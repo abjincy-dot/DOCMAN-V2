@@ -1,11 +1,12 @@
-# DOCMAN — Handover (13 Oct 2026, night)
+# DOCMAN — Handover (15 Oct 2026, end of chat)
 
-Start a **new chat** and point it at this file, plus CLAUDE.md and ISSUES.md.
-Everything here is settled; none of it needs re-discovering.
+Start a **new chat** and point it at this file, plus CLAUDE.md, CURRENT_STATE.md and PROGRESS.md.
+Everything here is settled; none of it needs re-discovering. **Read §1b first.**
 
-**One line if you read nothing else:** **63 / 1.0.2 is on Internal testing**; **65 / 1.0.4**
-is built on disk and not uploaded. It carries the PDF scroll fix and the note editor rework
-(§2i). The one thing still owed is tomorrow morning's expiry check (§2g).
+**One line if you read nothing else:** **66 / 1.0.0 is built and verified on disk, not uploaded**
+(63 / 1.0.2 is on Internal testing). It carries the new expiry/reminder cards, the framed
+start-up banner, the 7/3/1-day alerts that merge per date, and the signature Stroke row. Next:
+upload 66 to Internal testing, test Sign on the release build, paste the new store listing.
 
 ---
 
@@ -28,8 +29,120 @@ is built on disk and not uploaded. It carries the PDF scroll fix and the note ed
   clears chats between sessions, so anything not written here is lost — and a chat can stop
   without warning (context limit, a crash, the user closing it), which leaves no last turn to
   write in. Finish a fix, write it down; then carry on.
+- **At the END of every chat, refresh all three files:** PROGRESS.md, CURRENT_STATE.md and
+  HANDOVER.md (the user asked for this on 15 Oct). Check they agree with each other, with
+  `git` and with `build.gradle`. Keep doing the as-work-lands writing too.
 - Play listing screenshots carry **no status bar, no nav bar, no notification icons** —
   the whole existing set is app content only. Crop them off before handing one over.
+
+## 1b. Where everything stands — 15 Oct 2026, end of chat (READ THIS FIRST)
+
+Everything from §2 down is history and still true; this section is what changed on 15 Oct and
+what to do next. `CURRENT_STATE.md` has the short version, `PROGRESS.md` the log.
+
+### State in one table
+| | |
+|---|---|
+| `build.gradle` | **1.0.0 / versionCode 66** |
+| AAB | `DOCMAN Play Store Assets/release/DOCMAN-1.0.0-versioncode66-UPLOAD-THIS.aab`, built 12:03, **not uploaded**. A first 66 without the day-before alert sits beside it as `superseded-...-DO-NOT-UPLOAD.aab`. |
+| On Play | Internal testing 63 / 1.0.2; Closed testing 61 / 1.0.0. Play refused 64. |
+| Git | branch `docman-2026-09-24-pdf-search-ui-animations` pushed at `d0ba71e`; `main` (the PWA) at `9f40c9e` is an older web layer; live policy repo `docman-privacy` at `cc28425`. |
+| Phone | DOCMAN dev holds exactly this code (1.0.0-dev, 15 Oct ~12:00). |
+
+### What was decided on 15 Oct, and why (the user's words, not mine)
+- **Final AAB = versionName 1.0.0**, versionCode above 65. "the last AAB should be 1.0.0".
+- **Alerts: 7 days, 3 days, 1 day.** I removed the day-before alert on a misread and the user
+  put it back: "one day before also useful". Do not remove it again.
+- **Start-up banner and Expiring tab show only what is 3 days away or closer** (plus expired).
+  "dont show the expiry or reminder more than 3 days". Further-out documents still get their
+  own notifications and sit in the data.
+- **A card's picture is chosen from names, never from file contents.** A ruled-paper screenshot
+  named PASSPORT was showing its own contents; the user wanted the passport picture. Order:
+  folder name → file name → file type. A folder named for several things (`&`, `,`, `+`, "and")
+  says nothing about one document, so "IDs & Certificates" is skipped.
+- **Many items must stay compact:** 1–2 → full cards, 3+ → rows with the first open, "See all",
+  no cap. The user rejected the cap of 3 ("only 3 shows"), the stacked-deck idea was previewed
+  but the mixed layout was chosen. Cards were shrunk twice ("the card size is big").
+- **No blurred home screen behind the banner**, a thin frame instead.
+- **Same-day expiries are one banner that says how many; no names on the lock screen** (naming
+  them "breaks the privacy").
+
+### How the pieces work (where to look)
+- **Pictures:** `DOC_PIC_SVG`, `DOC_NAME_HINTS`, `docPictureKind(fileName, folderPath)`,
+  `docPictureHtml`, in `www/app.js` just above `showExpiringDocumentsPanel`. `wireDocPictures`
+  is now a no-op (pictures are inline SVG; the real thumbnail pipeline is unused on cards).
+- **Cards:** `docCardHtml`, `wireDocCardActions(root, closePanel, {closeFirst})`;
+  reminders: `reminderCardHtml`, `reminderWhen`, `wireReminderCardActions`.
+- **Banner:** `showExpiryCardsPopup(expiring, due, onDone)`; called from
+  `checkLaunchAlertsOnLoad`, which now uses `getAllExpiringFiles(3)`. The old one-line red
+  dialog is gone. The overlay is `#expiryCardsPopup`, CSS `.dc-popup*`, `.dc-row`, `.dc-slot`.
+- **CSS** for all of it is appended at the end of `www/style.css` in three override blocks
+  (`.dc-*`, "Compact cards", "Compact again"), then the `.reminder-row` restyle, the button
+  ring/gap, and the popup frame. Later blocks win; do not reorder.
+- **Alerts:** `imgScheduleExpiryNotification` builds ids per document; the group key is now
+  `docman-expiry-<date>-<kind>` (kinds `d7`, `d3`, `d1`, `today`, `over<N>`), not per document.
+  `expiryDocsOnDate` counts un-acknowledged documents on a date; `queueExpiryAlertRefresh`
+  re-arms everything 1.5 s after any change so the counts stay right. Buttons ("Got it",
+  "Renew") only on a one-document banner; tapping a merged banner opens `showExpiryTodayModal`
+  with all of them.
+- **The notification plugin patch** (`TimedNotificationPublisher`): alarms for documents on the
+  same date fire within a second, so a sibling arriving **within 90 s** of the first is posted
+  under the first one's id (updates in place, `setOnlyAlertOnce` keeps it silent); a repeat
+  30 min later replaces it. Stored in SharedPreferences `docman_notif_groups`. The patch file
+  is **hand-written** because `patch-package` cannot diff here (build output lives inside
+  `node_modules`); it was checked with `git apply --check` against the clean file.
+- **Water level:** `updateBusyOverlay` parses any `NN%` and calls `setBusyFill`, so Backup,
+  safety snapshot and Restore all work. Before, only the text moved.
+- **Signature:** `SignatureDrawView.setStrokeDp`; `makeStrokeChip` and the Stroke row in
+  `PdfViewerActivity.showSignatureDrawDialog`; pref `signature_stroke_level` (0 thin, 1 medium
+  default, 2 bold). Pinch minimum in `PdfSignaturePlacementView` is 8dp.
+
+### Not built, on purpose or not yet
+- Reminders still raise one banner each (only expiry alerts merge).
+- A PDF shows a PDF picture, not its first page: needs a new `PdfNativePlugin` method.
+- The Dashboard's "Expiring soon" rows keep their old look.
+- The Reminders tab is a per-day calendar and was not limited to 3 days.
+
+### Tooling that worked (this machine)
+- **Python is not installed.** Use `node` scripts. Write them with the Write tool and run them;
+  long heredocs with quotes broke twice.
+- `JAVA_HOME` is unset: `export JAVA_HOME="C:/Program Files/Android/Android Studio/jbr"`.
+  adb is `%LOCALAPPDATA%/Android/Sdk/platform-tools/adb.exe`.
+- Install to the phone: `npx cap sync android`, then `android/gradlew installDebug`
+  (lands in **DOCMAN dev**, `com.docman.dev`). Release: `gradlew bundleRelease`
+  → `app/build/outputs/bundle/release/app-release.aab`, copy it into the release folder.
+- **Verify an AAB from inside it**: unzip, then check the manifest bytes `\x1a\x0266` and
+  `\x1a\x051.0.0`, the `?v=` tags in `base/assets/public/index.html`, the feature strings in
+  `app.js`, and `jarsigner -verify`.
+- **Java files are CRLF.** An edit script that matches multi-line strings must normalise line
+  endings (a wrapper that reads LF and writes CRLF worked). A failed `Edit` once went unnoticed.
+- **See the phone:** `adb exec-out screencap -p > x.png`. **Drive the phone's WebView:**
+  `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>` and a small Node
+  DevTools client (`Runtime.evaluate`) — it can open a PDF, show a panel, read `allFiles`.
+- **Store screenshots** are 1080x2100: crop 90 px off the top and the rest off the bottom of a
+  1080x2316 capture. For clean sample data run the real app in desktop Edge
+  (`tools/serve-www.js` on port 4173, `--remote-debugging-port`, a **fresh `--user-data-dir`**,
+  `--no-first-run`, viewport 411x800 at scale 2.62774, hide the scrollbar). A first attempt
+  without `--no-first-run` wandered to an unrelated site; close that instance, do not interact.
+- **Never rename or change the user's test data**, even "in memory": the auto-mode check
+  blocked it, and rightly. Back up `localStorage` `docman_reminders_v1` before staging anything
+  and compare after a restart.
+
+### Traps and mistakes (do not repeat)
+- **Preview first.** The user wants a rendered image and an OK before any look change is
+  installed. I installed a restyle first once and had to show it after.
+- A silent edit failure followed by an install and a "done" report. Confirm the edit landed.
+- Installing while a backup or restore is running kills the app mid-write.
+- "ok" mid-conversation is often an answer to the *previous* question; re-read before acting.
+- Several of the user's messages arrive while a tool call is running. Re-read the latest one.
+
+### Decisions waiting on the user
+- Which screenshot slot `06b-expiring-cards.png` should take (Play allows 8).
+- Whether the PWA on `main` should be refreshed with the latest web layer.
+- Whether reminders should merge into one banner like expiry alerts.
+- Whether to push the end-of-chat commit of the three state files (committed locally only).
+
+---
 
 ## 2. Where everything stands, 12 Oct 2026 (late evening)
 
@@ -795,32 +908,3 @@ sampled just outside the tile rather than with one colour.
    is nearly identical to the real one inside `Desktop\DOCMAN PLAY STORE\`. That folder once
    burned versionCode 54. The real one is
    `Desktop\DOCMAN PLAY STORE\DOCMAN Play Store Assets\release\`.
-
-## 15 Oct 2026 — three changes since 65 (all in DOCMAN dev, none built into an AAB, none confirmed on the phone)
-1. **Restore water level** follows the percentage (`app.js`, restore `report()` now calls
-   `setBusyFill(pct)`). Before, only the text moved; the water stayed at its idle level.
-2. **Note ink** darker/heavier: `#0b1220`, weight 500 (`style.css`, both note-paper rules).
-3. **One expiry banner per date + alert kind** ("3 documents expire today"), no names on the
-   lock screen (user rejected naming documents for privacy). Group key is
-   `docman-expiry-<date>-<kind>`; the plugin patch (`TimedNotificationPublisher`) posts a
-   sibling arriving within 90 s under the first one's id so it does not sound again. Patch
-   file was written by hand because patch-package cannot diff here. Buttons only on a
-   single-document banner; tapping a multi banner opens `showExpiryTodayModal` with all of
-   them. Any change queues a re-arm of all alerts (1.5 s) so counts stay right.
-- **Observed 14 Oct:** four documents gave four separate identical banners at 07:00 — one per
-  document; the replace-the-repeat behaviour works per document. Change 3 is the response.
-- **Open:** reminders still one banner each (offered, not decided). The 21:00 stop is still
-  unobserved. Version number 1.0.4 vs 1.0.0 still undecided. Nothing committed.
-- **Environment:** `JAVA_HOME` is unset; use Android Studio's JDK
-  (`C:/Program Files/Android/Android Studio/jbr`). adb is at `%LOCALAPPDATA%/Android/Sdk/platform-tools`.
-  Install = `npx cap sync android` then `android/gradlew installDebug`. Python is not installed.
-
-**Decided 15 Oct:** the final AAB reads versionName 1.0.0 (code 66+). build.gradle edited only at the final build.
-
-## 15 Oct 2026 (later) — expiry cards with document pictures
-Built in `www/app.js` (`docCardHtml` etc., just above `showExpiringDocumentsPanel`) and `www/style.css`
-(`.dc-*`, end of file). User approved the look from a rendered preview (card background sampled from
-their reference: navy, magenta left glow, blue top-right). Own image wins; else name hint; else file
-type. PDF first-page render is NOT built (needs a PdfNativePlugin method). Dashboard rows untouched.
-Not installed: the phone was unplugged. Install = `npx cap sync android`, then `android/gradlew installDebug`
-with JAVA_HOME at Android Studio's jbr.

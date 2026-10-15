@@ -1,62 +1,76 @@
 # DOCMAN Current State
 
-## Current Version
-1.0.4
-Version Code: 65
+Last refreshed 15 Oct 2026, end of chat. What is true *right now*. The log is `PROGRESS.md`,
+the reasoning and traps are `HANDOVER.md` (§1b), the rules are `CLAUDE.md`.
 
-> Note: `android/app/build.gradle` says versionName **1.0.4**, not 1.0.0.
-> It went 1.0.2 (code 63, on Internal testing) → 1.0.3 (code 64, refused by Play:
-> "Version code 64 has already been used") → **1.0.4 / code 65**, built 13 Oct, not uploaded.
-> If the public launch is meant to read 1.0.0, that is a deliberate change to make before
-> the next build, not something to assume.
+## Current Version
+**1.0.0 — Version Code 66** (`android/app/build.gradle`).
+
+| Where | What |
+|---|---|
+| Built, verified, **NOT uploaded** | `DOCMAN Play Store Assets/release/DOCMAN-1.0.0-versioncode66-UPLOAD-THIS.aab` (61.4 MB, 15 Oct 12:03) |
+| Internal testing on Play | 63 / 1.0.2 (13 Oct) |
+| Closed testing (Alpha) | 61 / 1.0.0 (12 Oct) |
+| Built earlier, never uploaded | 62 / 1.0.1, 65 / 1.0.4 (65's fixes are all inside 66) |
+| Refused by Play | 64 — "version code already used". Something else holds it; 66 is a guess at a free number. |
+
+Rule: the **final public AAB reads versionName 1.0.0**. The versionCode can only go up.
 
 ## Current Objective
-[Write what you are going to work on now]
+Get **66 / 1.0.0** onto Play and then to Production, with the store listing updated.
 
 ## Current Problem
-[Write the problem you are trying to solve]
+Nothing is broken. What is *unproven*:
+1. **66 has never run as a release build.** The Java changes (signature Stroke row, smaller
+   signature minimum) go through R8, which the debug build on the phone does not. Upload to
+   **Internal testing** and open Sign → Draw Your Signature before promoting.
+2. **Merged expiry banner** ("3 documents expire today") is in the code and in DOCMAN dev but
+   nobody has seen it arrive at an alert slot. 14 Oct showed four separate banners (the
+   behaviour before the merge). The 21:00 stop is also still unobserved.
+3. **Play versionCode 66** may already be taken — check the App bundle explorer.
 
-## Files Involved
-[Leave empty for now]
+## Files Involved (this session's work)
+- `www/app.js`, `www/index.html`, `www/style.css` — cards, start-up banner, picture rules,
+  alerts, water level, help text. `www/index.html` carries `app.js?v=605`, `style.css?v=646`.
+- `android/app/src/main/java/com/docman/` — `SignatureDrawView.java`, `PdfViewerActivity.java`
+  (Stroke row), `PdfSignaturePlacementView.java` (minimum size). **These files use CRLF.**
+- `patches/@capacitor+local-notifications+6.1.3.patch` — written by hand.
+- `DOCMAN Play Store Assets/` — listing text, `final-8-2026-10-15/` screenshots,
+  `privacy-policy/` (mirror), `privacy-policy-change-2026-10-15.md`.
 
 ## Do NOT Change
-[Leave empty for now]
+- The alert schedule without the user: **7 days, 3 days, 1 day (09:00); the day itself every
+  30 min 07:00–21:00; then daily for up to 7 days.** The user chose to keep the day-before one.
+- The start-up banner window: **3 days**. The Expiring tab: **3 days** plus already expired.
+- Card pictures come from **folder name → file name → file type, never the file's contents**;
+  a folder named for several things (`&`, `,`, `+`, "and") is ignored.
+- `main` on DOCMAN-V2 and the live privacy policy: published, change only on request.
+- Preview first: show a rendered image of any look change and wait for an OK before installing.
 
 ## Last Completed Task
-Built **65 / 1.0.4** and verified it from inside the bundle (13 Oct 21:13).
-`DOCMAN Play Store Assets/release/DOCMAN-1.0.4-versioncode65-UPLOAD-THIS.aab`.
-Nine fixes, each confirmed on the phone through DOCMAN dev: PDF slow-scroll no longer
-selects text; note page full screen; double tap to edit; no Cancel/Save while reading;
-ruling under the writing; note card and reminder sticky note clear the gesture bar; one
-alert at a time when opened from a notification; dialog heading no longer reads "View".
-`HANDOVER.md` §2i has the reasoning.
+Store listing refresh (15 Oct). New text `store_listing_play_console_1.0.0-2026-10-15.txt`
+(description 3,866 / 4,000), new screenshots `05-pdf-sign.png` and `06-reminders.png` in
+`final-8-2026-10-15/` (plus an extra `06b-expiring-cards.png`). **Not yet pasted into Play
+Console.** Before that: AAB 66 rebuilt with the day-before alert restored; help ("i") text and
+the live privacy policy updated to match.
 
 ## Next Task
-[Leave empty for now]
+1. Upload `DOCMAN-1.0.0-versioncode66-UPLOAD-THIS.aab` to **Internal testing**; test Sign on it.
+2. Paste the new listing text and upload the 8 screenshots from `final-8-2026-10-15/`.
+3. Promote to Closed testing, then Production. Production access was granted 7 Oct.
 
 ---
 
-## Still open (not part of the template — delete if unwanted)
-
-- **Unanswered:** did the expiry alerts behave on 14 Oct? 108 alarms were confirmed armed on
-  the phone on 13 Oct (exact, max importance, 07:00–21:00 every 30 min). Whether exactly ONE
-  banner arrived was never reported back.
-- **65 / 1.0.4 has not been uploaded.** 63 is what is on Internal testing.
-- **No pre-launch report has ever been generated**, for any build. Next step is Play Console
-  → Help → Contact support, not another upload.
-- **Nothing is committed.** Ten files have carried uncommitted work since 12 Oct, on branch
-  `docman-2026-09-24-pdf-search-ui-animations`.
-
-## 15 Oct 2026 addendum
-Edited, unbuilt, unverified on device: restore water level tracks progress (`app.js`
-`report()` calls `setBusyFill`); note text darker and heavier (`style.css`). Not in the 65 AAB.
-
-Addendum: expiry banners merge per date (see PROGRESS.md 15 Oct). Unverified on device.
-
-**Decision 15 Oct 2026 (user):** the FINAL AAB must be versionName 1.0.0. versionCode stays above 65 (66+; check the App bundle explorer, Play refused 64). Not yet changed in build.gradle — do it at the final-build step, after confirming with the user.
-
-Addendum: expiry cards with document pictures built (see PROGRESS.md 15 Oct). Not installed or seen on device.
-
-Addendum: work committed (02e4617) and pushed to the branch on GitHub. Previously "nothing committed" — now resolved.
-
-**Current build: 1.0.0 / versionCode 66, built 15 Oct, not uploaded.** build.gradle now says 1.0.0 / 66.
+## Still open
+- **Git:** branch `docman-2026-09-24-pdf-search-ui-animations` is pushed at `d0ba71e`. `main`
+  holds the PWA files from before the compact cards / framed banner — update on request.
+  The end-of-chat rewrite of `PROGRESS.md` / `CURRENT_STATE.md` / `HANDOVER.md` is committed
+  locally on that branch (the commit after `d0ba71e`) and **not pushed**.
+- **Pre-launch report** has never been generated for any build → Play Console → Help →
+  Contact support, not another upload.
+- **Store icon:** the glossy top; three variants rendered 13 Oct, none chosen.
+- **Feature graphic and the 12 Oct note screenshot** are made but not uploaded to the listing.
+- **Reminders still give one banner each** (only expiry alerts merge). Offered, not decided.
+- **PDFs show a PDF picture, not their first page** — needs a new native render method.
+- **Dashboard "Expiring soon" rows** were not restyled.
+- Only ever run on one phone (Galaxy S23).
