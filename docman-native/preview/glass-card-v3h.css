@@ -1,0 +1,8 @@
+
+/* 26 Oct (glass card, part 8): the stack works like the Reminders page: one card BEHIND another. Each card is in a sticky slot (.gl-stk, --i = its order): as the list scrolls a card pins
+   near the top (each earlier one 34 px higher, so a strip of its title shows) and the next card slides over it. In the stack the glass is nearly opaque so the card behind does not
+   show through. Replaces part 7's plain scrolling list. Undo: delete this block. */
+.gl-many .gl-list { gap: 0; padding: 0 2px 70px; -webkit-mask-image: none; mask-image: none; }
+.gl-stk { position: sticky; top: calc(min(var(--i), 4) * 34px); z-index: calc(var(--i) + 1); margin-bottom: 14px; }
+.gl-stk .gl-card { background: linear-gradient(135deg, rgba(255,255,255,.12), rgba(255,255,255,.03) 40%, rgba(255,255,255,.04) 70%, rgba(255,255,255,.09)), linear-gradient(160deg, rgba(214,70,200,.16), rgba(120,90,230,.12)), rgba(26,13,44,.97);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -1px 0 rgba(255,255,255,.18), 0 -8px 20px rgba(0,0,0,.5), 0 10px 26px rgba(0,0,0,.45); }

@@ -1,0 +1,5 @@
+
+/* 26 Oct (glass card, part 11): part 10's bottom padding gave no real scroll room for the sticky cards (a sticky box stays inside its parent's CONTENT box, padding does not count), so the front card
+   was pushed up over the strips. A real spacer element (.gl-spacer) after the cards is part of the content box. Undo: delete this block and the spacer in render(). */
+.gl-many .gl-list { padding-bottom: 0; }
+.gl-spacer { flex: none; height: 55vh; height: 55dvh; }

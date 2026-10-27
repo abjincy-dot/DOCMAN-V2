@@ -1,0 +1,6 @@
+/* 24 Oct: the counts row has NO border or box; each count shows its title on top (Total / Active / Overdue / Expiring) and the icon + number under it. */
+.xc-top .xc-stats { border: none !important; background: transparent !important; box-shadow: none !important; padding: 4px 0 2px; }
+.xc-top .xc-stat { gap: 3px; }
+.xc-top .xc-stat-lab { order: -1; }
+/* 24 Oct: the Reminders / Expiring / Add reminder row a little lower (+5 px under the Sync row) */
+.xc-top .xc-head { margin-bottom: 19px !important; }

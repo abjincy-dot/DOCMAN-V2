@@ -1,0 +1,6 @@
+/* 24 Oct: v14 = our dark-orange calendar (rings raised, thin white left edge) with the user's NAVY + GOLD tray from the red-calendar picture laid in front,
+   hanging lower (preview/tray-swap.js; the old tray cleared from behind first). Picture 353 x 478 (full 841 x 1139); date kept at the same pixel rows. */
+.logo .logo-tray-icon::after { background-image: url('Images/calendar-tray-v14.png') !important; }
+.logo-tray-icon .lc-d { top: 17.56cqh !important; font-size: 11.24cqh !important; }
+.logo-tray-icon .lc-n { top: 25.81cqh !important; font-size: 23.71cqh !important; }
+.logo-tray-icon .lc-n.lc-two { top: 27.39cqh !important; font-size: 20.54cqh !important; }

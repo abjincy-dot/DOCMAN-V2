@@ -1,0 +1,6 @@
+/* 23 Oct: the header calendar takes the settings gear's colours (user picked version B): the sheet runs from dark navy (lower left) to a steel sheen (upper right)
+   with a warm orange glow in the lower-right corner and a thin orange rim (Images/calendar-tray-v4.png, made by preview/make-tray-v4.js from the orange v3 picture;
+   folders, drawer and rings unchanged). Day name orange, date white. The v3 (orange) and v2 (pink) pictures are kept. */
+.logo .logo-tray-icon::after { background: url('Images/calendar-tray-v4.png') center / contain no-repeat !important; }
+.logo-tray-icon .lc-d { color: #ffa21a; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.65), 0 0 4px rgba(255, 140, 20, 0.45); }
+.logo-tray-icon .lc-n { color: #fff; text-shadow: 0 1.5px 0 rgba(0, 0, 0, 0.6), 0 3px 4px rgba(0, 0, 0, 0.45); }

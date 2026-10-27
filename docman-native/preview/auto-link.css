@@ -1,0 +1,17 @@
+/* 22 Oct: no MANUAL label (the small button always reads AUTO: lit = on, dark = off) and a short line (.xc-link) joins it to the Sync Calendar button, so it is
+   clear that AUTO belongs to Sync Calendar. The line lights up with AUTO. */
+.xc-sync-row { gap: 0; }
+.xc-link { flex: none; width: 16px; height: 3px; border-radius: 2px; background: #c2570f; box-shadow: 0 0 5px rgba(255, 120, 20, 0.5); }
+.xc-link.on { background: #ffa13a; box-shadow: 0 0 7px rgba(255, 150, 30, 0.75); }
+.xc-modebtn { min-width: 64px; }
+body.light-mode .xc-link { box-shadow: none; }
+/* 22 Oct: Sync Calendar narrower (fixed 160 px; it used to stretch across the row); AUTO follows it, with more room before the X */
+.xc-panel .xc-sync-row .xc-sync { flex: 0 0 160px; padding: 0 10px; }
+/* 22 Oct: the Sync Calendar and AUTO buttons are lower (40 px -> 34 px); the X is re-centred with them */
+.xc-panel .xc-sync-row .xc-sync, .xc-modebtn { height: 34px; }
+.xc-panel .xc-sync-row .xc-sync { font-size: 0.82rem; }
+.xc-panel:has(.xc-head-sync) #expiringDocsCloseX { top: 27px !important; }
+/* 22 Oct: a little lower again (34 px -> 31 px) */
+.xc-panel .xc-sync-row .xc-sync, .xc-modebtn { height: 31px; }
+.xc-panel .xc-sync-row .xc-sync { font-size: 0.8rem; }
+.xc-panel:has(.xc-head-sync) #expiringDocsCloseX { top: 25.5px !important; }

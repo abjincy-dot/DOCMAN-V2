@@ -61,6 +61,52 @@ public class BackupSavePlugin extends Plugin {
         startActivityForResult(call, intent, "onDestinationChosen");
     }
 
+    // "Save a copy" straight into Google Drive: hands the file to Drive's own "Save to Drive" screen, so the user does not
+    // have to find Drive in the system picker (which opens on the phone's own folders). Only Drive's own screens can match
+    // (the intent names its package), so no system share sheet is involved -- the thing that crashed on AOSP phones.
+    // Resolves { opened: true } when Drive took it; { opened: false } when Drive is missing or anything went wrong, and the
+    // JS side then carries on with the file picker above. Drive gives no result back, so "opened" is all that can be known.
+    @PluginMethod
+    public void saveToDrive(PluginCall call) {
+        JSObject ret = new JSObject();
+        try {
+            String src = call.getString("uri");
+            String name = call.getString("name", "backup");
+            String mime = call.getString("mimeType", "application/octet-stream");
+            String path = src == null ? null : (src.startsWith("file:") ? Uri.parse(src).getPath() : src);
+            File f = path == null ? null : new File(path);
+            if (f == null || !f.isFile()) { ret.put("opened", false); call.resolve(ret); return; }
+
+            Uri content = androidx.core.content.FileProvider.getUriForFile(
+                    getContext(), getContext().getPackageName() + ".fileprovider", f);
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType(mime);
+            send.putExtra(Intent.EXTRA_STREAM, content);
+            send.putExtra(Intent.EXTRA_SUBJECT, name);
+            send.setClipData(android.content.ClipData.newRawUri(name, content));
+            send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            send.setPackage(DRIVE_PACKAGE);
+
+            java.util.List<android.content.pm.ResolveInfo> hits =
+                    getContext().getPackageManager().queryIntentActivities(send, 0);
+            if (hits == null || hits.isEmpty()) { ret.put("opened", false); call.resolve(ret); return; }
+            android.content.pm.ActivityInfo chosen = hits.get(0).activityInfo;
+            for (android.content.pm.ResolveInfo r : hits) {
+                if (r.activityInfo != null && r.activityInfo.name != null
+                        && r.activityInfo.name.toLowerCase().contains("upload")) { chosen = r.activityInfo; break; }
+            }
+            send.setComponent(new android.content.ComponentName(chosen.packageName, chosen.name));
+            getActivity().startActivity(send);
+            ret.put("opened", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            ret.put("opened", false);
+            call.resolve(ret);
+        }
+    }
+
+    private static final String DRIVE_PACKAGE = "com.google.android.apps.docs";
+
     @ActivityCallback
     private void onDestinationChosen(PluginCall call, ActivityResult result) {
         if (call == null) return;

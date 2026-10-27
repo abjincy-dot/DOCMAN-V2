@@ -1,0 +1,7 @@
+
+/* 26 Oct (glass card, part 12): smooth scrolling of the stack. The cards in the stack are nearly opaque anyway, so their own backdrop blur (an expensive effect redrawn on every scroll frame
+   for every card) is switched off there; each sticky slot gets its own layer; the entrance animation is removed after it ends (JS). Undo: delete this block. */
+.gl-many .gl-card { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.gl-many .gl-stk { will-change: transform; transform: translateZ(0); backface-visibility: hidden; }
+.gl-many .gl-list { -webkit-overflow-scrolling: touch; scroll-behavior: auto; }
+.gl-many .gl-card::after, .gl-many .gl-card::before { will-change: auto; }

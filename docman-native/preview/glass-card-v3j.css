@@ -1,0 +1,4 @@
+
+/* 26 Oct (glass card, part 10): the deck now SCROLLS like the Reminders stack. The list gets extra room below the front card (55 % of the screen), so a drag up moves the deck: the strips stay
+   pinned at the top (sticky, 34 px apart) and the front card slides up over them. Undo: delete this block. */
+.gl-many .gl-list { padding-bottom: 55vh; padding-bottom: 55dvh; }

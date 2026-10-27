@@ -34,7 +34,7 @@ final class FreeTries {
 
     // Must match FREE_TRIES in www/app.js.
     static final List<String> ALL = Arrays.asList(
-            "scan", "sign", "highlight", "fillform", "redact", "crop", "ocr", "imageedit", "topdf", "mergepdf", "lock");
+            "scan", "sign", "highlight", "fillform", "redact", "crop", "ocr", "imageedit", "topdf", "mergepdf", "lock", "calsync");
 
     private static final String PREFS = "docman_free_tries";
     private static final String KEY_USED = "used";

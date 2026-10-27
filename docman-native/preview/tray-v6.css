@@ -1,0 +1,11 @@
+/* 24 Oct: header calendar = the user's dark-to-orange artwork with a PLAIN white date (Images/calendar-tray-v6.png, made by preview/make-tray-v6.js: backdrop cut out,
+   painted "Fri 23" removed). Live day and date plain WHITE with a soft dark shadow (no orange glow), like the artwork; the picture is shown as it is (no filter).
+   Size unchanged (96 % wide, 2 mm shorter). v2-v5 pictures kept. */
+.logo .logo-tray-icon::after { background: url('Images/calendar-tray-v6.png') center / contain no-repeat !important; filter: none !important; }
+.logo-tray-icon .lc-d, .logo-tray-icon .lc-n { left: 0.6cqw; }
+.logo-tray-icon .lc-d { top: 17cqh !important; font-size: 12.8cqh !important; color: #fff !important; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55), 0 2px 4px rgba(0, 0, 0, 0.35) !important; }
+.logo-tray-icon .lc-n { top: 24.6cqh !important; font-size: 27cqh !important; color: #fff !important; text-shadow: 0 1.5px 1px rgba(0, 0, 0, 0.55), 0 3px 5px rgba(0, 0, 0, 0.35) !important; }
+.logo-tray-icon .lc-n.lc-two { top: 26.4cqh !important; font-size: 23.4cqh !important; }
+
+/* 24 Oct: the header calendar 0.5 mm (about 2.7 px) narrower: width 61.4 -> 58.7 px; height unchanged */
+.logo .logo-tray-icon { transform: translateY(-8px) scale(0.918, 0.83) !important; }

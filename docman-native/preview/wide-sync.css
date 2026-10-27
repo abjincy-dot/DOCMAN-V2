@@ -1,0 +1,10 @@
+/* PREVIEW: no bell + title on the Reminders tab; the Sync Calendar button takes the whole row up to the X, in two clear parts. */
+.xc-panel .xc-head .xc-ico, .xc-panel .xc-head .xc-ht { display: none; }
+.xc-panel .xc-sync { margin-left: 0; flex: 1 1 auto; justify-content: flex-start; height: 40px; padding: 0 12px 0 14px; gap: 9px; font-size: 0.86rem; }
+.xc-panel .xc-sync > span:first-of-type { flex: 1 1 auto; text-align: left; }
+.xc-panel .xc-sync .xc-sync-sep { display: inline-block !important; width: 1px; height: 22px; background: rgba(255, 255, 255, 0.35); margin: 0 2px; }
+.xc-panel .xc-sync .xc-sync-auto { font-size: 0.7rem; }
+.xc-panel .xc-sync i { font-size: 1.05rem; }
+.xc-panel .xc-sync .xc-autosw { width: 38px; height: 22px; }
+.xc-panel .xc-sync .xc-autosw::after { width: 16px; height: 16px; }
+.xc-panel .xc-sync .xc-autosw.on::after { transform: translateX(16px); }

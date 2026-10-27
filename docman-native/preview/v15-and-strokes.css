@@ -1,0 +1,6 @@
+/* 24 Oct: v15 header picture: the flicker came from the very thin bright page lines at the top re-drawing as the icon floats; they are softened (blur 2.2 px at
+   full size, ring metal kept sharp) and the rings are raised by laying stretched ring METAL over an unstretched picture (preview/rings-up2.js), so no broken lines.
+   Saved without palette dithering (that had added 227 faint specks). Same size and date rows as v14. */
+.logo .logo-tray-icon::after { background-image: url('Images/calendar-tray-v15.png') !important; }
+/* thinner border on Sync Calendar, AUTO and the "open NOTES / FILES" button (1.5 -> 1 px) */
+.xc-panel .xc-sync-row .xc-sync, .xc-modebtn, .empty-state .empty-state-hop { border-width: 1px !important; }

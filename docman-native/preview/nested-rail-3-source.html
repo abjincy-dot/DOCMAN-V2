@@ -1,0 +1,62 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}body{margin:0;background:#0b0b10;font-family:Inter,Segoe UI,Arial,sans-serif;color:#fff;display:flex;gap:30px;padding:26px;width:960px}
+.col{width:440px}.lab{font-size:13px;color:#aaa;margin:0 0 10px;text-align:center}
+.panel{background:linear-gradient(160deg,#25252d,#15151b);border:1.5px solid #d4631a;border-radius:26px;height:735px;position:relative;overflow:hidden;box-shadow:0 0 22px rgba(255,110,20,.25)}
+.x{position:absolute;right:12px;top:12px;width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.3);background:#2a1e3a;text-align:center;line-height:32px;font-size:14px;z-index:3}
+.hd{display:flex;align-items:center;gap:12px;padding:14px 56px 10px 16px}.hd .b{font-size:32px;width:40px;text-align:center}.hd h1{margin:0;font-size:18px}.hd p{margin:2px 0 0;color:#99a3aa;font-size:12px}
+/* the orange frame: tab box on top, bar hanging from its left side */
+.tabbox{display:flex;gap:7px;margin-right:12px;padding:8px 8px 8px 10px;border:2px solid #f0600d;border-left:none;border-radius:0 18px 18px 0;background:#1b1b22;position:relative;z-index:2}
+.tabbox span{flex:1;text-align:center;padding:8px 0;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,.45);background:#22222a}
+.tabbox .on{background:linear-gradient(90deg,#ff8a1f,#ee3a2a);border-color:rgba(255,255,255,.6)}
+.tabbox .add{flex:1.15}
+.rail{position:absolute;left:0;top:112px;bottom:0;width:70px;background:linear-gradient(180deg,#f0600d,#b2430a);border-right:1px solid #c2570f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:15px;padding:12px 0 10px;border-radius:0 0 0 24px}
+.rail:before{content:"";position:absolute;top:0;right:-15px;width:15px;height:15px;background:radial-gradient(circle at 100% 100%,transparent 15px,#f0600d 15.5px)}
+.rail div{text-align:center;font-size:10.5px;font-weight:700}
+.rail i{display:flex;width:40px;height:40px;border-radius:50%;background:#24242e;border:1px solid rgba(255,255,255,.4);align-items:center;justify-content:center;font-style:normal;font-size:17px;margin:0 auto 3px}
+.rail .dn i{background:linear-gradient(135deg,#ff9a2e,#f2650a);border-color:rgba(255,255,255,.6)}
+.content{position:absolute;left:80px;right:12px;top:112px;bottom:12px;display:flex;flex-direction:column}
+.srow{display:flex;gap:8px;margin:0 0 9px}
+.search{flex:1;height:34px;border-radius:99px;border:1px solid rgba(255,255,255,.35);background:#1b1b22;display:flex;align-items:center;padding:0 12px;font-size:12px;color:#8d96a3}
+.bulk{height:34px;padding:0 12px;border-radius:99px;border:1px solid rgba(255,255,255,.45);background:rgba(255,138,31,.22);font-size:11.5px;font-weight:700;display:flex;align-items:center;white-space:nowrap}
+.list{flex:1;overflow:hidden;-webkit-mask-image:linear-gradient(#000 90%,transparent)}
+.card{display:flex;align-items:center;gap:10px;height:84px;margin-bottom:8px;padding:8px 34px 8px 10px;border-radius:16px;border:1.5px solid #d4631a;background:radial-gradient(circle at 100% 100%,rgba(255,110,20,.28),transparent 60%),linear-gradient(160deg,#3b4254,#232837 60%,#171a24);position:relative}
+.card.sel{box-shadow:0 0 0 1px #ffb26b,0 0 14px rgba(255,138,31,.5)}
+.ch{position:absolute;right:9px;top:14px;font-size:17px;opacity:.85}
+.bell{font-size:30px;width:40px;text-align:center;flex:none}
+.pic{width:36px;height:46px;border-radius:5px;flex:none;background:#f4f1ec;color:#e53e3e;font-size:8px;font-weight:800;text-align:center;padding-top:3px}
+.pic.img{background:linear-gradient(160deg,#2aa6ff,#2fb36b);color:#fff;border-radius:6px}
+.t{font-size:14.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}.sub{color:#9aa3b2;font-size:10.5px}
+.st{font-weight:700;font-size:11.5px;margin-top:2px;display:flex;align-items:center;gap:5px}
+.st b{display:inline-block;width:12px;height:12px;border-radius:3px;background:currentColor}
+.red{color:#ff4b66}.amb{color:#ffb020}.grn{color:#34d399}
+.bar{height:5px;border-radius:4px;background:#3a3f55;margin-top:4px;width:160px}.bar u{display:block;height:100%;border-radius:4px;background:currentColor}
+</style></head><body>
+
+<div class="col"><p class="lab">EXPIRING tab</p><div class="panel"><div class="x">✕</div>
+<div class="hd"><div class="b">📄</div><div><h1>Expiring Documents</h1><p>6 expiring soon</p></div></div>
+<div class="tabbox"><span>Reminders</span><span class="on">Expiring</span><span class="add">＋ Add reminder</span></div>
+<div class="rail"><div><i>👁</i>View</div><div><i>✎</i>Edit</div><div><i>🔔</i>Remind</div><div class="dn"><i>✓</i>Done</div></div>
+<div class="content"><div class="srow"><div class="search">🔍&nbsp; Search…</div><div class="bulk">✓✓ All done (6)</div></div>
+<div class="list">
+<div class="card sel"><div class="pic">PDF</div><div><div class="t">UPDATED DRAWING</div><div class="sub">Personal / IDs &amp; Certif…</div><div class="st red"><b></b>Expires today</div><div class="bar red"><u style="width:100%"></u></div></div><div class="ch">›</div></div>
+<div class="card"><div class="pic img">IMG</div><div><div class="t">91873</div><div class="sub">Personal / Photos</div><div class="st red"><b></b>Expires tomorrow</div><div class="bar red"><u style="width:96%"></u></div></div><div class="ch">›</div></div>
+<div class="card"><div class="pic img">IMG</div><div><div class="t">92762</div><div class="sub">Work / Reports</div><div class="st red"><b></b>Expires tomorrow</div><div class="bar red"><u style="width:96%"></u></div></div><div class="ch">›</div></div>
+<div class="card"><div class="pic img">IMG</div><div><div class="t">92410</div><div class="sub">Work / Reports</div><div class="st amb"><b></b>Expires in 2 days</div><div class="bar amb"><u style="width:90%"></u></div></div><div class="ch">›</div></div>
+<div class="card"><div class="pic">PDF</div><div><div class="t">Passport copy</div><div class="sub">Personal / PASSPORT</div><div class="st amb"><b></b>Expires in 3 days</div><div class="bar amb"><u style="width:86%"></u></div></div><div class="ch">›</div></div>
+<div class="card"><div class="pic img">IMG</div><div><div class="t">Company certificate</div><div class="sub">Work / HR</div><div class="st grn"><b></b>Expires in 5 days</div><div class="bar grn"><u style="width:55%"></u></div></div><div class="ch">›</div></div>
+</div></div></div></div>
+
+<div class="col"><p class="lab">REMINDERS tab — same layout</p><div class="panel"><div class="x">✕</div>
+<div class="hd"><div class="b">🔔</div><div><h1>Reminders</h1><p>22 reminders · 3 due now</p></div></div>
+<div class="tabbox"><span class="on">Reminders</span><span>Expiring</span><span class="add">＋ Add reminder</span></div>
+<div class="rail"><div><i>👁</i>Open</div><div><i>✎</i>Edit</div><div><i>🗑</i>Delete</div><div class="dn"><i>✓</i>Done</div></div>
+<div class="content"><div class="srow"><div class="search">🔍&nbsp; Search…</div><div class="bulk">✓✓ All done (3)</div></div>
+<div class="list">
+<div class="card sel"><div class="bell">🔔</div><div><div class="t">Nejd</div><div class="sub">Due Today, 11:06</div><div class="st red"><b></b>Due now</div><div class="bar red"><u style="width:100%"></u></div></div><div class="ch">›</div></div>
+<div class="card"><div class="bell">🔔</div><div><div class="t">Yehdh</div><div class="sub">Due Today, 22:24</div><div class="st red"><b></b>Due now</div><div class="bar red"><u style="width:100%"></u></div></div><div class="ch">›</div></div>
+<div class="card"><div class="bell">🔔</div><div><div class="t">Yu</div><div class="sub">Due Tomorrow, 09:00</div><div class="st amb"><b></b>Due tomorrow</div><div class="bar amb"><u style="width:85%"></u></div></div><div class="ch">›</div></div>
+<div class="card"><div class="bell">🔔</div><div><div class="t">Insurance call</div><div class="sub">Due 27 Oct, 10:30</div><div class="st grn"><b></b>In 9 days</div><div class="bar grn"><u style="width:35%"></u></div></div><div class="ch">›</div></div>
+<div class="card"><div class="bell">🔔</div><div><div class="t">Rent</div><div class="sub">Due 1 Nov · Every month</div><div class="st grn"><b></b>In 14 days</div><div class="bar grn"><u style="width:20%"></u></div></div><div class="ch">›</div></div>
+<div class="card"><div class="bell">🔔</div><div><div class="t">Dentist</div><div class="sub">Due 3 Nov, 16:00</div><div class="st grn"><b></b>In 16 days</div><div class="bar grn"><u style="width:15%"></u></div></div><div class="ch">›</div></div>
+</div></div></div></div>
+</body></html>

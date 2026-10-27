@@ -1,0 +1,20 @@
+
+/* 26 Oct (glass card, part 2): (1) the card flies up from the bottom and settles when the popup first appears (class .gl-fly, set once by render());
+   (2) the kind label / pill / View / Edit row now fits inside the card: the kind label shrinks with an ellipsis, buttons are 38 px, gaps 6 px. */
+.gl-card { animation: none; }
+.gl-card.gl-fly { animation: glFly .75s cubic-bezier(.2, .85, .25, 1.12) both; }
+@keyframes glFly {
+    0%   { opacity: 0; transform: translateY(62vh) scale(.88); }
+    55%  { opacity: 1; }
+    80%  { transform: translateY(-9px) scale(1.012); }
+    100% { opacity: 1; transform: none; }
+}
+#expiryCardsPopup.dc-popup-overlay { animation: glFade .4s ease-out both; }
+@keyframes glFade { from { opacity: 0; } to { opacity: 1; } }
+.gl-sub { gap: 6px; min-height: 40px; }
+.gl-kind { flex: 0 1 auto; min-width: 0; max-width: none; }
+.gl-pill { flex: none; padding: 3px 9px; font-size: .7rem; }
+.gl-round { gap: 6px; }
+.gl-rbtn { width: 38px; height: 38px; }
+.gl-rbtn svg { width: 17px; height: 17px; }
+@media (prefers-reduced-motion: reduce) { .gl-card.gl-fly, #expiryCardsPopup.dc-popup-overlay { animation: none; } }

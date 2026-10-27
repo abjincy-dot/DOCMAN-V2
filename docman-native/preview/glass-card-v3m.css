@@ -1,0 +1,4 @@
+
+/* 26 Oct (glass card, part 13): the cards BEHIND the front one overflow their 64 px slot (the card is taller than the slot); their lower text showed faintly through the front card. The slot
+   now clips everything below it (glow and shadow above and at the sides stay). Undo: delete this block. */
+.gl-stk.gl-strip { clip-path: inset(-30px -12px 0 -12px); }

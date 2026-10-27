@@ -1,0 +1,3 @@
+#expiringDocsList .xc-shared-rail { background: #e34a03 !important; border-color: #e34a03 !important; box-shadow: 0 0 7px rgba(255, 120, 20, 0.45) !important; }
+#expiringDocsList .xc-shared-rail::before { background: radial-gradient(circle at 100% 100%, transparent 26.5px, #e34a03 27px) !important; }
+#expiringDocsList .xc-shared-rail .xc-act { box-shadow: inset 0 0 5px rgba(255, 150, 20, 0.3) !important; }

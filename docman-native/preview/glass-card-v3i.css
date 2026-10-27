@@ -1,0 +1,7 @@
+
+/* 26 Oct (glass card, part 9): a DECK. With several items the cards overlap: the most urgent card is in front and fully shown at the bottom, the others sit behind it with only a 64 px strip
+   (ring top and name) showing above, each one 64 px higher. Tap a strip to bring that card to the front. Scrolling still pins the strips (part 8). Undo: delete this block. */
+.gl-many .gl-list { padding-bottom: 20px; }
+.gl-stk.gl-strip { height: 64px; margin-bottom: 0; cursor: pointer; }
+.gl-stk.gl-strip .gl-card { pointer-events: none; }
+.gl-stk:last-child { margin-bottom: 0; }

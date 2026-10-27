@@ -1,0 +1,5 @@
+/* 24 Oct: v10 = tray moved down 42 px + its front 0.5 mm (54 px full size) taller downward, laid over the UNTOUCHED calendar (preview/tray-down2.js, no stepped edges); smoother hair lines (preview/rim-thin2.js). Picture 353 x 480; date at the same pixel height. */
+.logo .logo-tray-icon::after { background-image: url('Images/calendar-tray-v10.png') !important; }
+.logo-tray-icon .lc-d { top: 17.48cqh !important; font-size: 11.2cqh !important; }
+.logo-tray-icon .lc-n { top: 25.7cqh !important; font-size: 23.63cqh !important; }
+.logo-tray-icon .lc-n.lc-two { top: 27.26cqh !important; font-size: 20.48cqh !important; }

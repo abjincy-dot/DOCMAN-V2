@@ -1,0 +1,6 @@
+/* 24 Oct: the floating calendar flickered (thin edge lines re-drawn at every sub-pixel step). The picture and the date now move as GPU layers: drawn once, moved
+   as a whole, so nothing shimmers. */
+.logo .logo-tray-icon::after, .logo-tray-icon .lc-d, .logo-tray-icon .lc-n {
+    will-change: translate, transform; backface-visibility: hidden; -webkit-backface-visibility: hidden; transform-style: flat;
+}
+.logo .logo-tray-icon { will-change: transform; backface-visibility: hidden; -webkit-backface-visibility: hidden; }

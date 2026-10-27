@@ -1,0 +1,8 @@
+/* 21 Oct: on a 384 px phone the Sync Calendar pill covered the X. Smaller bell, "Reminders" moved up next to it, and a slimmer pill
+   (no divider line) so the pill ends clear of the X. */
+.xc-panel .xc-head { gap: 4px; }
+.xc-panel .xc-head .xc-ico { width: 24px; height: 24px; flex: none; }
+.xc-panel .xc-head .xc-ico i, .xc-panel .xc-head .xc-ico svg { font-size: 1.2rem; }
+.xc-panel .xc-sync { gap: 5px; padding: 0 8px 0 9px; }
+.xc-panel .xc-sync .xc-sync-sep { display: none; }
+.xc-panel .xc-sync .xc-sync-auto { font-size: 0.56rem; }

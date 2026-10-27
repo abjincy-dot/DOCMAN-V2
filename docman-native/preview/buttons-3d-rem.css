@@ -1,0 +1,25 @@
+/* 22 Oct: the 3D push-button rule (bright top edge, dark bottom edge, shadow underneath, presses down 2 px) on the remaining buttons of the Reminders / Expiry area:
+   Done, Mark all done, the X, the "Needs your attention" list buttons, and the add / edit reminder windows. Colours are NOT changed: only shadows and the press movement. */
+:root { --b3d-dark: inset 0 2px 0 rgba(255,255,255,.20), inset 0 -3px 6px rgba(0,0,0,.45), 0 4px 7px -3px rgba(0,0,0,.6);
+        --b3d-lit: inset 0 2px 0 rgba(255,255,255,.38), inset 0 -3px 6px rgba(120,20,0,.45), 0 4px 7px -3px rgba(0,0,0,.6);
+        --b3d-down: inset 0 3px 7px rgba(0,0,0,.6), 0 1px 2px rgba(0,0,0,.55); }
+
+/* dark / outlined buttons */
+.xc-panel #expiringDocsCloseX, .na-x, .na-act:not([data-act="done"]), .na-box .na-link, .xc-pop, .xc-flow #modalCancel, .xc-flow #dateModalCancel,
+.xc-flow #modalCloseX, .xc-flow #dateModalCloseX, .xc-flow #calPrevMonth, .xc-flow #calNextMonth { box-shadow: var(--b3d-dark) !important; }
+/* lit (orange / red / blue) buttons */
+.xc-done, .xc-done-all, .na-act[data-act="done"], .na-card .na-edit, .xc-flow #modalOk, .xc-flow #dateModalOk { box-shadow: var(--b3d-lit) !important; }
+.xc-done, .xc-done-all { box-shadow: inset 0 2px 0 rgba(255,255,255,.30), inset 0 -2px 5px rgba(0,0,0,.4), 0 3px 6px -2px rgba(0,0,0,.6) !important; }
+
+/* the press */
+.xc-panel #expiringDocsCloseX, .na-x, .na-act, .na-card .na-edit, .na-box .na-link, .xc-done, .xc-done-all, .xc-pop,
+.xc-flow #modalOk, .xc-flow #dateModalOk, .xc-flow #modalCancel, .xc-flow #dateModalCancel, .xc-flow #modalCloseX, .xc-flow #dateModalCloseX,
+.xc-flow #calPrevMonth, .xc-flow #calNextMonth { transition: transform .08s ease, box-shadow .08s ease; }
+.xc-panel #expiringDocsCloseX:active, .na-x:active, .na-act:active, .na-card .na-edit:active, .na-box .na-link:active, .xc-done:active, .xc-done-all:active, .xc-pop:active,
+.xc-flow #modalOk:active, .xc-flow #dateModalOk:active, .xc-flow #modalCancel:active, .xc-flow #dateModalCancel:active, .xc-flow #modalCloseX:active, .xc-flow #dateModalCloseX:active,
+.xc-flow #calPrevMonth:active, .xc-flow #calNextMonth:active { transform: translateY(2px); box-shadow: var(--b3d-down) !important; }
+
+/* light mode: softer */
+body.light-mode { --b3d-dark: inset 0 2px 0 rgba(255,255,255,.9), inset 0 -3px 6px rgba(150,95,40,.25), 0 4px 7px -3px rgba(80,50,20,.4);
+                  --b3d-lit: inset 0 2px 0 rgba(255,255,255,.5), inset 0 -3px 6px rgba(120,20,0,.35), 0 4px 7px -3px rgba(80,50,20,.45);
+                  --b3d-down: inset 0 3px 7px rgba(120,70,20,.35), 0 1px 2px rgba(80,50,20,.4); }

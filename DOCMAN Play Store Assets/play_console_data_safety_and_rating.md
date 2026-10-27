@@ -67,6 +67,7 @@ Justification for each permission in the release build (checked against the buil
 - **POST_NOTIFICATIONS**: expiry alerts & Reminders
 - **SCHEDULE_EXACT_ALARM**: lets user-set reminders and expiry alerts fire at the set time ("Alarms & reminders"). DOCMAN is not an alarm or calendar app, so it does **not** use USE_EXACT_ALARM.
 - **RECEIVE_BOOT_COMPLETED, WAKE_LOCK, VIBRATE**: needed by the notification-scheduling plugin to survive reboots and alert reliably
+- **READ_CALENDAR**: optional "Sync Calendar" button on the Reminders screen. Asked only when that button is pressed. Reads the user's own upcoming calendar events and lists them as reminders on the device. Read only; nothing is written to the calendar and nothing leaves the device (added 21 Oct 2026; needs the Data safety form updated, see privacy-policy-change-2026-10-21.md).
 - **USE_BIOMETRIC / USE_FINGERPRINT**: optional App Lock
 - **com.android.vending.BILLING**: the optional DOCMAN Pro in-app purchase (Google Play Billing)
 - **Scan Document (no permission)**: Google's ML Kit document scanner runs inside Google Play services and uses the camera under Play services' own permission; DOCMAN declares no CAMERA permission. It sends the same ML Kit diagnostics as above.

@@ -1,0 +1,8 @@
+/* 24 Oct: v9 = v8 + the tray moved DOWN 42 px (full size) so it hangs further below the calendar, its bright orange rims dimmed and a hair-thin orange line on its
+   outer edge (preview/tray-down.js). The picture is 353 x 458 (was 440), so the live date positions are recomputed (same pixel position from the top). */
+.logo .logo-tray-icon::after { background-image: url('Images/calendar-tray-v9.png') !important; }
+.logo-tray-icon .lc-d { top: 19.95cqh !important; font-size: 11.74cqh !important; }
+.logo-tray-icon .lc-n { top: 26.93cqh !important; font-size: 24.76cqh !important; }
+.logo-tray-icon .lc-n.lc-two { top: 28.57cqh !important; font-size: 21.46cqh !important; }
+/* "Sat" a little higher so it does not touch the date number */
+.logo-tray-icon .lc-d { top: 18.3cqh !important; }

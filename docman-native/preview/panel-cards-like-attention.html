@@ -1,0 +1,53 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;transition:none!important}
+body{margin:0;background:#0b0b10;font-family:Inter,Segoe UI,Arial,sans-serif;color:#fff;display:flex;gap:30px;padding:26px;width:960px}
+.col{width:440px}.lab{font-size:13px;color:#aaa;margin:0 0 10px;text-align:center}
+.panel{background:linear-gradient(160deg,#25252d,#15151b);border:1.5px solid #d4631a;border-radius:26px;height:780px;position:relative;overflow:hidden;box-shadow:0 0 22px rgba(255,110,20,.25);padding:14px 12px}
+.x{position:absolute;right:12px;top:12px;width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.3);background:#2a2a33;text-align:center;line-height:32px;font-size:14px}
+.hd{display:flex;align-items:center;gap:12px;padding:0 44px 12px 4px}.hd .b{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#ff8a1f,#e8530a);display:flex;align-items:center;justify-content:center;font-size:22px}
+.hd h1{margin:0;font-size:18px}.hd p{margin:2px 0 0;color:#99a3aa;font-size:12px}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tabs span{flex:1;text-align:center;padding:9px 0;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,.3);background:#22222a}
+.tabs .on{background:linear-gradient(90deg,#ff8a1f,#ee3a2a);border-color:rgba(255,255,255,.6)}
+.card{border-radius:18px;border:1px solid rgba(140,165,255,.28);background:linear-gradient(160deg,#242a3b,#171b27);padding:12px 12px 10px;margin-bottom:10px;position:relative}
+.row{display:flex;gap:12px;align-items:center;margin-bottom:10px}
+.pic{width:56px;height:56px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;font-size:26px}
+.pic.img{background:linear-gradient(160deg,#5ab0ff,#2f9e5a)}.pic.bell{background:linear-gradient(160deg,#5a3a14,#2e1d08)}
+.t{font-size:17px;font-weight:800}.sub{color:#8e98ad;font-size:12.5px;margin-top:1px}
+.st{font-weight:700;font-size:13px;margin-top:3px}
+.red{color:#ff5470}.amb{color:#ffb020}.grn{color:#34d399}.pur{color:#a78bfa}
+.edit{height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:14px;position:relative;margin-bottom:8px;border:1px solid rgba(255,255,255,.18)}
+.edit:before{content:"";position:absolute;left:0;top:0;bottom:0;width:7px;border-radius:12px 0 0 12px}
+.edit.o{background:linear-gradient(90deg,#8a4d12,#5a3410)}.edit.o:before{background:#ff9a1f}
+.edit.r{background:linear-gradient(90deg,#8a2f45,#5a1e2e)}.edit.r:before{background:#ff4d6d}
+.edit .ar{position:absolute;right:14px;font-size:18px}
+.two{display:flex;gap:8px}.two div{flex:1;height:34px;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:7px;font-weight:700;font-size:13.5px}
+.op{background:#262d3f;border:1px solid rgba(255,255,255,.18)}.dn{background:linear-gradient(180deg,#0d4aa8,#093678);border:1px solid #2a74e6}
+.dnd{opacity:.55}
+.bulk{height:34px;border-radius:99px;border:1px solid rgba(255,255,255,.4);background:rgba(255,138,31,.22);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-bottom:10px}
+</style></head><body>
+
+<div class="col"><p class="lab">EXPIRING tab</p><div class="panel"><div class="x">✕</div>
+<div class="hd"><div class="b">📅</div><div><h1>Expiring Documents</h1><p>2 expiring soon</p></div></div>
+<div class="tabs"><span>Reminders</span><span class="on">Expiring</span><span>＋ Add reminder</span></div>
+<div class="bulk">✓✓ Mark all done (2)</div>
+<div class="card"><div class="row"><div class="pic img">🏔</div><div><div class="t">92359</div><div class="sub">Work / Reports</div><div class="st amb">🕒 Expires in 3 days</div></div></div>
+<div class="edit o">✎ Edit expiry date<span class="ar">›</span></div>
+<div class="two"><div class="op">👁 Open</div><div class="dn">✓ Done</div></div></div>
+<div class="card"><div class="row"><div class="pic img">📄</div><div><div class="t">Passport copy</div><div class="sub">Personal / PASSPORT</div><div class="st red">🕒 Expires today</div></div></div>
+<div class="edit o">✎ Edit expiry date<span class="ar">›</span></div>
+<div class="two"><div class="op">👁 Open</div><div class="dn">✓ Done</div></div></div>
+</div></div>
+
+<div class="col"><p class="lab">REMINDERS tab</p><div class="panel"><div class="x">✕</div>
+<div class="hd"><div class="b">🔔</div><div><h1>Reminders</h1><p>3 reminders · 1 due now</p></div></div>
+<div class="tabs"><span class="on">Reminders</span><span>Expiring</span><span>＋ Add reminder</span></div>
+<div class="bulk">✓✓ Mark all done (1)</div>
+<div class="card"><div class="row"><div class="pic bell">🔔</div><div><div class="t">YEHDH</div><div class="sub">Reminder</div><div class="st pur">🔔 Due today · 11:06 AM</div></div></div>
+<div class="edit r">✎ Edit reminder<span class="ar">›</span></div>
+<div class="two"><div class="op">👁 Open</div><div class="dn">✓ Done</div></div></div>
+<div class="card"><div class="row"><div class="pic bell">🔔</div><div><div class="t">Insurance call</div><div class="sub">Reminder · Monthly</div><div class="st pur">🔔 In 3 days · 10:30 AM</div></div></div>
+<div class="edit r">✎ Edit reminder<span class="ar">›</span></div>
+<div class="two"><div class="op">👁 Open</div><div class="op">🗑 Delete</div></div></div>
+</div></div>
+</body></html>

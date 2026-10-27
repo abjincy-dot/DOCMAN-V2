@@ -759,9 +759,29 @@ const DEPT_COLOR_PALETTE = [
     'linear-gradient(135deg, #368d59, #20663d)',
     'linear-gradient(135deg, #1339dc, #0a2293)'
 ];
+// 25 Oct: colours that are NOT used by the eight default departments, so a new department never repeats one of them.
+const DEPT_EXTRA_PALETTE = [
+    'linear-gradient(135deg, #e11d48, #9f1239)',
+    'linear-gradient(135deg, #0d9488, #115e59)',
+    'linear-gradient(135deg, #4f46e5, #3730a3)',
+    'linear-gradient(135deg, #0891b2, #155e75)',
+    'linear-gradient(135deg, #c026d3, #86198f)',
+    'linear-gradient(135deg, #65a30d, #3f6212)',
+    'linear-gradient(135deg, #0284c7, #075985)',
+    'linear-gradient(135deg, #92400e, #5c2a0a)',
+    'linear-gradient(135deg, #059669, #065f46)',
+    'linear-gradient(135deg, #64748b, #334155)',
+    'linear-gradient(135deg, #f43f5e, #be123c)',
+    'linear-gradient(135deg, #7c3aed, #5b21b6)'
+];
 let deptColorCycleIndex = 0;
+// The first colour no department is using yet (extras first, then the original eight); once all are in use it cycles.
 function getRandomGradient() {
-    const color = DEPT_COLOR_PALETTE[deptColorCycleIndex % DEPT_COLOR_PALETTE.length];
+    const used = new Set(Object.keys(deptColors).filter(k => !k.startsWith('__')).map(k => deptColors[k]));
+    const pool = DEPT_EXTRA_PALETTE.concat(DEPT_COLOR_PALETTE);
+    const free = pool.find(c => !used.has(c));
+    if (free) return free;
+    const color = pool[deptColorCycleIndex % pool.length];
     deptColorCycleIndex++;
     return color;
 }
@@ -1158,7 +1178,7 @@ function showToast(msg, isErr = false) {
 // icon/subtitle/placeholder are optional -- omitting them renders the
 // original plain title-only header, so any call site that hasn't been
 // given the richer treatment yet looks exactly as it did before.
-function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColor, cancelLabel, callback, inputType = 'text', multiline = false, icon, iconGradient, subtitle, placeholder, inputIcon, countdown = 0, title, bannerIcon, item }) {
+function showModal({ xcFlow, onDismiss, type = 'confirm', message, defaultVal = '', okLabel, okColor, cancelLabel, callback, inputType = 'text', multiline = false, icon, iconGradient, subtitle, placeholder, inputIcon, countdown = 0, title, bannerIcon, item }) {
     const isPrompt = type === 'prompt';
     const id = isPrompt ? 'customPrompt' : 'customConfirm';
     const resolvedOkLabel = okLabel || (isPrompt ? 'OK' : 'Delete');
@@ -1187,6 +1207,7 @@ function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColo
 
     const overlay = document.createElement('div');
     overlay.id = id;
+    if (icon === 'fa-bell' || xcFlow) overlay.classList.add('xc-flow');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;backdrop-filter:blur(6px);padding:20px;padding-top:12vh;overflow-y:auto;';
     overlay.innerHTML = isPrompt ? `
         <div style="position:relative;background:var(--card-bg);border:${icon ? '1.5px solid rgba(99,102,241,0.55)' : '1px solid var(--glass-border)'};border-radius:20px;padding:28px 24px;width:100%;max-width:360px;max-height:80vh;overflow-y:auto;overflow-x:hidden;box-shadow:${icon ? '0 20px 60px rgba(0,0,0,0.6), 0 0 32px rgba(99,102,241,0.28)' : '0 20px 60px rgba(0,0,0,0.6)'};">
@@ -1267,8 +1288,10 @@ function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColo
     }
     okBtn.onclick = () => close(isPrompt ? input?.value : true);
     overlay.querySelector('#modalCancel').onclick = () => close(isPrompt ? null : false);
-    overlay.querySelector('#modalCloseX').onclick = () => close(isPrompt ? null : false);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(isPrompt ? null : false); });
+    // onDismiss (optional): X and a tap outside call it INSTEAD of the callback (and the dialog just goes away).
+    const dismiss = () => { if (onDismiss) { if (countdownTimer) clearInterval(countdownTimer); overlay.remove(); onDismiss(); } else close(isPrompt ? null : false); };
+    overlay.querySelector('#modalCloseX').onclick = dismiss;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) dismiss(); });
     if (input) input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !multiline) close(input.value);
         if (e.key === 'Escape') close(null);
@@ -1328,8 +1351,9 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
     const pad2 = (n) => String(n).padStart(2, '0');
     const isoFor = (y, m, d) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
 
-    let selectedIso = defaultVal || null;
-    const initDate = defaultVal ? new Date(defaultVal + 'T00:00:00') : new Date();
+    // opts.noPreselect (expiry edits): the old date is NOT put back as the selection and the calendar opens on today's month; Save waits for a day.
+    let selectedIso = opts.noPreselect ? null : (defaultVal || null);
+    const initDate = defaultVal && !opts.noPreselect ? new Date(defaultVal + 'T00:00:00') : new Date();
     let viewYear = initDate.getFullYear();
     let viewMonth = initDate.getMonth();
 
@@ -1361,6 +1385,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
 
     const overlay = document.createElement('div');
     overlay.id = 'customDateModal';
+    overlay.classList.add('xc-flow'); // one calendar look for reminders AND expiry dates
     // Calendar + time wheel + buttons is the tallest custom modal in the
     // app -- tall enough that its bottom edge (Cancel/Save) sits right at
     // the 3-button nav bar on most phones. Padding *after* the card (on
@@ -1373,7 +1398,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
         <style>.time-wheel-col,.ampm-col{scrollbar-width:none;}.time-wheel-col::-webkit-scrollbar,.ampm-col::-webkit-scrollbar{display:none;}</style>
         <div style="position:relative;background:${c.cardBg};border:1px solid ${c.cardBorder};border-radius:20px;padding:20px 20px 18px;width:100%;max-width:360px;display:flex;flex-direction:column;max-height:calc(100vh - 86px);max-height:calc(100dvh - 86px);box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <button id="dateModalCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:${c.closeBg};color:${c.closeColor};font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
-            <p style="color:${c.title};font-size:0.95rem;font-weight:600;margin-bottom:8px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.35;">${message}</p>
+            <p style="color:${c.title};font-size:0.95rem;font-weight:600;margin-bottom:8px;margin-right:26px;font-family:Inter,sans-serif;line-height:1.35;"><i class="fas fa-calendar-days xc-hi"></i>${message}</p>
             <div id="dateModalScroll" style="flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 -4px;padding:0 4px;">
             <div style="background:${c.innerBg};border-radius:18px;padding:10px 10px 8px;margin-bottom:12px;position:relative;overflow:hidden;">
                 <div style="position:absolute;top:-46px;left:50%;transform:translateX(-50%);width:150px;height:90px;background:radial-gradient(ellipse at center, rgba(139,92,246,0.55) 0%, transparent 70%);pointer-events:none;"></div>
@@ -1420,12 +1445,28 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
             </div>` : ''}
             </div>
             <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;padding-top:14px;flex-shrink:0;">
-                ${defaultVal ? `<button id="dateModalClear" style="padding:10px 18px;border-radius:40px;border:1px solid rgba(239,68,68,0.4);background:transparent;color:#f87171;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Clear</button>` : ''}
+                ${defaultVal && !opts.requireDate ? `<button id="dateModalClear" style="padding:10px 18px;border-radius:40px;border:1px solid rgba(239,68,68,0.4);background:transparent;color:#f87171;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Clear</button>` : ''}
                 <button id="dateModalCancel" style="padding:10px 22px;border-radius:40px;border:1px solid ${c.cancelBorder};background:transparent;color:${c.cancelColor};cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
                 <button id="dateModalOk" style="padding:10px 22px;border-radius:40px;border:none;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">Save</button>
             </div>
         </div>`;
     document.body.appendChild(overlay);
+
+    {
+        // Chevron buttons above and below each wheel column, icons on the section labels.
+        overlay.querySelectorAll('.time-wheel-col, .ampm-col').forEach(col => {
+            const wrap = document.createElement('div');
+            wrap.className = 'xc-wcol';
+            col.parentNode.insertBefore(wrap, col);
+            wrap.appendChild(col);
+        });
+        overlay.querySelectorAll('#dateModalScroll div').forEach(d => {
+            const t = d.children.length === 0 ? d.textContent.trim() : '';
+            if (t === 'Time') d.style.display = 'none';
+            else if (t === 'End time') d.insertAdjacentHTML('afterbegin', '<i class="far fa-clock xc-li"></i>');
+            else if (t === 'Repeat') d.insertAdjacentHTML('afterbegin', '<i class="fas fa-rotate xc-li"></i>');
+        });
+    }
 
     // Repeat chips. Kept inside the date step rather than added as a third
     // screen: how often a reminder comes back is part of when it is due, and
@@ -1435,9 +1476,9 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
         const chips = overlay.querySelectorAll('.date-repeat-chip');
         const paintChips = () => chips.forEach(ch => {
             const on = ch.dataset.repeat === repeatMode;
-            ch.style.background = on ? 'rgba(139,92,246,0.18)' : 'transparent';
-            ch.style.borderColor = on ? 'rgba(139,92,246,0.75)' : innerBorder;
-            ch.style.color = on ? '#c4b5fd' : c.cancelColor;
+            ch.style.background = on && opts.withRepeat ? 'linear-gradient(135deg,#ff8a1f,#f2650a)' : 'transparent';
+            ch.style.borderColor = opts.withRepeat ? 'rgba(255,255,255,0.3)' : (on ? 'rgba(139,92,246,0.75)' : innerBorder);
+            ch.style.color = on ? '#fff' : c.cancelColor;
             ch.style.fontWeight = on ? '700' : '400';
         });
         chips.forEach(ch => { ch.onclick = () => { repeatMode = ch.dataset.repeat; paintChips(); }; });
@@ -1453,13 +1494,17 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
     weekdaysEl.innerHTML = WEEKDAY_LABELS.map(d => `<div style="text-align:center;color:${c.weekday};font-size:0.66rem;font-weight:700;font-family:Inter,sans-serif;letter-spacing:0.02em;">${d}</div>`).join('');
 
     function updateSelectedLabel() {
+        const okB = overlay.querySelector('#dateModalOk');
+        if (okB && opts.noPreselect) { okB.style.opacity = selectedIso ? '1' : '0.4'; okB.textContent = selectedIso ? 'Save' : 'Pick a date'; }
         if (!selectedLabelEl) return;
         if (selectedIso) {
             const d = new Date(selectedIso + 'T00:00:00');
-            selectedLabelEl.textContent = `Selected: ${d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — tap it again to clear`;
+            const dl = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+            if (true) selectedLabelEl.innerHTML = `<i class="fas fa-calendar-check xc-li"></i>Selected: <b style="color:#ffb26b;">${dl}</b> · tap to clear`;
+            else selectedLabelEl.textContent = `Selected: ${dl} — tap it again to clear`;
             selectedLabelEl.style.color = c.selectedLabelActive;
         } else {
-            selectedLabelEl.textContent = opts.requireDate
+            selectedLabelEl.textContent = opts.noPreselect ? 'Tap a day below to choose the new date' : opts.requireDate
                 ? 'No date selected — tap a day below to set one'
                 : 'No date selected — Save now to add this reminder with no due date';
             selectedLabelEl.style.color = c.selectedLabelMuted;
@@ -1569,7 +1614,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
     // = (colHeight-itemHeight)/2) means whichever item is centered sits at
     // scrollTop === index * ITEM_H exactly, so the centered value can be
     // read straight off scrollTop with no extra bookkeeping.
-    const WHEEL_ITEM_H = 42;
+    const WHEEL_ITEM_H = 32;
     let hourValues, minuteValues, ampmValues;
     if (opts.withTime) {
         hourValues = Array.from({ length: 12 }, (_, i) => i + 1); // 1..12
@@ -1825,6 +1870,7 @@ function showDateModal(message, defaultVal, callback, opts = {}) {
     const close = (val) => { overlay.remove(); callback(val); };
 
     overlay.querySelector('#dateModalOk').onclick = () => {
+        if (opts.noPreselect && !selectedIso) { showToast('Pick a new date first', true); return; }
         if (opts.requireDate && !selectedIso) {
             showToast('Please select a due date', true);
             return;
@@ -2203,19 +2249,50 @@ function advanceReminderOccurrence(r) {
     } while (new Date(r.dueAt + 'T' + (r.dueTime || '09:00') + ':00') <= now && ++guard < 240);
     r.repeatAnchorDay = anchorDay;
     r.dueAckFor = null;
+    r.missedDue = null;
     return true;
+}
+
+// 27 Oct (user rule): an overdue reminder stays on the card / bell for 5 days. After that a monthly / yearly one moves on to its next
+// date by itself (keeping "missed <old date>" on its card) and one that does not repeat leaves the card / bell and sits lower in the list.
+const REMINDER_STALE_DAYS = 5;
+function reminderOverdueDays(r, now) {
+    if (!r || !r.dueAt) return 0;
+    const t = new Date(now || new Date()); t.setHours(0, 0, 0, 0);
+    const due = new Date(r.dueAt + 'T00:00:00');
+    return isNaN(due.getTime()) ? 0 : Math.round((t - due) / 86400000);
+}
+function isReminderStale(r, now) {
+    return reminderOverdueDays(r, now) > REMINDER_STALE_DAYS;
+}
+function autoRollMissedReminders() {
+    const now = new Date();
+    const rolled = [];
+    for (const r of reminders) {
+        if ((r.repeat !== 'monthly' && r.repeat !== 'yearly') || !isReminderStale(r, now)) continue;
+        const was = r.dueAt;
+        if (advanceReminderOccurrence(r)) { r.missedDue = was; rolled.push(r); }
+    }
+    if (!rolled.length) return;
+    saveReminders();
+    (async () => { for (const r of rolled) { try { await cancelReminderNotification(r.id); await scheduleReminderNotification(r); } catch (e) { /* re-armed at the next launch */ } } })();
 }
 
 // A reminder that has been seen either rolls on to its next occurrence or is
 // simply marked seen. Either way the tray notification goes: read in the app
 // means it has no business still sitting in the status bar.
-function settleSeenReminder(r) {
+function settleSeenReminder(r, opts) {
     if (advanceReminderOccurrence(r)) {
         cancelReminderNotification(r.id);
         scheduleReminderNotification(r);
     } else {
+        // Seen only: clear what already sits in the shade, but leave the repeats still
+        // queued -- (an explicit Done passes {silence:true} and also removes today's remaining ones).
         r.dueAckFor = reminderOccurrenceKey(r);
-        cancelReminderNotification(r.id);
+        removeReminderFromTray(r.id);
+        // 26 Oct: ANY acknowledgement (Done, or the reminder note being opened) takes the rest of today's repeats with it. A reminder that no longer
+        // shows on the card / bell must not keep ringing (it did: opening the note acknowledged it but left the alarms).
+        silenceTodaysAlarms(reminderNotificationIds(r.id));
     }
 }
 
@@ -2265,6 +2342,9 @@ let reminders = loadReminders();
 let remindersCalYear = null;
 let remindersCalMonth = null;
 let remindersCalSelectedIso = null;
+// The Reminders tab opens as a plain list (like Expiring). The calendar and its
+// edit buttons appear only after Add reminder is pressed.
+let remindersCalMode = false;
 
 // ============================================================
 // INDEXEDDB SETUP
@@ -3187,10 +3267,35 @@ async function setFileExpiryDate(folderPath, fileName, dateStr) {
 
     f.expiryDate = dateStr || null;
     f.expiryAckFor = null; // a new date always starts a fresh cycle of alerts
+    // ...and a fresh "needs attention" too: setting a date, even the same one again,
+    // must not stay hidden by an earlier counting of this document today.
+    try {
+        const seen = loadAttnSeen();
+        if (delete seen[folderPath + '|' + fileName]) saveAttnSeen(seen);
+    } catch (e) { /* storage blocked: nothing was hidden anyway */ }
     await saveFilesForFolder(folderPath);
     await imgScheduleExpiryNotification(folderPath, fileName, dateStr);
     render();
     showToast(dateStr ? `Expiry date set: ${dateStr}` : 'Expiry date cleared');
+}
+
+// Clear on the expiry date picker. Taking the date away also stops every alert
+// for the document, so it asks first. Resolves true once the date is cleared.
+function clearExpiryWithWarning(folderPath, fileName) {
+    // Save pressed with no date picked on a file that has no expiry date: there is nothing to clear, so do not threaten
+    // the user with a "Clear expiry date?" warning; just ask for a date.
+    const fileNow = (allFiles[folderPath] || []).find(f => f.name === fileName);
+    if (fileNow && !fileNow.expiryDate) {
+        showToast('Pick a date first, then press Save');
+        return Promise.resolve(false);
+    }
+    return new Promise((resolve) => {
+        showConfirmModal(`Clear the expiry date on "<b>${escapeHtml(fileName)}</b>"?<br><br>The expiry alerts for this document will stop, and it will leave the "Needs your attention" list. The document itself is not deleted.`, async (confirmed) => {
+            if (!confirmed) { resolve(false); return; }
+            await setFileExpiryDate(folderPath, fileName, null);
+            resolve(true);
+        }, { title: 'Clear expiry date?', okLabel: 'Clear', okColor: 'linear-gradient(135deg,#ef4444,#dc2626)' });
+    });
 }
 
 async function setFileNote(folderPath, fileName, noteText) {
@@ -3292,6 +3397,11 @@ const EXPIRY_DENSE_WITHIN_DAYS = 3;
 // old range, permanently.
 const EXPIRY_LEGACY_DAY_SLOTS = 29;
 const EXPIRY_OVERDUE_DAYS = 7;
+// 26 Oct (user rule): on the 7-day and 3-day milestone days the alert repeats every 30 minutes after its first alert (09:00), 24 more, until 21:00, until
+// Done (Done holds for the day). Salts 3000+i (7-day) and 4000+i (3-day).
+const EXPIRY_MILESTONE_REPEATS = 24;
+// Android's cap is 500 concurrent alarms per app; leave room for reminders.
+const ALARM_BUDGET = 450;
 const EXPIRY_ACTION_TYPE = 'EXPIRY_DUE';
 // Kept only so an alert scheduled by an older build, which still carries this
 // type id, is recognised on tap; nothing new is scheduled with it.
@@ -3324,6 +3434,7 @@ function expiryNotificationIds(folderPath, fileName) {
         imgNotificationIdFor(folderPath, fileName, 1)];
     for (let i = 0; i < expiryDaySlotsToCancel(); i++) ids.push(imgNotificationIdFor(folderPath, fileName, 1000 + i));
     for (let d = 1; d <= EXPIRY_OVERDUE_DAYS; d++) ids.push(imgNotificationIdFor(folderPath, fileName, 2000 + d));
+    for (let i = 1; i <= EXPIRY_MILESTONE_REPEATS; i++) { ids.push(imgNotificationIdFor(folderPath, fileName, 3000 + i)); ids.push(imgNotificationIdFor(folderPath, fileName, 4000 + i)); }
     return ids;
 }
 
@@ -3335,8 +3446,10 @@ function expiryAtHour(dateStr, hour, minute) {
 
 // Acknowledgement is stored against the date itself, so renewing to a new
 // date starts a fresh cycle instead of inheriting the old "Got it".
+// 26 Oct (user rule): Done is for TODAY. The mark is stored as '<expiry date>@<today>', so tomorrow the document is unacknowledged again and its
+// alarms (queued for later days) bring it back. (An older plain '<expiry date>' mark no longer counts.)
 function isExpiryAcknowledged(file) {
-    return !!(file && file.expiryDate && file.expiryAckFor === file.expiryDate);
+    return !!(file && file.expiryDate && file.expiryAckFor === file.expiryDate + '@' + todayIsoDate());
 }
 
 function todayIsoDate() {
@@ -3376,9 +3489,11 @@ async function imgScheduleExpiryNotification(folderPath, fileName, dateStr, opts
     // Other documents on the same date word their alert by how many there are,
     // so a change here has to reach them too -- see queueExpiryAlertRefresh.
     if (!(opts && opts.noRefresh)) queueExpiryAlertRefresh();
-    if (!dateStr || (opts && opts.acknowledged)) return;
+    if (!dateStr) return;
 
     const now = new Date();
+    const ackToday = !!(opts && opts.acknowledged);   // done for today: no slot dated today is armed, later days still are
+    const isToday = (d) => d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
     // How many documents share this expiry date. Their alerts fire together, so
     // they are ONE banner that says so ("3 documents expire today") instead of
     // three identical ones nobody can tell apart. Names stay off the lock screen.
@@ -3395,6 +3510,7 @@ async function imgScheduleExpiryNotification(folderPath, fileName, dateStr, opts
     // one slot after another still replace each other.
     const add = (id, kind, title, body, titleMany, bodyMany, at, withActions) => {
         if (at <= now) return; // a slot already in the past is simply skipped
+        if (ackToday && isToday(at)) return;
         const n = { id, title: many ? titleMany : title, body: many ? bodyMany : body,
             schedule: { at, allowWhileIdle: true }, autoCancel: true, extra,
             channelId: ALERT_CHANNEL_ID, visibility: 1, group: `docman-expiry-${dateStr}-${kind}` };
@@ -3411,6 +3527,19 @@ async function imgScheduleExpiryNotification(folderPath, fileName, dateStr, opts
     add(imgNotificationIdFor(folderPath, fileName, 3), 'd3', 'Document expiring soon',
         'A document expires in 3 days. Open DOCMAN to see which.', 'Documents expiring soon',
         `${sharing} documents expire in 3 days. Open DOCMAN to see which.`, new Date(dayAtAlertHour.getTime() - 3 * 86400000));
+    // The repeats of the 7-day and 3-day alerts are armed only once that day is near (like the expiry day's own), the first alert of each is always armed.
+    const dOut = Math.ceil((expiryAtHour(dateStr, 0).getTime() - now.getTime()) / 86400000);
+    const milestone = (daysBefore, salt0, kind, withinDays) => {
+        if (dOut > withinDays) return;
+        const base = dayAtAlertHour.getTime() - daysBefore * 86400000;
+        for (let i = 1; i <= EXPIRY_MILESTONE_REPEATS; i++) {
+            add(imgNotificationIdFor(folderPath, fileName, salt0 + i), kind, 'Document expiring soon',
+                `A document expires in ${daysBefore} days. Open DOCMAN to see which.`, 'Documents expiring soon',
+                `${sharing} documents expire in ${daysBefore} days. Open DOCMAN to see which.`, new Date(base + i * 30 * 60000));
+        }
+    };
+    milestone(7, 3000, 'd7', 8);
+    milestone(3, 4000, 'd3', 4);
     // Nothing used to be said between "in 3 days" and "today", which are the
     // last two days anything can still be renewed in time. (Dropped for an hour
     // on 15 Oct and put back: the user finds the day before useful.)
@@ -3441,6 +3570,17 @@ async function imgScheduleExpiryNotification(folderPath, fileName, dateStr, opts
     try {
         const perm = await plugin.checkPermissions();
         if (perm.display !== 'granted') await plugin.requestPermissions();
+        // Android allows 500 alarms per app and the plugin throws on its own
+        // thread past that, which closes the app -- a try/catch here cannot
+        // stop it. Stay under the cap and keep the nearest alerts first, so
+        // what is lost under pressure is the far overdue repeats.
+        let room = ALARM_BUDGET;
+        try { room -= ((await plugin.getPending())?.notifications || []).length; } catch (e) { /* count unknown -- schedule as before */ }
+        if (room < notifications.length) {
+            notifications.sort((a, b) => a.schedule.at - b.schedule.at);
+            notifications.length = Math.max(0, room);
+        }
+        if (!notifications.length) return;
         await plugin.schedule({ notifications });
     } catch (e) {
         console.warn('Could not schedule expiry notifications:', e);
@@ -3457,7 +3597,7 @@ async function rescheduleAllExpiryNotifications() {
         for (const file of allFiles[folderPath] || []) {
             if (!file.expiryDate) continue;
             await imgScheduleExpiryNotification(folderPath, file.name, file.expiryDate,
-                { acknowledged: isExpiryAcknowledged(file), noRefresh: true });
+                { noRefresh: true, acknowledged: isExpiryAcknowledged(file) });
         }
     }
     await sweepOrphanedExpiryAlarms();
@@ -3503,18 +3643,20 @@ async function sweepOrphanedExpiryAlarms() {
 async function acknowledgeExpiry(folderPath, fileName) {
     const file = (allFiles[folderPath] || []).find(f => f.name === fileName);
     if (!file || !file.expiryDate) return;
-    file.expiryAckFor = file.expiryDate;
+    file.expiryAckFor = file.expiryDate + '@' + todayIsoDate();
     await saveFilesForFolder(folderPath);
-    await imgScheduleExpiryNotification(folderPath, fileName, file.expiryDate, { acknowledged: true });
+    // Done for today: today's queued alarms and the copy in the shade go; later days stay armed.
+    await silenceTodaysAlarms(expiryNotificationIds(folderPath, fileName));
     render();
 }
 
 function renewExpiryDate(folderPath, fileName) {
     const file = (allFiles[folderPath] || []).find(f => f.name === fileName);
     showDateModal(`New expiry date for "${escapeHtml(fileName)}":`, (file && file.expiryDate) || '', (val) => {
-        if (val === null) return;
+        if (val === undefined) return;
+        if (val === null) { clearExpiryWithWarning(folderPath, fileName); return; }
         setFileExpiryDate(folderPath, fileName, val);
-    }, { disallowPast: true, minTomorrow: true });
+    }, { disallowPast: true, minTomorrow: true, noPreselect: true });
 }
 
 // Tapping the notification, or one of its two buttons, while the app runs.
@@ -3577,6 +3719,14 @@ function attachNotificationTapListener() {
     if (!plugin || !isNativePlatform() || notificationTapListenerAttached) return;
     notificationTapListenerAttached = true;
     plugin.addListener('localNotificationActionPerformed', (event) => {
+        // Reopening the app from recents re-delivers the launch intent of the last tap, so the plugin fires the
+        // same tap again with nobody touching a notification (toast + note on a plain reopen). Each alert is
+        // tapped once: a tap already handled is ignored, and does not count as a launch from a notification.
+        const tapKey = event && event.notification ? event.notification.id + ':' + (event.actionId || '') : '';
+        try {
+            if (tapKey && localStorage.getItem('docman_last_notif_tap') === tapKey) return;
+            if (tapKey) localStorage.setItem('docman_last_notif_tap', tapKey);
+        } catch (e) { /* storage blocked: the tap is simply handled as before */ }
         launchedFromNotification = true;
         // The dialog can already be up if the tap reaches us late; it is about
         // to be answered by the notification's own destination, so take it off.
@@ -3600,16 +3750,17 @@ async function handleNotificationAction(event) {
         const extra = event && event.notification && event.notification.extra;
         if (!extra) return;
         if (extra.kind === 'reminder') {
-            // Acknowledging from the notification is the same as having seen
-            // it in the panel, and it clears the repeats still queued behind.
+            // Tapping ANY alert opens the same "Needs your attention" list. The reminder is not
+            // marked done by the tap: it stays on the list until Done, and Open on its card
+            // shows the reminder note (openReminderStickyNote).
             const r = reminders.find(x => x.id === extra.reminderId);
-            if (r) { r.dueAckFor = reminderOccurrenceKey(r); saveReminders(); }
-            await cancelReminderNotification(extra.reminderId);
-            // However the alert was answered, it ends on the reminder itself.
-            // There are no buttons on it any more, so there is no path through
-            // here that opens the app and then shows nothing.
-            if (r) openReminderStickyNote(r.id);
-            else showToast('That reminder has been deleted', true);
+            if (!r) { showToast('That reminder has been deleted', true); return; }
+            // 26 Oct: the tap ALWAYS opens the glass card, with the tapped reminder in front, even when it was already marked Done (its alarms keep
+            // ringing by design). It used to jump straight to the note in that case; the note is now the View button on the card.
+            const s = getAttentionSets();
+            const due = s.due.slice();
+            if (!due.includes(r)) due.push(r);
+            showExpiryCardsPopup(s.expiring, due, () => updateAttentionBell(), r.id);
             return;
         }
         if (extra.kind !== 'expiry') return;
@@ -3623,10 +3774,10 @@ async function handleNotificationAction(event) {
                     if (f.expiryDate === extra.expiryDate && !isExpiryAcknowledged(f)) set.push({ folderPath: fp, file: f });
                 }
             }
-            if (set.length) { showExpiryTodayModal(set); return; }
+            if (set.length) { showExpiryCardsFor(set); return; }
         }
         const file = (allFiles[extra.folderPath] || []).find(f => f.name === extra.fileName);
-        if (file) { showExpiryTodayModal([{ folderPath: extra.folderPath, file }]); return; }
+        if (file) { showExpiryCardsFor([{ folderPath: extra.folderPath, file }]); return; }
         // Renamed, moved or deleted since the alert was scheduled. Saying so
         // beats opening the app and showing nothing at all.
         showToast(`"${extra.fileName}" is no longer in that folder`, true);
@@ -3654,6 +3805,14 @@ function openReminderStickyNote(reminderId) {
         const [y, m] = r.dueAt.split('-').map(Number);
         if (y && m) { remindersCalYear = y; remindersCalMonth = m - 1; remindersCalSelectedIso = r.dueAt; }
     }
+    // Already looking at the Reminders list (the Open button on the bar): nothing is rebuilt or scrolled, the list stays
+    // exactly as it is and the note appears ON the chosen card.
+    const livePanel = document.getElementById('expiringDocsOverlay');
+    if (livePanel) {
+        const sid = (window.CSS && CSS.escape) ? CSS.escape(r.id) : r.id;
+        const liveCard = livePanel.querySelector('.xc-card[data-rem-id="' + sid + '"]');
+        if (liveCard) { showReminderStickyNote(r, liveCard, { keepWaiting: true, cover: true }); return; }
+    }
     reminderBannerId = r.id;
     // noAck: opening the panel this way must NOT mark the reminder seen. Only
     // the note's own X does that, so a back press out of the note leaves the
@@ -3662,21 +3821,23 @@ function openReminderStickyNote(reminderId) {
     // The panel is rebuilt on every open, so the row only exists a frame
     // later -- hence the wait before looking for it.
     setTimeout(() => {
-        const row = reminderRowEl(r.id);
+        const safeId = (window.CSS && CSS.escape) ? CSS.escape(r.id) : r.id;
+        const row = document.querySelector('.xc-card[data-rem-id="' + safeId + '"]') || reminderRowEl(r.id);
         if (!row) { showToast(r.title || 'Reminder', false); return; }
-        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        // Placed after the smooth scroll settles, against where the row ends
-        // up rather than where it started.
-        setTimeout(() => showReminderStickyNote(r, row), 380);
+        // Instant, not smooth: a smooth scroll to a card far down a long list kept the list moving for over a second, and the
+        // note (which closes when the list moves) opened mid-glide and closed itself a moment later (25 Oct).
+        row.scrollIntoView({ block: 'center', behavior: 'instant' });
+        // Placed against where the card ends up. Opening a reminder does not mark it done (Done does that).
+        setTimeout(() => showReminderStickyNote(r, row, { keepWaiting: true }), 120);
     }, 320);
 }
 
 // The note itself. It only reads out what is due: edit and delete both stay
 // on the row behind it (a long press edits, the row's own trash deletes), so
 // nothing on the note can lose a reminder by a mis-tap.
-function showReminderStickyNote(reminder, anchorEl) {
+function showReminderStickyNote(reminder, anchorEl, opts = {}) {
     const existing = document.getElementById('reminderStickyNote');
-    if (existing) existing.remove();
+    if (existing) { if (existing._cleanup) existing._cleanup(); existing.remove(); }
 
     // Putting the note on screen IS the reminder being seen. It was once the
     // X alone that counted, so backing out of the note put the bar straight
@@ -3684,8 +3845,10 @@ function showReminderStickyNote(reminder, anchorEl) {
     // moments after reading it, on the page you went back to. Nothing after
     // this point needs to mark it: the notification goes from the status bar
     // and the bar goes from the main screen, however the note is closed.
-    settleSeenReminder(reminder);
-    saveReminders();
+    if (!opts.keepWaiting) {
+        settleSeenReminder(reminder);
+        saveReminders();
+    }
 
     const when = reminder.dueAt ? formatReminderDue(reminder.dueAt, reminder.dueTime, reminder.endTime) : '';
     const overlay = document.createElement('div');
@@ -3698,6 +3861,7 @@ function showReminderStickyNote(reminder, anchorEl) {
                 <div class="rnote-label"><i class="fas fa-bell"></i>Reminder</div>
                 <div class="rnote-title">${escapeHtml(reminder.title || 'Untitled reminder')}</div>
                 ${when ? `<div class="rnote-when">${escapeHtml(when)}</div>` : ''}
+                ${reminder.details ? `<div class="rnote-details">${escapeHtml(reminder.details)}</div>` : ''}
                 ${reminder.place ? `<div class="rnote-place"><i class="fas fa-location-dot"></i>${escapeHtml(reminder.place)}</div>` : ''}
                 ${reminder.noteRef ? `<button type="button" class="rnote-open-note"><i class="fas fa-note-sticky"></i>Open note</button>` : ''}
             </div>
@@ -3712,11 +3876,16 @@ function showReminderStickyNote(reminder, anchorEl) {
     // screen, and growing out of the row's own centre.
     const sticky = overlay.querySelector('.rnote-sticky');
     const arrow = overlay.querySelector('.rnote-arrow');
+    if (opts.cover) sticky.classList.add('rnote-cover');
     const place = () => {
         const M = 8;
         const r = anchorEl && anchorEl.getBoundingClientRect
             ? anchorEl.getBoundingClientRect()
             : { left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 3, bottom: innerHeight / 3, width: 0, height: 0 };
+        if (opts.cover && anchorEl && anchorEl.getBoundingClientRect) {
+            sticky.style.width = r.width + 'px';
+            sticky.style.minHeight = r.height + 'px';
+        }
         const bw = sticky.offsetWidth, bh = sticky.offsetHeight;
         // innerHeight runs to the bottom of the SCREEN, not the bottom of what
         // can be used: this WebView draws edge-to-edge, so the navigation bar
@@ -3737,6 +3906,7 @@ function showReminderStickyNote(reminder, anchorEl) {
             const up = r.top - bh - 10;
             if (up > M) { top = up; above = true; } else { top = Math.max(M, usableBottom - bh - M); }
         }
+        if (opts.cover) { left = r.left; top = r.top; above = false; arrow.style.display = 'none'; }
         sticky.style.left = left + 'px';
         sticky.style.top = top + 'px';
         sticky.classList.toggle('rnote-above', above);
@@ -3748,105 +3918,53 @@ function showReminderStickyNote(reminder, anchorEl) {
     place();
     window.addEventListener('resize', place);
 
-    const close = () => { window.removeEventListener('resize', place); overlay.remove(); };
+    // The catcher lets touches through (CSS), so the same touch that closes this note can already start the hold on the next card.
+    // A quick tap that only closed the note must not also press whatever was under it: its click is swallowed.
+    const outside = (e) => {
+        if (sticky.contains(e.target)) return;
+        window._remNoteClosedAt = Date.now();
+        close();
+        document.addEventListener('click', swallow, true);
+        setTimeout(() => document.removeEventListener('click', swallow, true), 600);
+    };
+    // Buttons (Edit, Delete, Done, X ...) must still work on the touch that closes the note: only a tap on plain content is swallowed.
+    const swallow = (e) => {
+        document.removeEventListener('click', swallow, true);
+        if (e.target.closest && e.target.closest('button, a, .xc-act, [data-ract], [role="button"]')) return;
+        e.stopPropagation(); e.preventDefault();
+    };
+    document.addEventListener('touchstart', outside, { capture: true, passive: true });
+    // The note is fixed to the screen, so it must not outlive a real scroll of the list. A small slide of the finger does NOT close it: only the list moving
+    // more than 12 px from where it was when the note opened (the first 600 ms are ignored: opening can itself scroll the list into place).
+    const openedAt = Date.now();
+    const listEl = document.getElementById('expiringDocsList');
+    const scrollAtOpen = listEl ? listEl.scrollTop : 0;
+    // Only a scroll the USER caused closes it: the list can keep drifting a few px by itself for over a second after the note
+    // opens (a note opened from a notification closed itself that way, 25 Oct). Touch, drag and wheel are noted here.
+    let lastUserInputAt = 0;
+    const noteInput = () => { lastUserInputAt = Date.now(); };
+    ['touchstart', 'touchmove', 'wheel', 'pointerdown'].forEach(n => document.addEventListener(n, noteInput, { capture: true, passive: true }));
+    const onScroll = (e) => {
+        if (Date.now() - lastUserInputAt > 1500) return;
+        if (Date.now() - openedAt < 600 || overlay.contains(e.target)) return;
+        if (listEl && e.target === listEl && Math.abs(listEl.scrollTop - scrollAtOpen) < 12) return;
+        close();
+    };
+    document.addEventListener('scroll', onScroll, true);
+    const cleanup = () => {
+        window.removeEventListener('resize', place);
+        document.removeEventListener('touchstart', outside, true);
+        document.removeEventListener('scroll', onScroll, true);
+        ['touchstart', 'touchmove', 'wheel', 'pointerdown'].forEach(n => document.removeEventListener(n, noteInput, true));
+    };
+    overlay._cleanup = cleanup;
+    const close = () => { cleanup(); overlay.remove(); };
     overlay.querySelector('.rnote-close').onclick = () => { haptic.toggle(); close(); };
     const openNoteBtn = overlay.querySelector('.rnote-open-note');
     if (openNoteBtn) openNoteBtn.onclick = () => { haptic.press(); openNoteFromReminder(reminder.noteRef); };
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 }
 
-
-// The same two choices as the notification, for someone who opens the app
-// instead of tapping it: renew the date, or stop the reminders.
-function showExpiryTodayModal(items, onDone) {
-    const existing = document.getElementById('expiryTodayModal');
-    if (existing) existing.remove();
-    const shown = items.slice(0, 3);
-    const more = items.length - shown.length;
-
-    const overlay = document.createElement('div');
-    overlay.id = 'expiryTodayModal';
-    overlay.className = 'expiry-modal-overlay';
-    overlay.innerHTML = `
-        <div class="expiry-modal" role="dialog" aria-modal="true" aria-label="Expires today">
-            <div class="expiry-modal-icon"><i class="fas fa-circle-exclamation"></i></div>
-            ${(() => {
-                // The set can now be a mix of today's and older ones, so the
-                // wording has to follow what is actually in it rather than
-                // always saying "today".
-                const todayIso = todayIsoDate();
-                const past = items.filter(i => i.file.expiryDate < todayIso).length;
-                const onDay = items.length - past;
-                let h, sub;
-                if (items.length > 1) {
-                    h = past && onDay ? `${items.length} documents need attention`
-                      : past ? `${items.length} documents have expired`
-                      : `${items.length} documents expire today`;
-                    sub = past && onDay ? 'Some have expired, some reach their date today.'
-                        : past ? 'These passed their expiry date.'
-                        : 'These reach their expiry date today.';
-                } else {
-                    h = past ? 'Document expired' : 'Expires today';
-                    sub = past ? 'This document passed its expiry date.'
-                        : 'This document reaches its expiry date today.';
-                }
-                return `<h3>${h}</h3><p>${sub}</p>`;
-            })()}
-            ${shown.map(({ folderPath, file }) => `
-                <div class="expiry-modal-file">
-                    <i class="fas ${getFileIcon(file.name)}"></i>
-                    <div><b>${escapeHtml(file.name)}</b><span>${escapeHtml(folderPath)}</span></div>
-                </div>`).join('')}
-            ${more > 0 ? `<p class="expiry-modal-more">and ${more} more</p>` : ''}
-            <div class="expiry-modal-btns">
-                <button class="expiry-modal-renew">${items.length > 1 ? 'Review in Dashboard' : 'Renew — set a new date'}</button>
-                <button class="expiry-modal-ack">Got it, stop reminding</button>
-            </div>
-        </div>`;
-    document.body.appendChild(overlay);
-
-    const close = () => { overlay.remove(); if (onDone) onDone(); };
-    overlay.querySelector('.expiry-modal-renew').addEventListener('click', () => {
-        haptic.press();
-        close();
-        if (items.length > 1) openDashboardView(true);
-        else renewExpiryDate(items[0].folderPath, items[0].file.name);
-    });
-    overlay.querySelector('.expiry-modal-ack').addEventListener('click', async () => {
-        haptic.toggle();
-        close();
-        for (const { folderPath, file } of items) await acknowledgeExpiry(folderPath, file.name);
-        showToast(items.length > 1 ? 'Reminders stopped for today’s documents' : 'Reminders stopped for this document');
-    });
-    // Tapping the backdrop just closes it: that is not an acknowledgement,
-    // so the half-hourly reminders carry on.
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-}
-
-function checkExpiryTodayOnLoad(onDone) {
-    // Same reason as checkLaunchAlertsOnLoad: a launch that came from tapping
-    // a notification has already had its alert, and the tap already said where
-    // to go. Nothing is lost -- an expiry that was not acknowledged is still on
-    // the home screen's own banner and in the Expiring panel, and this modal
-    // runs again on the next ordinary launch. Tapping an EXPIRY notification
-    // opens this same modal from handleNotificationAction anyway.
-    if (launchedFromNotification) { if (onDone) onDone(); return; }
-    const today = todayIsoDate();
-    const items = [];
-    for (const folderPath in allFiles) {
-        for (const file of allFiles[folderPath] || []) {
-            // Today OR already past. An overdue document had no way to be
-            // dismissed before: this modal only ran on the exact expiry day,
-            // and the summary popup that reported it afterwards has no
-            // acknowledge button, so it reappeared at every launch forever.
-            if (file.expiryDate && file.expiryDate <= today && !isExpiryAcknowledged(file)) {
-                items.push({ folderPath, file });
-            }
-        }
-    }
-    if (!items.length) { if (onDone) onDone(); return; }
-    showExpiryTodayModal(items, onDone);
-}
 
 // Settings row: says plainly whether Android will actually deliver these.
 async function refreshAlertPermissionRow() {
@@ -3946,6 +4064,312 @@ function reminderRepeatCount() {
     return (REMINDER_REPEAT_HOURS * 60) / REMINDER_REPEAT_MINUTES + 1;
 }
 
+// ---- Sync Calendar (21 Oct 2026) -------------------------------------------------------------------------------------
+// One tap lists the phone's upcoming calendar events (today to a year ahead, every calendar the phone shows) as reminders.
+// READ ONLY: nothing is written to the calendar and nothing is sent anywhere (native plugin CalendarImportPlugin).
+//  - No duplicates: each reminder remembers its calendar key. A one-off event is keyed by its event id, so moving it in the
+//    calendar UPDATES the reminder; each occurrence of a repeating event is keyed by event id + day.
+//  - Re-sync adds new events and updates changed ones (only when the CALENDAR changed, so your own edits survive). It never
+//    deletes. A reminder you delete is remembered and not brought back.
+//  - Alerts (21 Oct, the user's rule): a calendar reminder rings at 8:00 AM ON THE DAY and repeats every 30 minutes (3 hours,
+//    like the user's own reminders) until it is acted on (Done). If that window is already over when it is armed but the event
+//    is still ahead, it rings once at the event time instead.
+//  - Alarm trap: Android allows 500 alarms per app and the notification plugin crashes the whole app past that. Each reminder
+//    now owns up to 7 alarms, so only the nearest CAL_ALARM_EVENTS events are armed and the total stays under ALARM_BUDGET
+//    minus what is already pending. The rest still show in the list and are armed when the app is opened later.
+const CAL_SYNC_DAYS = 365;
+const CAL_MAX_REMINDERS = 300;      // the nearest ones; keeps the list quick to draw
+const CAL_ALARM_EVENTS = 40;         // nearest events that get alarms (up to 7 each)
+const CAL_MORNING = '08:00';
+const CAL_DISMISSED_KEY = 'docman_cal_dismissed_v1';
+let calSyncBusy = false;
+
+function calDismissed() {
+    try { return new Set(JSON.parse(localStorage.getItem(CAL_DISMISSED_KEY) || '[]')); } catch (e) { return new Set(); }
+}
+function calRememberDismissed(key) {
+    try {
+        const arr = Array.from(calDismissed()); arr.push(key);
+        localStorage.setItem(CAL_DISMISSED_KEY, JSON.stringify(arr.slice(-2000)));
+    } catch (e) { /* not remembered: the event may come back once */ }
+}
+function calPad2(n) { return String(n).padStart(2, '0'); }
+function calLocalIso(ms) { const d = new Date(ms); return d.getFullYear() + '-' + calPad2(d.getMonth() + 1) + '-' + calPad2(d.getDate()); }
+function calLocalHm(ms) { const d = new Date(ms); return calPad2(d.getHours()) + ':' + calPad2(d.getMinutes()); }
+
+// One calendar occurrence -> the fields of a reminder. An all-day event is stored by Android as midnight UTC, so its DAY is
+// read in UTC; a timed event is read in local time.
+function calEventFields(ev) {
+    const allDay = !!ev.allDay;
+    let dueAt, dueTime, endTime = null;
+    if (allDay) {
+        dueAt = new Date(ev.begin).toISOString().slice(0, 10);
+        dueTime = '09:00';
+    } else {
+        dueAt = calLocalIso(ev.begin);
+        dueTime = calLocalHm(ev.begin);
+        if (ev.end > ev.begin && calLocalIso(ev.end) === dueAt) endTime = calLocalHm(ev.end);
+    }
+    const title = String(ev.title || '').trim() || '(No title)';
+    const place = String(ev.location || '').trim() || null;
+    const bits = [];
+    if (allDay) bits.push('All-day');
+    if (ev.calendar) bits.push(String(ev.calendar));
+    const details = 'From your calendar' + (bits.length ? ' · ' + bits.join(' · ') : '');
+    // ONE reminder per calendar event, however often it repeats (a monthly rent event was 12 identical reminders).
+    const key = 'cal:' + ev.eventId;
+    const repeat = calRepeatOf(ev);
+    // A reminder that repeats by itself keeps its own date, so its date is not part of what "the calendar changed" means.
+    const snap = (repeat === 'none' ? [title, dueAt, dueTime, endTime || '', place || ''] : [title, dueTime, endTime || '', place || '', repeat]).join('|');
+    return { key, title, dueAt, dueTime, endTime, place, details, snap, repeat };
+}
+
+// DOCMAN reminders repeat every month or every year on their own. A calendar event maps onto that only when it is a plain
+// "every month" / "every year" with no end and no "second Tuesday" style rule; anything else (daily, weekly, custom) comes
+// in as its NEXT occurrence only, and the next Sync moves it on.
+function calRepeatOf(ev) {
+    const rule = String(ev.rrule || '').toUpperCase();
+    if (!ev.recurring || !rule) return 'none';
+    if (/UNTIL=|COUNT=|BYDAY|BYSETPOS|BYWEEKNO|BYYEARDAY|BYMONTH=|BYMONTHDAY=[^;]*[,-]/.test(rule)) return 'none';
+    const interval = /INTERVAL=(\d+)/.exec(rule);
+    if (interval && Number(interval[1]) !== 1) return 'none';
+    if (/FREQ=MONTHLY/.test(rule)) return 'monthly';
+    if (/FREQ=YEARLY/.test(rule)) return 'yearly';
+    return 'none';
+}
+
+// When a calendar reminder rings: 8:00 AM on its day, then every REMINDER_REPEAT_MINUTES for REMINDER_REPEAT_HOURS. Slots already
+// past are dropped (ids keep their index so a re-arm replaces the same alarms). If every slot is past but the event itself is still
+// ahead today, one alert at the event time.
+function calAlertSlots(r, now) {
+    const morning = new Date(r.dueAt + 'T' + CAL_MORNING + ':00');
+    const eventAt = new Date(r.dueAt + 'T' + (r.dueTime || '09:00') + ':00');
+    const slots = [];
+    for (let i = 0; i < reminderRepeatCount(); i++) {
+        const t = new Date(morning.getTime() + i * REMINDER_REPEAT_MINUTES * 60000);
+        if (t > now) slots.push({ at: t, i });
+    }
+    if (!slots.length && eventAt > now) slots.push({ at: eventAt, i: 0 });
+    return slots;
+}
+
+// Re-arms every imported reminder's alerts: first clears all of theirs (so the count is exact), then arms the nearest events inside
+// the alarm budget. Safe to call again and again; run after a sync and shortly after launch.
+async function armCalendarReminders(askPermission) {
+    const plugin = window.Capacitor?.Plugins?.LocalNotifications;
+    if (!plugin || !isNativePlatform()) return;
+    try {
+        const imported = reminders.filter(r => r.calKey && r.dueAt);
+        if (!imported.length) return;
+        const now = new Date();
+        let perm = await plugin.checkPermissions();
+        if (perm.display !== 'granted' && askPermission) perm = await plugin.requestPermissions();
+        if (perm.display !== 'granted') return;
+
+        const ours = [];
+        for (const r of imported) for (const id of reminderNotificationIds(r.id)) ours.push({ id });
+        try { await plugin.cancel({ notifications: ours }); } catch (e) { /* nothing was armed */ }
+
+        let room = ALARM_BUDGET;
+        try { room -= ((await plugin.getPending())?.notifications || []).length; } catch (e) { /* count unknown: the event cap still applies */ }
+        const cands = imported
+            .filter(r => r.dueAckFor !== reminderOccurrenceKey(r))
+            .map(r => ({ r, slots: calAlertSlots(r, now) }))
+            .filter(x => x.slots.length)
+            .sort((a, b) => a.slots[0].at - b.slots[0].at);
+
+        const notifications = [];
+        let events = 0;
+        for (const x of cands) {
+            if (events >= CAL_ALARM_EVENTS || notifications.length + x.slots.length > room) break;
+            events++;
+            for (const { at, i } of x.slots) {
+                notifications.push({
+                    id: reminderNotificationIdFor(x.r.id, i),
+                    title: i === 0 ? 'Reminder' : 'Reminder still due',
+                    body: 'You have a reminder due. Open DOCMAN to see it.',
+                    schedule: { at, allowWhileIdle: true },
+                    channelId: ALERT_CHANNEL_ID,
+                    visibility: 1,
+                    extra: { kind: 'reminder', reminderId: x.r.id },
+                    group: `docman-reminder-${reminderNotificationIdFor(x.r.id, 0)}`,
+                    autoCancel: true
+                });
+            }
+        }
+        if (notifications.length) await plugin.schedule({ notifications });
+    } catch (e) {
+        console.warn('Could not arm calendar reminders:', e);
+    }
+}
+
+// opts.auto = the silent run started by the Auto switch: Pro only, never asks for anything, no free try, speaks only when it changed something.
+async function syncPhoneCalendar(opts) {
+    const auto = !!(opts && opts.auto);
+    if (calSyncBusy) return;
+    const cal = window.Capacitor?.Plugins?.CalendarImport;
+    if (!cal || !cal.getEvents) { if (!auto) showToast('Calendar sync is not available in this version', true); return; }
+    if (auto) {
+        if (!entitlement.purchased) return;
+    } else if (!requireProTool('calsync')) {   // Pro, with one free try (spent only after a sync that worked).
+        return;
+    }
+    calSyncBusy = true;
+    if (!auto) haptic.press();
+    const btn = document.getElementById('expdocSyncCal');
+    if (btn && !auto) { btn.disabled = true; btn.classList.add('xc-sync-busy'); }
+    try {
+        let perm = await cal.checkPermissions();
+        if (perm.calendar !== 'granted' && auto) {
+            // The permission was taken away in Android's settings: say so once and stop trying.
+            calSetAuto(false);
+            showToast('Auto-sync turned off: DOCMAN no longer has calendar access', true);
+            return;
+        }
+        if (perm.calendar !== 'granted') {
+            expectNativeReturn();
+            perm = await cal.requestPermissions();
+        }
+        if (perm.calendar !== 'granted') {
+            showToast('Allow calendar access for DOCMAN (phone Settings > Apps > DOCMAN > Permissions) to sync', true);
+            return;
+        }
+        const startMs = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime();
+        const res = await cal.getEvents({ startMs, endMs: startMs + CAL_SYNC_DAYS * 86400000 });
+        const events = (res && res.events) || [];
+
+        const todayIso = localTodayIso();
+        const nowMs = Date.now();
+        // Pressing the button yourself brings back reminders you deleted earlier (you asked for the sync on purpose);
+        // the silent Auto-sync keeps them deleted, so a reminder you removed does not return every few hours.
+        if (!auto) { try { localStorage.removeItem(CAL_DISMISSED_KEY); } catch (e) { /* the set below is then empty anyway */ } }
+        const dismissed = auto ? calDismissed() : new Set();
+        const seenKeys = new Set();
+        const wanted = [];
+        for (const ev of events) {                                   // already in date order
+            if (!ev || ev.eventId == null || !ev.begin) continue;
+            if (!ev.allDay && ev.end && ev.end < nowMs) continue;    // already over
+            const f = calEventFields(ev);
+            if (f.dueAt < todayIso) continue;                        // yesterday's all-day events, etc.
+            if (dismissed.has(f.key) || seenKeys.has(f.key)) continue;   // a series: its nearest occurrence only
+            seenKeys.add(f.key);
+            wanted.push(f);
+            if (wanted.length >= CAL_MAX_REMINDERS) break;
+        }
+
+        // The first version imported every occurrence of a repeating event as its own reminder (key "cal:<id>:<day>"). Those
+        // duplicates are the one thing a sync removes.
+        const OLD_KEY = /^cal:[^:]+:\d{4}-\d{2}-\d{2}$/;
+        const stale = reminders.filter(r => r.calKey && OLD_KEY.test(r.calKey));
+        for (const r of stale) { try { await cancelReminderNotification(r.id); } catch (e) { /* nothing armed */ } }
+        const removed = stale.length;
+        if (removed) reminders = reminders.filter(r => !(r.calKey && OLD_KEY.test(r.calKey)));
+
+        const byKey = new Map();
+        for (const r of reminders) if (r.calKey) byKey.set(r.calKey, r);
+        let added = 0, updated = 0, seq = 0;
+        const stamp = Date.now();
+        for (const f of wanted) {
+            const ex = byKey.get(f.key);
+            if (ex) {
+                if (ex.calSnap !== f.snap) {                         // the CALENDAR changed this event
+                    ex.title = f.title; ex.dueTime = f.dueTime; ex.endTime = f.endTime;
+                    ex.place = f.place; ex.details = f.details; ex.calSnap = f.snap;
+                    const selfRepeats = f.repeat !== 'none' && ex.repeat === f.repeat;   // it rolls its own date forward
+                    if (!selfRepeats) {
+                        ex.dueAt = f.dueAt;
+                        ex.repeatAnchorDay = Number(f.dueAt.slice(8, 10)) || 1;
+                        ex.dueAckFor = null;
+                    }
+                    ex.repeat = f.repeat;
+                    updated++;
+                }
+                continue;
+            }
+            reminders.push({
+                id: stamp + '-c' + (seq++) + '-' + Math.random().toString(36).slice(2, 6),
+                title: f.title, dueAt: f.dueAt, dueTime: f.dueTime, endTime: f.endTime,
+                repeat: f.repeat, repeatAnchorDay: Number(f.dueAt.slice(8, 10)) || 1,
+                noteRef: null, place: f.place, details: f.details, createdAt: stamp,
+                calKey: f.key, calSnap: f.snap, source: 'calendar'
+            });
+            added++;
+        }
+        saveReminders();
+        try { localStorage.setItem(CAL_LAST_SYNC_KEY, String(Date.now())); } catch (e) { /* the next check just runs sooner */ }
+        if (!auto) {
+            await spendFreeTry('calsync');
+            // One exact-alarm check for the whole batch (it can open a system screen, so never from the silent run).
+            try { await ensureExactAlarmAllowed(); } catch (e) { /* alarms are then inexact */ }
+        }
+        const changed = added + updated + removed;
+        if (!auto || changed) await armCalendarReminders(!auto);
+
+        const detail = added + ' added' + (updated ? ', ' + updated + ' updated' : '') + (removed ? ', ' + removed + ' duplicates removed' : '') + (wanted.length >= CAL_MAX_REMINDERS ? ' (nearest ' + CAL_MAX_REMINDERS + ')' : '');
+        if (auto) {
+            // Redraw only a Reminders list that is on screen and not in the middle of "Add reminder".
+            if (changed && document.getElementById('expdocSyncCal') && !remindersCalMode) showExpiringDocumentsPanel('reminders', { rerender: true });
+            if (changed) showToast('Calendar auto-synced: ' + detail);
+        } else {
+            remindersCalMode = false;
+            showExpiringDocumentsPanel('reminders', { rerender: true });
+            if (!events.length) showToast('No upcoming events found in your phone calendar');
+            else if (!changed) showToast('Calendar is already up to date');
+            else showToast('Calendar synced: ' + detail);
+        }
+    } catch (e) {
+        console.warn('Calendar sync failed:', e);
+        if (!auto) showToast('Could not read the calendar: ' + ((e && e.message) || 'unknown error'), true);
+    } finally {
+        calSyncBusy = false;
+        const b = document.getElementById('expdocSyncCal');
+        if (b) { b.disabled = false; b.classList.remove('xc-sync-busy'); }
+    }
+}
+
+// ---- Auto-sync switch (inside the Sync Calendar button) -----------------------------------------------------------------
+const CAL_AUTO_KEY = 'docman_cal_auto_v1';
+const CAL_LAST_SYNC_KEY = 'docman_cal_last_sync_v1';
+const CAL_AUTO_EVERY_MS = 2 * 60000;        // at most one automatic sync every 2 minutes (it was 6 hours: a new calendar event took too long to show)
+function calAutoOn() {
+    try { return localStorage.getItem(CAL_AUTO_KEY) === '1'; } catch (e) { return false; }
+}
+function calSetAuto(on) {
+    try { if (on) localStorage.setItem(CAL_AUTO_KEY, '1'); else localStorage.removeItem(CAL_AUTO_KEY); } catch (e) { /* not remembered */ }
+    const sw = document.getElementById('expdocAutoSw');
+    if (sw) { sw.classList.toggle('on', !!on); sw.setAttribute('aria-checked', on ? 'true' : 'false'); }
+    const lk = document.querySelector('.xc-link');
+    if (lk) lk.classList.toggle('on', !!on);
+    const sb = document.getElementById('expdocSyncCal');
+    if (sb) { sb.classList.toggle('xc-sync-disabled', !!on); sb.setAttribute('aria-disabled', on ? 'true' : 'false'); }
+}
+async function toggleCalAuto() {
+    haptic.press();
+    if (calAutoOn()) { calSetAuto(false); showToast('Auto-sync is off'); return; }
+    if (!entitlement.purchased) { showPaywall('calauto'); return; }
+    const cal = window.Capacitor?.Plugins?.CalendarImport;
+    if (!cal || !cal.getEvents) { showToast('Calendar sync is not available in this version', true); return; }
+    try {
+        let perm = await cal.checkPermissions();
+        if (perm.calendar !== 'granted') { expectNativeReturn(); perm = await cal.requestPermissions(); }
+        if (perm.calendar !== 'granted') {
+            showToast('Allow calendar access for DOCMAN (phone Settings > Apps > DOCMAN > Permissions) to use Auto-sync', true);
+            return;
+        }
+    } catch (e) { showToast('Could not turn Auto-sync on', true); return; }
+    calSetAuto(true);
+    showToast('Auto-sync is on');
+    syncPhoneCalendar({ auto: true });          // the first one now
+}
+// Called shortly after launch and whenever the app comes back to the front.
+function autoSyncCalendarIfDue() {
+    if (!calAutoOn() || !entitlement.purchased || calSyncBusy) return;
+    let last = 0;
+    try { last = Number(localStorage.getItem(CAL_LAST_SYNC_KEY)) || 0; } catch (e) { /* treated as never */ }
+    if (Date.now() - last < CAL_AUTO_EVERY_MS) return;
+    syncPhoneCalendar({ auto: true });
+}
+
 // Every id one reminder can own, so a reschedule or a delete clears the whole
 // set rather than leaving orphaned repeats to fire later.
 function reminderNotificationIds(reminderId) {
@@ -4004,8 +4428,13 @@ async function scheduleReminderNotification(reminder) {
 
     if (!reminder.dueAt) return;
 
+    // 26 Oct: Done = done for today. A reminder already marked Done for this occurrence is not armed again (e.g. when only its title is edited);
+    // changing the date or time makes a new occurrence key, which arms it normally.
+    if (reminder.dueAckFor && reminder.dueAckFor === reminderOccurrenceKey(reminder)) return;
     const at = new Date(reminder.dueAt + 'T' + (reminder.dueTime || '09:00') + ':00'); // defaults to 9am local if no time was set
-    if (at <= new Date()) return;
+    // A calendar reminder rings at 8:00 AM on its day (see "Sync Calendar"), not at the event time.
+    const calSlots = reminder.calKey ? calAlertSlots(reminder, new Date()) : null;
+    if (calSlots ? !calSlots.length : at <= new Date()) return;
 
     try {
         let perm = await plugin.checkPermissions();
@@ -4031,9 +4460,9 @@ async function scheduleReminderNotification(reminder) {
         // One notification was easy to miss with nothing to follow it.
         const now = new Date();
         const notifications = [];
-        for (let i = 0; i < reminderRepeatCount(); i++) {
-            const at_i = new Date(at.getTime() + i * REMINDER_REPEAT_MINUTES * 60000);
-            if (at_i <= now) continue; // a slot already past is simply skipped
+        const slots = calSlots || Array.from({ length: reminderRepeatCount() }, (_, i) => ({ at: new Date(at.getTime() + i * REMINDER_REPEAT_MINUTES * 60000), i }))
+            .filter(sl => sl.at > now); // a slot already past is simply skipped
+        for (const { at: at_i, i } of slots) {
             notifications.push({
                 id: reminderNotificationIdFor(reminder.id, i),
                 title: i === 0 ? 'Reminder' : 'Reminder still due',
@@ -4048,6 +4477,13 @@ async function scheduleReminderNotification(reminder) {
                 autoCancel: true,
             });
         }
+        if (!notifications.length) return;
+        // Android allows 500 alarms per app and the plugin crashes the app past that (on its own thread). The expiry alerts stop at ALARM_BUDGET;
+        // a reminder may use what is left under a hard cap of 490, nearest alerts first.
+        try {
+            const room = 490 - ((await plugin.getPending())?.notifications || []).length;
+            if (room < notifications.length) { notifications.sort((a, b) => a.schedule.at - b.schedule.at); notifications.length = Math.max(0, room); }
+        } catch (e) { /* count unknown -- schedule as before */ }
         if (!notifications.length) return;
         await plugin.schedule({ notifications });
     } catch (e) {
@@ -4067,6 +4503,37 @@ async function scheduleReminderNotification(reminder) {
 // Matched against the plugin's own delivered list rather than rebuilt from the
 // ids, because Android identifies a posted notification by tag as well as id,
 // and handing its objects straight back keeps whatever tag it used.
+// 26 Oct (user rule): DONE = done for TODAY. The alarms of that item that are still queued for today are cancelled and what already sits in the shade is
+// removed; alarms on later days stay (an expiry alerts again tomorrow at its hour). Not Done = the 30-minute repeats carry on.
+async function silenceTodaysAlarms(ids) {
+    const plugin = window.Capacitor?.Plugins?.LocalNotifications;
+    if (!plugin || !isNativePlatform() || !ids || !ids.length) return;
+    try {
+        const idset = new Set(ids), t = new Date();
+        const sameDay = (d) => d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate();
+        const pending = (await plugin.getPending())?.notifications || [];
+        const today = pending.filter(n => idset.has(n.id) && n.schedule && n.schedule.at && sameDay(new Date(n.schedule.at)));
+        if (today.length) await plugin.cancel({ notifications: today.map(n => ({ id: n.id })) });
+    } catch (e) { /* nothing queued -- fine */ }
+    try {
+        const delivered = (await plugin.getDeliveredNotifications())?.notifications || [];
+        const idset2 = new Set(ids);
+        const mine = delivered.filter(n => idset2.has(n.id));
+        if (mine.length) await plugin.removeDeliveredNotifications({ notifications: mine });
+    } catch (e) { /* nothing delivered -- fine */ }
+}
+
+// One pass at launch: reminders already acknowledged for their current occurrence must have nothing queued for today (older builds left the repeats armed).
+async function silenceAckedReminderAlarms() {
+    const plugin = window.Capacitor?.Plugins?.LocalNotifications;
+    if (!plugin || !isNativePlatform()) return;
+    try {
+        const ids = [];
+        for (const r of reminders) if (r.dueAt && !r.calKey && r.dueAckFor && r.dueAckFor === reminderOccurrenceKey(r)) ids.push(...reminderNotificationIds(r.id));
+        if (ids.length) await silenceTodaysAlarms(ids);
+    } catch (e) { /* nothing to clean */ }
+}
+
 async function removeReminderFromTray(reminderId) {
     const plugin = window.Capacitor?.Plugins?.LocalNotifications;
     if (!plugin || !isNativePlatform()) return;
@@ -4116,14 +4583,30 @@ function formatTimeOfDay(timeStr) {
 }
 
 function addReminderFlow(presetDateIso, noteRef, presetTitle) {
+    if (!canAddReminder()) { showPaywall('reminder'); return; }
+    // 20 Oct: the close button (X, Cancel, or a tap outside) in the add-reminder windows closes the WHOLE page: these windows and the
+    // Reminders panel under them. (Not when the flow was started from a note: there is no panel then.)
+    const closeAll = () => {
+        if (noteRef) return;
+        remindersCalMode = false;
+        expdocLastTab = null; reminderBannerId = null;
+        document.getElementById('reminderStickyNote')?.remove();
+        document.getElementById('expiringDocsOverlay')?.remove();
+        if (typeof updateAttentionBell === 'function') updateAttentionBell();
+    };
     showPromptModal('Reminder title:', presetTitle || '', (title) => {
-        if (title === null || title === undefined || !title.trim()) return;
-        showDateModal('Due date & time:', presetDateIso || '', async (result) => {
+        if (title === null || title === undefined) { closeAll(); return; }
+        if (!title.trim()) return;
+        showTextareaPromptModal('Details (optional):', '', (detailsRaw) => {
+        // Skip / X / tapping outside = no details; the reminder carries on to the date step.
+        const details = (detailsRaw || '').trim();
+        // 26 Oct: opens with today already selected (was: no day selected, which was confusing); a preset day (e.g. a document's expiry) still wins.
+        showDateModal('Due date & time', presetDateIso || localTodayIso(), async (result) => {
             // undefined = the user hit Cancel/X/tapped outside the date step
             // -- that means abandon adding the reminder entirely. requireDate
             // means Save itself won't close with an empty selection, so a
             // successful result here is always a real { date, time }.
-            if (result === undefined) return;
+            if (result === undefined || result === null) { closeAll(); return; }
             const reminder = {
                 id: Date.now() + '-' + Math.random().toString(36).substr(2, 6),
                 title: title.trim(),
@@ -4134,18 +4617,28 @@ function addReminderFlow(presetDateIso, noteRef, presetTitle) {
                 repeatAnchorDay: Number(result.date.slice(8, 10)) || 1,
                 noteRef: noteRef || null,
                 place: null,
+                details: details || null,
                 createdAt: Date.now()
             };
             reminders.unshift(reminder);
             saveReminders();
-            await scheduleReminderNotification(reminder);
+            // Land the calendar on the day just used, so the new reminder is the one on screen
+            // (it used to stay on the old day and say "No reminders on this day").
+            const [ry, rm] = reminder.dueAt.split('-').map(Number);
+            if (ry && rm) { remindersCalYear = ry; remindersCalMonth = rm - 1; remindersCalSelectedIso = reminder.dueAt; }
             // Set from a note: the note is what the user is looking at, so
             // redraw that (the bell appears straight away) instead of
             // throwing the reminders panel over the top of it.
-            if (noteRef) { render(); showToast('⏰ Reminder set'); return; }
+            if (noteRef) { await scheduleReminderNotification(reminder); render(); showToast('⏰ Reminder set'); return; }
+            // Saved: show the list AT ONCE (scheduling the alarm can take a moment and the old pick-a-day
+            // page used to sit there meanwhile), then schedule.
+            remindersCalMode = false;
+            showToast('⏰ Reminder set');
             showExpiringDocumentsPanel('reminders', { rerender: true });
+            await scheduleReminderNotification(reminder);
         }, { disallowPast: true, withTime: true, withEndTime: true, requireDate: true, withRepeat: true });
-    }, { icon: 'fa-bell', subtitle: 'What would you like to be reminded about?', placeholder: 'Reminder title' });
+        }, { xcFlow: true, icon: 'fa-note-sticky', iconGradient: 'linear-gradient(135deg,#ff8a1f,#f2570a)', onDismiss: closeAll, subtitle: 'Anything you want to remember with it. You can leave this empty.', placeholder: 'Write something...', okLabel: 'Next', cancelLabel: 'Skip' });
+    }, { icon: 'fa-bell', iconGradient: 'linear-gradient(135deg,#ff8a1f,#f2570a)', onDismiss: closeAll, subtitle: 'What would you like to be reminded about?', placeholder: 'Reminder title' });
 }
 
 // Reachable by long-press on a reminder row, or its explicit Edit button.
@@ -4159,7 +4652,21 @@ function editReminderFlow(reminderId) {
     showPromptModal('Edit reminder:', reminder.title, (title) => {
         if (title === null) return;
         if (title.trim()) reminder.title = title.trim();
-        showDateModal('Due date & time (optional):', reminder.dueAt || '', async (result) => {
+        // An overdue reminder would open with its old, past day selected and Save would refuse it ("Due date can't be
+        // in the past"). Start such a reminder on a day and time that are still ahead: an hour from now, on the 5 minutes.
+        let startDate = reminder.dueAt || '', startTime = reminder.dueTime || '09:00', startEnd = reminder.endTime || null;
+        const ahead = new Date(Date.now() + 60 * 60000);
+        ahead.setMinutes(Math.ceil(ahead.getMinutes() / 5) * 5, 0, 0);
+        const aheadIso = ahead.getFullYear() + '-' + String(ahead.getMonth() + 1).padStart(2, '0') + '-' + String(ahead.getDate()).padStart(2, '0');
+        const aheadTime = String(ahead.getHours()).padStart(2, '0') + ':' + String(ahead.getMinutes()).padStart(2, '0');
+        const [sy, sm, sd] = (reminder.dueAt || '').split('-').map(Number);
+        const [sh, smin] = (reminder.dueTime || '09:00').split(':').map(Number);
+        const dueMoment = reminder.dueAt ? new Date(sy, sm - 1, sd, sh || 0, smin || 0) : null;
+        if (dueMoment && dueMoment <= new Date()) { startDate = aheadIso; startTime = aheadTime; startEnd = null; }
+        showTextareaPromptModal('Details (optional):', reminder.details || '', (detailsRaw) => {
+        // Skip keeps what was there; saving an empty box clears the details.
+        if (detailsRaw !== null && detailsRaw !== undefined) reminder.details = detailsRaw.trim() || null;
+        showDateModal('Due date & time (optional)', startDate, async (result) => {
             if (result !== undefined) {
                 reminder.dueAt = result ? result.date : null;
                 reminder.dueTime = result ? result.time : null;
@@ -4168,10 +4675,16 @@ function editReminderFlow(reminderId) {
                 reminder.repeatAnchorDay = result ? (Number(result.date.slice(8, 10)) || 1) : null;
             }
             saveReminders();
-            await scheduleReminderNotification(reminder);
+            if (reminder.dueAt) {
+                const [ey, em] = reminder.dueAt.split('-').map(Number);
+                if (ey && em) { remindersCalYear = ey; remindersCalMonth = em - 1; remindersCalSelectedIso = reminder.dueAt; }
+            }
+            remindersCalMode = false;
             showExpiringDocumentsPanel('reminders', { rerender: true });
-        }, { disallowPast: true, withTime: true, withEndTime: true, defaultTime: reminder.dueTime || '09:00', defaultEndTime: reminder.endTime || null, withRepeat: true, defaultRepeat: reminder.repeat || 'none' });
-    }, { icon: 'fa-bell', subtitle: 'Update the reminder title', placeholder: 'Reminder title' });
+            await scheduleReminderNotification(reminder);
+        }, { disallowPast: true, withTime: true, withEndTime: true, defaultTime: startTime, defaultEndTime: startEnd, withRepeat: true, defaultRepeat: reminder.repeat || 'none' });
+        }, { xcFlow: true, icon: 'fa-note-sticky', iconGradient: 'linear-gradient(135deg,#ff8a1f,#f2570a)', subtitle: 'Anything you want to remember with it. You can leave this empty.', placeholder: 'Write something...', okLabel: 'Next', cancelLabel: 'Skip' });
+    }, { icon: 'fa-bell', iconGradient: 'linear-gradient(135deg,#ff8a1f,#f2570a)', subtitle: 'Update the reminder title', placeholder: 'Reminder title' });
 }
 
 // Tear a row off the list, the way a day comes off a desk calendar: it hinges
@@ -4238,6 +4751,9 @@ function deleteReminder(reminderId) {
         // Save first, animate second: the record is gone from storage before
         // anything on screen moves, so an interrupted animation cannot leave a
         // deleted reminder behind.
+        // A reminder that came from the phone's calendar is remembered as deleted, so the next Sync Calendar does not bring it back.
+        const gone = reminders.find(x => x.id === reminderId);
+        if (gone && gone.calKey) calRememberDismissed(gone.calKey);
         reminders = reminders.filter(x => x.id !== reminderId);
         saveReminders();
         await cancelReminderNotification(reminderId);
@@ -4256,7 +4772,31 @@ function deleteReminder(reminderId) {
 // chained so the second opened as the first closed, which meant being asked
 // the same question twice on a single launch. Same red/black confirm modal as
 // before -- only the two have been folded into one line.
-function checkLaunchAlertsOnLoad(onDone) {
+// The bell is in the header the moment the app opens -- armed before the first
+// render, so the box logo never shows first -- and the banner follows it.
+function armLaunchBell() {
+    const sets = getAttentionSets();
+    attentionBellArmed = (sets.expiring.length + sets.due.length) > 0;
+    updateAttentionBell();
+}
+
+async function checkLaunchAlertsOnLoad(onDone) {
+    armLaunchBell();
+    // The user's rule (25 Oct): Done hides the banner, but a reminder alert that is sitting in the shade (and counting on the app
+    // icon) is a fresh alert. Tapping it opens the note; opening the app instead shows the banner with that reminder, even if it was
+    // marked Done. So the delivered alerts are read here first, then taken out of the shade (the queued repeats stay armed).
+    const alertedIds = new Set();
+    const plugin = window.Capacitor?.Plugins?.LocalNotifications;
+    if (plugin && isNativePlatform()) {
+        try {
+            const byNotifId = new Map();
+            reminders.forEach(r => reminderNotificationIds(r.id).forEach(id => byNotifId.set(id, r.id)));
+            const delivered = (await plugin.getDeliveredNotifications())?.notifications || [];
+            const mine = delivered.filter(n => byNotifId.has(n.id) || (n.extra && n.extra.kind === 'reminder'));
+            mine.forEach(n => { const rid = byNotifId.get(n.id) || (n.extra && n.extra.reminderId); if (rid) alertedIds.add(rid); });
+            if (mine.length) await plugin.removeDeliveredNotifications({ notifications: mine });
+        } catch (e) { /* nothing delivered -- fine */ }
+    }
     // See launchedFromNotification: this launch already carried its own alert.
     if (launchedFromNotification) { if (onDone) onDone(); return; }
     // Only documents still ahead of their date. Today's and overdue ones are
@@ -4265,7 +4805,9 @@ function checkLaunchAlertsOnLoad(onDone) {
     // which is the double popup this dialog exists to avoid.
     // Only what is 3 days away or closer. Further out is in the Expiring panel and
     // gets its own notification; at launch it is just noise. (Briefly 14 days.)
-    const expiring = getAllExpiringFiles(3).filter(e => e.days > 0);
+    // Today's and overdue ones are in the same card panel (they used to have their
+    // own red box): shown until acknowledged, like before.
+    const expiring = getAttentionSets().expiring;
 
     // A due reminder is raised in this same dialog, exactly as an expiring
     // document is. This dialog is the whole of it: a bar on the home screen
@@ -4273,7 +4815,9 @@ function checkLaunchAlertsOnLoad(onDone) {
     // through the notification, being shown it a second time on the page you
     // land on is nagging, not helping.
     const now = new Date();
-    const due = reminders.filter(r => isReminderLiveUnseen(r, now));
+    const due = getAttentionSets().due.slice();
+    // Reminders whose alert was waiting in the shade join the banner even when they were marked Done.
+    reminders.forEach(r => { if (alertedIds.has(r.id) && !due.includes(r)) due.push(r); });
 
     if (!expiring.length && !due.length) { if (onDone) onDone(); return; }
 
@@ -4947,6 +5491,7 @@ function selectDepartment(d) {
     clearNavReturn();
     guardFolderEntry([d], () => {
         navigateWithPageTurn(() => {
+            if (currentActiveTab !== 'pdfs') applyFilesNotesChrome('pdfs');
             currentPath = [d];
             render();
         }, 'forward');
@@ -5651,17 +6196,16 @@ function docCardHtml({ file, folderPath, days }) {
         '<div class="dc-acts">' +
         '<button type="button" class="dc-act" data-act="view"><span>' + DOC_CARD_ICONS.view + '</span>View</button>' +
         '<button type="button" class="dc-act" data-act="edit"><span>' + DOC_CARD_ICONS.edit + '</span>Edit</button>' +
-        '<button type="button" class="dc-act" data-act="remind"><span>' + DOC_CARD_ICONS.remind + '</span>Remind</button>' +
         '</div></div>';
 }
 
 // Wires the three buttons on every card under root. closePanel takes the panel
 // down before View opens the file over the top of it.
 function wireDocCardActions(root, closePanel, opts = {}) {
-    root.querySelectorAll('.dc-card[data-dc-file]').forEach(card => {
+    root.querySelectorAll('.dc-card[data-dc-file], .xc-card[data-dc-file]').forEach(card => {
         const folderPath = card.dataset.dcFolder || '';
         const fileName = card.dataset.dcFile;
-        card.querySelectorAll('.dc-act').forEach(btn => {
+        card.querySelectorAll('.dc-act, .xc-act').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 haptic.press();
@@ -5671,14 +6215,19 @@ function wireDocCardActions(root, closePanel, opts = {}) {
                 // before whatever was chosen opens.
                 if (opts.closeFirst) closePanel();
                 if (btn.dataset.act === 'view') {
+                    // Goes to the file's folder and flashes it rather than opening it; back
+                    // returns to this panel, on the tab it was on (read before close() clears it).
+                    const cameFromTab = (typeof expdocLastTab !== 'undefined' && expdocLastTab) || 'expiring';
+                    markNavReturn(() => showExpiringDocumentsPanel(cameFromTab));
                     closePanel();
-                    openFile(fileName, folderPath);
+                    revealFileInFolder(fileName, folderPath);
                 } else if (btn.dataset.act === 'edit') {
-                    showDateModal('New expiry date for "' + escapeHtml(fileName) + '":', file.expiryDate || '', async (val) => {
-                        if (val === null || val === undefined) return;
-                        await setFileExpiryDate(folderPath, fileName, val);
-                        if (!opts.closeFirst) showExpiringDocumentsPanel('expiring', { rerender: true });
-                    }, { disallowPast: true, minTomorrow: true });
+                    // 26 Oct: the card has only View and Edit. Edit now runs the same steps as Add reminder: title, details, then the
+                    // date & time window (this is what the removed "Remind" button did). The old expiry-date picker is no longer
+                    // opened from here; "Set expiry date" in the file's own menu still changes a document's expiry date.
+                    const today = localTodayIso();
+                    const preset = file.expiryDate && file.expiryDate >= today ? file.expiryDate : undefined;
+                    addReminderFlow(preset, null, 'Renew ' + (fileName.replace(/\.[^.]+$/, '') || fileName));
                 } else {
                     const today = localTodayIso();
                     const preset = file.expiryDate && file.expiryDate >= today ? file.expiryDate : undefined;
@@ -5687,6 +6236,72 @@ function wireDocCardActions(root, closePanel, opts = {}) {
             });
         });
     });
+}
+
+// ---- Panel cards (Expiring / Reminders tabs): orange rail of actions on the left, details on the right.
+const XC_MORE = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
+// The header bell (NA_ICONS.bell without its sparks), still, so a reminder card wears the same bell as the main page.
+const XC_BELL = '<svg viewBox="0 0 80 80"><defs><linearGradient id="xcBell" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#fff0a8"/><stop offset="0.45" stop-color="#ffc83d"/><stop offset="1" stop-color="#e8860c"/></linearGradient><linearGradient id="xcBellRim" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffb32e"/><stop offset="1" stop-color="#d97706"/></linearGradient><radialGradient id="xcClap" cx="0.4" cy="0.35" r="0.7"><stop offset="0" stop-color="#ffd76a"/><stop offset="1" stop-color="#d97706"/></radialGradient></defs><g><circle cx="40" cy="9" r="5" fill="url(#xcClap)"/><path d="M40 13c-14 0-22 10-22 24v13l-7 11h58l-7-11V37c0-14-8-24-22-24z" fill="url(#xcBell)"/><path d="M33 20c-7 4-10 11-10 18" stroke="#fffbe6" stroke-opacity=".75" stroke-width="3.2" stroke-linecap="round" fill="none"/><rect x="9" y="58" width="62" height="7" rx="3.5" fill="url(#xcBellRim)"/><path d="M31 67a9 9 0 0 0 18 0z" fill="url(#xcClap)"/></g></svg>';
+const XC_DONE_BTN = '<button type="button" class="xc-done"><i class="fas fa-check"></i> Done</button>';
+const XC_TRASH = '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>';
+
+function xcDocCardHtml({ file, folderPath, days }) {
+    const tone = docExpiryTone(days);
+    const pct = days < 0 ? 100 : Math.max(4, Math.min(100, Math.round((1 - days / 30) * 100)));
+    const name = file.name.replace(/\.[^.]+$/, '') || file.name;
+    const where = (folderPath || '').split('/').join(' / ') || 'Root';
+    const left = days < 0 ? 'Expired' : days === 0 ? 'Today' : days + (days === 1 ? ' day left' : ' days left');
+    return '<div class="xc-card" data-dc-folder="' + escapeHtml(folderPath) + '" data-dc-file="' + escapeHtml(file.name) + '">' +
+        '<div class="xc-rail">' +
+        '<button type="button" class="xc-act" data-act="view"><span>' + DOC_CARD_ICONS.view + '</span>View</button>' +
+        '<button type="button" class="xc-act" data-act="edit"><span>' + DOC_CARD_ICONS.edit + '</span>Edit</button></div>' +
+        '<div class="xc-body">' + docPictureHtml(file, folderPath) +
+        '<div class="xc-mid"><div class="dc-name">' + escapeHtml(name) + '</div>' +
+        '<div class="dc-where">' + escapeHtml(where) + '</div>' +
+        '<div class="dc-exp dc-' + tone + '">' + DOC_CARD_ICONS.cal + '<span>' + docExpiryWords(days) + '</span></div>' +
+        '<div class="dc-bar dc-' + tone + '"><b style="width:' + pct + '%"></b></div>' +
+        '<div class="xc-foot"><span class="xc-left">' + left + '</span>' + (isExpiryAcknowledged(file) || days > 7 ? '' : XC_DONE_BTN) + '</div></div>' +
+        '</div></div>';
+}
+
+function xcReminderCardHtml(r, now) {
+    const todayIso = localTodayIso();
+    let days = 0, past = false;
+    if (r.dueAt) {
+        const [y, m, d] = r.dueAt.split('-').map(Number);
+        const [hh, mm] = (r.dueTime || '09:00').split(':').map(Number);
+        past = new Date(y, m - 1, d, hh, mm) <= now;
+        const [ty, tm, td] = todayIso.split('-').map(Number);
+        days = Math.round((new Date(y, m - 1, d) - new Date(ty, tm - 1, td)) / 86400000);
+    }
+    const tone = past ? 'red' : days <= 7 ? 'amber' : 'green';
+    const words = !r.dueAt ? 'No due date' : past ? (days < 0 ? 'Overdue by ' + (-days) + (days === -1 ? ' day' : ' days') : 'Due now') : days === 0 ? 'Due today' : days === 1 ? 'Due tomorrow' : 'In ' + days + ' days';
+    const pct = past || !r.dueAt ? 100 : Math.max(4, Math.min(100, Math.round((1 - days / 30) * 100)));
+    // 27 Oct: the card says exactly when it was / is due (weekday, date, time) and how it repeats, instead of the word "Overdue" twice.
+    const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const prettyDay = (iso) => { const [yy, mo, dd] = iso.split('-').map(Number); return DOW[new Date(yy, mo - 1, dd).getDay()] + ' ' + dd + ' ' + REMINDER_MONTHS[mo - 1]; };
+    const dayWord = days === 0 ? 'today' : days === -1 ? 'yesterday' : days === 1 ? 'tomorrow' : days < 0 ? (-days) + ' days ago' : 'in ' + days + ' days';
+    const timeTxt = r.dueTime ? formatTimeOfDay(r.dueTime) + (r.endTime ? ' – ' + formatTimeOfDay(r.endTime) : '') : '';
+    const sub = !r.dueAt ? 'No due date' : (past && days < 0 ? 'Was due ' : 'Due ') + dayWord + ' · ' + prettyDay(r.dueAt) + (timeTxt ? ', ' + timeTxt : '');
+    const repWord = r.repeat === 'monthly' ? 'Monthly' : r.repeat === 'yearly' ? 'Yearly' : '';
+    let left = '';
+    if (repWord && r.missedDue) left = '<i class="fas fa-rotate"></i> ' + repWord + ' · missed ' + prettyDay(r.missedDue).replace(/^\w+ /, '');
+    else if (repWord) {
+        const [yy, mo, dd] = r.dueAt.split('-').map(Number);
+        const nx = r.repeat === 'yearly' ? new Date(yy + 1, mo - 1, dd) : new Date(yy, mo, dd);
+        left = '<i class="fas fa-rotate"></i> ' + repWord + (past ? ' · next ' + nx.getDate() + ' ' + REMINDER_MONTHS[nx.getMonth()] : '');
+    } else if (past) left = 'Does not repeat';
+    return '<div class="xc-card xc-rem' + (r.id === reminderBannerId ? ' xc-banner' : '') + '" data-rem-id="' + escapeHtml(r.id) + '">' +
+        '<div class="xc-rail">' +
+        '<button type="button" class="xc-act" data-ract="edit"><span>' + DOC_CARD_ICONS.edit + '</span>Edit</button>' +
+        '<button type="button" class="xc-act" data-ract="delete"><span>' + XC_TRASH + '</span>Delete</button></div>' +
+        '<div class="xc-body"><div class="xc-bell">' + XC_BELL + '</div>' +
+        '<div class="xc-mid"><div class="dc-name">' + escapeHtml(r.title || 'Reminder') + '</div>' +
+        '<div class="dc-where">' + escapeHtml(sub) + '</div>' +
+        '<div class="dc-exp dc-' + tone + '">' + DOC_CARD_ICONS.cal + '<span>' + escapeHtml(words) + '</span>' + (isReminderLiveUnseen(r, now) ? XC_DONE_BTN : '') + '</div>' +
+        '<div class="dc-bar dc-' + tone + '"><b style="width:' + pct + '%"></b></div>' +
+        '<div class="xc-foot"><span class="xc-left">' + left + '</span></div></div>' +
+        '</div></div>';
 }
 
 // ---- Reminder cards: the same card as a document, for a reminder that is due.
@@ -5735,11 +6350,8 @@ function wireReminderCardActions(root, closePopup) {
                 if (btn.dataset.act === 'view') openReminderStickyNote(id);
                 else if (btn.dataset.act === 'edit') editReminderFlow(id);
                 else {
-                    // Same as answering the notification: seen, and the repeats
-                    // still queued behind it are cleared.
-                    r.dueAckFor = reminderOccurrenceKey(r);
+                    settleSeenReminder(r, { silence: true });
                     saveReminders();
-                    await cancelReminderNotification(id);
                     showToast('Reminder done');
                 }
             });
@@ -5747,62 +6359,184 @@ function wireReminderCardActions(root, closePopup) {
     });
 }
 
-// The app-open alert: reminders that are due and documents about to expire.
-// One or two items get the full card. Three or more become compact rows -- a
-// small picture, the name and when -- and tapping a row opens its card in place
-// (View / Edit / Remind or Done), so a dozen items stay scannable. Nothing is cut
-// off: every item is in the list, and "See all" goes to the full panel.
-function showExpiryCardsPopup(expiring, due, onDone) {
+// ---- The header bell. While anything needs attention the box logo at the top left
+// gives way to a ringing bell with the count; tapping it opens the same panel the
+// app shows at launch. It stays until the items are dealt with ("Got it", a new date,
+// done), so a launch banner that was only closed does not make it go quiet.
+// "Got it" on a card marks that document as COUNTED: it leaves the bell and the launch
+// panel until its expiry date changes. It is kept apart from expiryAckFor on purpose --
+// that one also silences the notifications, which a document still days away must keep.
+const ATTN_SEEN_KEY = 'docman_attn_seen_v1';
+function loadAttnSeen() {
+    try { return JSON.parse(localStorage.getItem(ATTN_SEEN_KEY)) || {}; } catch (e) { return {}; }
+}
+// Counted lasts for ONE DAY: the stored value is "<expiry date>@<day counted>". Tomorrow the document is
+// unattended again -- while it is within 3 days of expiring or already expired -- so an overdue one is
+// never lost. The permanent stop is "Got it, stop reminding" (or a new expiry date).
+function attnStamp(dateOrKey) { return dateOrKey + '@' + todayIsoDate(); }
+function saveAttnSeen(m) {
+    const today = '@' + todayIsoDate();
+    for (const k of Object.keys(m)) { if (!String(m[k]).endsWith(today)) delete m[k]; } // older days are done with
+    try { localStorage.setItem(ATTN_SEEN_KEY, JSON.stringify(m)); } catch (e) { /* storage blocked: it just counts again */ }
+}
+function isAttnSeen(file, folderPath) {
+    return !!(file && file.expiryDate && loadAttnSeen()[folderPath + '|' + file.name] === attnStamp(file.expiryDate));
+}
+function markAttnSeen(folderPath, file) {
+    if (!file || !file.expiryDate) return;
+    const m = loadAttnSeen();
+    m[folderPath + '|' + file.name] = attnStamp(file.expiryDate);
+    saveAttnSeen(m);
+}
+
+function isAttnSeenRem(r) { return loadAttnSeen()['rem|' + r.id] === attnStamp(reminderOccurrenceKey(r)); }
+function markAttnSeenRem(r) {
+    const m = loadAttnSeen();
+    m['rem|' + r.id] = attnStamp(reminderOccurrenceKey(r));
+    saveAttnSeen(m);
+}
+
+function getAttentionSets() {
+    // 26 Oct (user rule): an expiring document is on the banner / bell only on its milestone days: 7 days before, 3 days before, the day itself, and
+    // every day after it has expired, until Done. Done holds for today only (isExpiryAcknowledged), so Done at 7 days still brings it back at 3 days,
+    // and Done at 3 days brings it back on the day. Days 6, 5, 4, 2 and 1 have no banner (a notification still comes the day before).
+    const expiring = getAllExpiringFiles(7).filter(e => (e.days === 7 || e.days === 3 || e.days <= 0) && !isExpiryAcknowledged(e.file));
+    const due = reminders.filter(r => isReminderLiveUnseen(r, new Date()) && !isReminderStale(r, new Date()));
+    return { expiring, due };
+}
+
+function naRingingBellSvgs(idPrefix) {
+    // The panel's bell without its spark lines, plus sound waves; its own gradient ids so it
+    // still paints while another copy is hidden (a display:none svg does not resolve its defs).
+    const bell = NA_ICONS.bell
+        .replace(/<path d="M12 12l-5-5[^>]*>/, "")
+        .replace('<g transform="rotate(18 40 42)">', '<g>')
+        .replace(/na(Bell|BellRim|Clap)/g, idPrefix + '$1');
+    const waves = '<svg class="na-wv" viewBox="0 0 100 100"><g fill="none" stroke="#ffc83d" stroke-linecap="round" stroke-width="4">' +
+        '<path class="w1" d="M14 34a30 30 0 0 0 0 32"/><path class="w2" d="M5 26a42 42 0 0 0 0 48"/>' +
+        '<path class="w1" d="M86 34a30 30 0 0 1 0 32"/><path class="w2" d="M95 26a42 42 0 0 1 0 48"/></g></svg>';
+    return waves + bell;
+}
+
+function naHeaderBellHtml() {
+    return naRingingBellSvgs('naH') + '<span class="na-hbadge" id="naBellCount"></span>';
+}
+
+// The bell is only "armed" by the launch check (an app open that found something unattended).
+// Adding a reminder or a date during a session therefore does not start it ringing -- it
+// rings after the app is closed and opened again, until the items are acknowledged.
+let attentionBellArmed = false;
+
+function updateAttentionBell() {
+    const logo = document.getElementById('appLogoBtn');
+    if (!logo) return;
+    const { expiring, due } = getAttentionSets();
+    let total = expiring.length + due.length;
+    if (!attentionBellArmed) total = 0;
+    else if (!total) attentionBellArmed = false; // all acknowledged: the box logo is back for good
+    const inner = logo.querySelector('.logo-inner');
+    if (!inner) return;
+    let host = inner.querySelector('.na-hbell');
+    if (total && !host) {
+        host = document.createElement('div');
+        host.className = 'na-hbell';
+        host.setAttribute('aria-hidden', 'true');
+        host.innerHTML = naHeaderBellHtml();
+        inner.appendChild(host);
+    }
+    logo.classList.toggle('na-attn', total > 0);
+    if (total) {
+        const badge = document.getElementById('naBellCount');
+        if (badge) badge.textContent = total > 99 ? '99+' : String(total);
+        logo.setAttribute('aria-label', total + (total === 1 ? ' item needs' : ' items need') + ' attention');
+    } else {
+        logo.setAttribute('aria-label', 'Expiring documents');
+    }
+}
+
+// "View" on an expiring document goes to the folder it lives in and flashes the file, instead
+// of opening it: an expiring document is something to deal with (renew, replace, remove) and
+// those live on the file's own row menu there. Same idea as the dashboard's expiry rows.
+function revealFileInFolder(fileName, folderPath) {
+    currentPath = folderPath ? folderPath.split('/') : [];
+    setActiveTab('pdfs');
+    let tries = 0;
+    const findAndFlash = () => {
+        let card = null;
+        document.querySelectorAll('.file-card').forEach(c => {
+            if (!card && c.dataset.fileName === fileName && c.dataset.folderPath === folderPath) card = c;
+        });
+        if (!card) { if (++tries < 10) setTimeout(findAndFlash, 120); return; }
+        card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        setTimeout(() => {
+            card.classList.add('file-card-flash');
+            setTimeout(() => card.classList.remove('file-card-flash'), 2800);
+        }, 320);
+    };
+    setTimeout(findAndFlash, 160);
+}
+
+// Tapping an expiry notification opens the same card panel the app shows at
+// launch (the old red box is gone): one card per document, with the same
+// "Got it, stop reminding" for anything on or past its date.
+function showExpiryCardsFor(items) {
+    const cards = [];
+    for (const { folderPath, file } of items) {
+        const info = getExpiryStatus(file);
+        if (info) cards.push({ file, folderPath, status: info.status, days: info.days });
+    }
+    const s = getAttentionSets();
+    const seen = new Set(s.expiring.map(e => e.folderPath + '|' + e.file.name));
+    const merged = s.expiring.concat(cards.filter(c => !seen.has(c.folderPath + '|' + c.file.name) && !isExpiryAcknowledged(c.file)));
+    if (merged.length || s.due.length) showExpiryCardsPopup(merged, s.due);
+}
+
+// ---- "Needs your attention": the app-open alert and the tap-a-notification panel.
+// Three or more items open as a SUMMARY (a bell with the total and a line per
+// group: Expiring today / Expiring soon / Reminders due / Expired). Tapping a line
+// -- or "View all documents" -- opens the DETAIL: the chosen group as full cards
+// (View / Edit / Remind or Done) and every other group below as rows. One or two
+// items skip the summary and open the detail straight away.
+const NA_ICONS = {
+    today: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+    soon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M8 14h2M12 14h2M8 17.5h2"/></svg>',
+    rem: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17v-6a6 6 0 0 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/></svg>',
+    expired: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13.5h4"/></svg>',
+    chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>',
+    back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>',
+    bell: '<svg viewBox="0 0 80 80"><defs><linearGradient id="naBell" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#fff0a8"/><stop offset="0.45" stop-color="#ffc83d"/><stop offset="1" stop-color="#e8860c"/></linearGradient><linearGradient id="naBellRim" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffb32e"/><stop offset="1" stop-color="#d97706"/></linearGradient><radialGradient id="naClap" cx="0.4" cy="0.35" r="0.7"><stop offset="0" stop-color="#ffd76a"/><stop offset="1" stop-color="#d97706"/></radialGradient></defs><g transform="rotate(18 40 42)"><circle cx="40" cy="9" r="5" fill="url(#naClap)"/><path d="M40 13c-14 0-22 10-22 24v13l-7 11h58l-7-11V37c0-14-8-24-22-24z" fill="url(#naBell)"/><path d="M33 20c-7 4-10 11-10 18" stroke="#fffbe6" stroke-opacity=".75" stroke-width="3.2" stroke-linecap="round" fill="none"/><rect x="9" y="58" width="62" height="7" rx="3.5" fill="url(#naBellRim)"/><path d="M31 67a9 9 0 0 0 18 0z" fill="url(#naClap)"/></g><path d="M12 12l-5-5M7 24H0M20 4l-2-7" stroke="#ffb32e" stroke-width="3" stroke-linecap="round" fill="none" transform="translate(6 8)"/></svg>'
+};
+
+function showExpiryCardsPopup(expiring, due, onDone, frontRemId) {
     const existing = document.getElementById('expiryCardsPopup');
     if (existing) existing.remove();
     const now = new Date();
-    const items = [
-        ...due.map(r => ({ kind: 'rem', r })),
-        ...expiring.map(e => ({ kind: 'doc', e }))
-    ];
-    const compact = items.length >= 3;
-    const subParts = [];
-    if (expiring.length) subParts.push(expiring.length + ' document' + (expiring.length > 1 ? 's' : '') + ' expiring soon');
-    if (due.length) subParts.push(due.length + ' reminder' + (due.length > 1 ? 's' : '') + ' due');
 
-    const fullHtml = (it) => it.kind === 'rem' ? reminderCardHtml(it.r, now) : docCardHtml(it.e);
-    const rowHtml = (it, idx) => {
-        let pic, name, words, tone;
+    // ONE list, most urgent first: already expired, today, soon, then reminders. Nothing is
+    // hidden by opening it. An item leaves only when it is dealt with: Done, or a new date.
+    let items = expiring.slice().sort((a, b) => a.days - b.days).map(e => ({ kind: 'doc', e }))
+        .concat(due.map(r => ({ kind: 'rem', r })));
+    if (!items.length) { if (onDone) onDone(); return; }
+    // a tapped notification puts its own reminder in front
+    if (frontRemId) { const k = items.findIndex(x => x.kind === 'rem' && x.r.id === frontRemId); if (k > 0) items.unshift(items.splice(k, 1)[0]); }
+
+    const itemInfo = (it) => {
         if (it.kind === 'rem') {
             const w = reminderWhen(it.r, now);
-            pic = '<div class="dc-pic dc-pic-reminder">' + REMINDER_PIC_SVG + '</div>';
-            name = it.r.title || 'Reminder'; words = w.words; tone = w.tone;
-        } else {
-            pic = docPictureHtml(it.e.file, it.e.folderPath);
-            name = it.e.file.name.replace(/\.[^.]+$/, '') || it.e.file.name;
-            words = docExpiryWords(it.e.days); tone = docExpiryTone(it.e.days);
+            return { pic: '<div class="xc-bell">' + XC_BELL + '</div>',
+                     name: it.r.title || 'Reminder', where: 'Reminder', words: w.words,
+                     tone: w.tone === 'red' ? 'red' : 'purple', icon: NA_ICONS.rem };
         }
-        return '<div class="dc-row" data-i="' + idx + '">' + pic +
-            '<div class="dc-rm"><div class="dc-rn">' + escapeHtml(name) + '</div>' +
-            '<div class="dc-rw dc-' + tone + '">' + escapeHtml(words) + '</div></div>' +
-            '<div class="dc-go"><i class="fas fa-chevron-right"></i></div></div>';
+        const tone = it.e.days <= 0 ? 'red' : 'amber';
+        return { pic: docPictureHtml(it.e.file, it.e.folderPath),
+                 name: it.e.file.name.replace(/\.[^.]+$/, '') || it.e.file.name,
+                 where: (it.e.folderPath || '').split('/').join(' / ') || 'Root',
+                 words: docExpiryWords(it.e.days), tone, icon: NA_ICONS.today };
     };
-
-    let body = '';
-    if (!compact) {
-        body = items.map(fullHtml).join('');
-    } else {
-        const remItems = items.map((it, idx) => ({ it, idx })).filter(x => x.it.kind === 'rem');
-        const docItems = items.map((it, idx) => ({ it, idx })).filter(x => x.it.kind === 'doc');
-        const slot = (x) => '<div class="dc-slot" data-i="' + x.idx + '">' + rowHtml(x.it, x.idx) + '</div>';
-        if (remItems.length) body += '<div class="dc-sec">REMINDERS DUE</div>' + remItems.map(slot).join('');
-        if (docItems.length) body += '<div class="dc-sec">EXPIRING SOON</div>' + docItems.map(slot).join('');
-        body += '<button type="button" class="dc-popup-more dc-popup-all">See all in ' + (docItems.length ? 'Expiring Documents' : 'Reminders') + '</button>';
-    }
 
     const overlay = document.createElement('div');
     overlay.id = 'expiryCardsPopup';
     overlay.className = 'dc-popup-overlay';
-    overlay.innerHTML =
-        '<div class="dc-popup" role="dialog" aria-modal="true" aria-label="Needs your attention">' +
-        '<button type="button" class="dc-popup-x" aria-label="Close"><i class="fas fa-times"></i></button>' +
-        '<div class="dc-popup-title">Needs your attention</div>' +
-        '<div class="dc-popup-sub">' + subParts.join(' · ') + '</div>' + body + '</div>';
     document.body.appendChild(overlay);
 
     let closed = false;
@@ -5810,55 +6544,229 @@ function showExpiryCardsPopup(expiring, due, onDone) {
         if (closed) return;
         closed = true;
         overlay.remove();
+        updateAttentionBell();
         if (onDone) onDone();
     };
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-    overlay.querySelector('.dc-popup-x').onclick = () => { haptic.press(); close(); };
 
-    // Opens one slot into its full card and puts the previous one back to a row.
-    let openIdx = -1;
-    const slots = () => overlay.querySelectorAll('.dc-slot');
-    const setSlot = (idx, expanded) => {
-        const el = overlay.querySelector('.dc-slot[data-i="' + idx + '"]');
-        if (!el) return;
-        el.innerHTML = expanded ? fullHtml(items[idx]) : rowHtml(items[idx], idx);
-        el.classList.toggle('dc-slot-open', expanded);
-        if (expanded) {
-            wireDocCardActions(el, close, { closeFirst: true });
-            wireReminderCardActions(el, close);
-        } else {
-            bindRow(el);
-        }
+    // 26 Oct: the "Needs your attention" list is now ONE glass card at a time (swipe sideways for the next one). View (the old Open) and Done
+    // sit to the right of the description. Done = done for today (today's alarms go, later days stay).
+    let idx = 0;
+    let glFirstShow = true;
+    const GLASS_FILE = '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>';
+    const GLASS_BELL = '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17v-6a6 6 0 0 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/></svg>';
+    const shortDate = (iso) => {
+        const [y, m, d] = (iso || '').split('-').map(Number);
+        return y ? new Date(y, m - 1, d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '-';
     };
-    const bindRow = (el) => {
-        const row = el.querySelector('.dc-row');
-        if (!row) return;
-        row.addEventListener('click', () => {
+    const glassData = (it) => {
+        if (it.kind === 'rem') {
+            const r = it.r, w = reminderWhen(r, now);
+            const rep = REMINDER_REPEAT_LABELS[r.repeat] || '';
+            const time = r.dueTime ? (r.endTime ? formatTimeOfDay(r.dueTime) + '-' + formatTimeOfDay(r.endTime) : formatTimeOfDay(r.dueTime)) : '-';
+            return { ring: GLASS_BELL, thumb: '<div class="xc-bell">' + XC_BELL + '</div>', name: r.title || 'Reminder', kind: 'Reminder' + (rep ? ' · ' + rep : ''),
+                     pill: w.words, tone: w.tone === 'red' ? 'red' : 'amber',
+                     stats: [[shortDate(r.dueAt), 'date'], [time, 'time'], [rep || 'Once', 'repeats']],
+                     desc: (r.details || '').trim() || 'No details written for this reminder.' };
+        }
+        const e = it.e, f = e.file, ext = ((f.name.match(/\.([^.]+)$/) || [])[1] || 'file').toUpperCase();
+        const left = e.days < 0 ? Math.abs(e.days) + (Math.abs(e.days) === 1 ? ' day' : ' days') + ' ago' : e.days === 0 ? 'Today' : e.days + (e.days === 1 ? ' day' : ' days');
+        return { ring: GLASS_FILE, thumb: docPictureHtml(f, e.folderPath),
+                 name: f.name.replace(/\.[^.]+$/, '') || f.name, kind: (e.folderPath || '').split('/').join(' / ') || 'Root',
+                 pill: docExpiryWords(e.days), tone: e.days <= 0 ? 'red' : 'amber',
+                 stats: [[shortDate(f.expiryDate), e.days < 0 ? 'expired' : 'expires'], [left, e.days < 0 ? 'overdue' : 'left'], [ext, 'type']],
+                 desc: e.days < 0 ? 'This document has expired. Open it to renew or replace it.' : 'This document expires soon. Open it to check the dates or renew it.' };
+    };
+
+    // 26 Oct (stack): every pending item is a full glass card, stacked top to bottom, the list scrolls vertically. Cards rise in one after another on first show.
+    // Done folds that one card away (the rest move up). With one item it looks as before (close button and footer inside the card).
+    const cardHtml = (it, i, strip) => {
+        const g = glassData(it), many = items.length > 1;
+        const fly = glFirstShow ? ' gl-fly' : '';
+        const delay = glFirstShow ? ' style="animation-delay:' + (Math.min(i, 4) * 0.14).toFixed(2) + 's"' : '';
+        const cardStr = '<div class="gl-card' + fly + '" data-i="' + items.indexOf(it) + '"' + delay + ' role="dialog" aria-label="Needs your attention">' +
+            (many ? '' : '<button type="button" class="gl-x" aria-label="Close"><i class="fas fa-times"></i></button>') +
+            '<div class="gl-head"><div class="gl-ring">' + (g.raw ? g.ring : '<div>' + g.ring + '</div>') + '</div>' +
+            '<div class="gl-id"><div class="gl-name">' + escapeHtml(g.name) + '</div><div class="gl-thumb">' + g.thumb + '</div></div></div>' +
+            '<div class="gl-sub"><span class="gl-kind">' + escapeHtml(g.kind) + '</span><span class="gl-pill gl-' + g.tone + '"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>' + escapeHtml(g.pill) + '</span>' +
+            '<span class="gl-round"><button type="button" class="gl-rbtn" data-act="open" aria-label="View"><span>' + DOC_CARD_ICONS.view + '</span></button>' +
+            '<button type="button" class="gl-rbtn" data-act="edit" aria-label="Edit"><span>' + DOC_CARD_ICONS.edit + '</span></button></span></div>' +
+            '<div class="gl-body"><div class="gl-desc">' + escapeHtml(g.desc) + '</div>' +
+            '<button type="button" class="gl-btn gl-done" data-act="done"><span>' + DOC_CARD_ICONS.done + '</span>Done</button></div>' +
+            (many ? '' : '<div class="gl-foot"><div class="gl-dots"><i class="on"></i></div><div>1 of 1 &nbsp;&middot;&nbsp; <button type="button" class="gl-more">All reminders &amp; expiry dates ›</button></div></div>') +
+            '</div>';
+        // several items: each card sits in a sticky slot, so cards pin near the top as they scroll up and the next one slides over (the Reminders-page stack)
+        return many ? '<div class="gl-stk' + (strip ? ' gl-strip' : '') + '" style="--i:' + i + '">' + cardStr + '</div>' : cardStr;
+    };
+
+    const render = () => {
+        if (!items.length) { close(); return; }
+        const many = items.length > 1;
+        overlay.innerHTML = '<div class="gl-wrap' + (many ? ' gl-many' : '') + '">' +
+            (many ? '<div class="gl-top"><span>' + items.length + ' items need attention</span><button type="button" class="gl-x gl-x-top" aria-label="Close"><i class="fas fa-times"></i></button></div>' : '') +
+            '<div class="gl-list">' + (many ? items.slice().reverse() : items).map((it, k, arr) => cardHtml(it, k, many && k < arr.length - 1)).join('') + (many ? '<div class="gl-spacer"></div>' : '') + '</div>' +
+            (many ? '<div class="gl-foot gl-foot-shared"><button type="button" class="gl-more">All reminders &amp; expiry dates ›</button></div>' : '') + '</div>';
+        glFirstShow = false;
+        // once the entrance is over the animation no longer holds the cards (smoother scrolling)
+        setTimeout(() => { overlay.querySelectorAll('.gl-fly').forEach(el => { el.classList.remove('gl-fly'); el.style.animationDelay = ''; }); }, 2300);
+
+        overlay.querySelector('.gl-x').onclick = () => { haptic.press(); close(); };
+        overlay.querySelector('.gl-more').onclick = () => { haptic.press(); close(); showExpiringDocumentsPanel(); };
+
+        // tap a strip (a card behind the front one) = bring that card to the front
+        overlay.querySelectorAll('.gl-strip').forEach(strip => strip.addEventListener('click', () => {
+            const it = items[Number(strip.querySelector('.gl-card').dataset.i)];
+            if (!it) return;
             haptic.press();
-            const idx = Number(row.dataset.i);
-            if (openIdx >= 0 && openIdx !== idx) setSlot(openIdx, false);
-            openIdx = idx;
-            setSlot(idx, true);
+            items = [it].concat(items.filter(x => x !== it));
+            render();
+        }));
+        overlay.querySelectorAll('.gl-card').forEach(card => {
+            const it = items[Number(card.dataset.i)];
+            if (!it) return;
+            card.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', async (ev) => {
+                ev.stopPropagation();
+                haptic.press();
+                const act = btn.dataset.act;
+                if (act === 'done') {
+                    // Done = done for today: today's alarms and the shade copy go, alarms on later days stay (user rule, 26 Oct).
+                    if (it.kind === 'doc') {
+                        await acknowledgeExpiry(it.e.folderPath, it.e.file.name);
+                        showToast('Done');
+                    } else {
+                        const r = reminders.find(x => x.id === it.r.id);
+                        if (r) {
+                            settleSeenReminder(r, { silence: true });
+                            saveReminders();
+                        }
+                        showToast('Reminder done');
+                    }
+                    items = items.filter(x => x !== it);
+                    updateAttentionBell();
+                    card.classList.remove('gl-fly');
+                    card.classList.add('gl-out');
+                    setTimeout(render, 260);
+                    return;
+                }
+                close();
+                if (it.kind === 'doc') {
+                    if (act === 'open') revealFileInFolder(it.e.file.name, it.e.folderPath);
+                    else {
+                        // Edit on a document = the same steps as Add reminder (title, details, date & time), as on the Expiring tab
+                        const today = localTodayIso(), fn = it.e.file.name;
+                        addReminderFlow(it.e.file.expiryDate && it.e.file.expiryDate >= today ? it.e.file.expiryDate : undefined, null, 'Renew ' + (fn.replace(/\.[^.]+$/, '') || fn));
+                    }
+                } else {
+                    const r = reminders.find(x => x.id === it.r.id);
+                    if (!r) { showToast('That reminder has been deleted', true); return; }
+                    if (act === 'open') openReminderStickyNote(r.id);
+                    else editReminderFlow(r.id);
+                }
+            }));
         });
     };
-    if (compact) {
-        slots().forEach(bindRow);
-        setSlot(0, true);              // the first one is already open
-        openIdx = 0;
-        const all = overlay.querySelector('.dc-popup-all');
-        if (all) all.onclick = () => {
-            haptic.press();
-            close();
-            showExpiringDocumentsPanel(expiring.length ? 'expiring' : 'reminders');
-        };
-    } else {
-        wireDocCardActions(overlay, close, { closeFirst: true });
-        wireReminderCardActions(overlay, close);
-    }
+    render();
 }
 
-function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
+// One orange button bar for the whole list (19 Oct). Each card still owns its own buttons (hidden by CSS, `.xc-has-rail`)
+// so every existing handler keeps working; the shared bar sits at the top of the scrolling list, rises with the first
+// card, then stays pinned while the dark card faces scroll past it, and a press on it clicks the same button on the
+// top card. The top card is the one still at least half visible under the stacked strips (the last card at the end).
+function xcSetupSharedRail(overlay) {
+    const list = overlay.querySelector('#expiringDocsList');
+    if (!list) return;
+    const wraps = Array.from(list.querySelectorAll(':scope > .dc-stk'));
+    if (!wraps.length) return;
+    const firstRail = wraps[0].querySelector('.xc-rail');
+    if (!firstRail) return;
+
+    const rail = document.createElement('div');
+    rail.className = 'xc-shared-rail';
+    rail.innerHTML = firstRail.innerHTML;
+    const cards = document.createElement('div');
+    cards.className = 'xc-cards';
+    wraps.forEach(w => cards.appendChild(w));
+    list.classList.add('xc-has-rail');
+    list.appendChild(rail);
+    list.appendChild(cards);
+    // The bar has a thin arm that runs out of its top across the cards (drawn by .xc-shared-rail::after); its length is the list width.
+    list.style.setProperty('--xc-arm', Math.max(80, list.clientWidth - 34) + 'px');
+
+    const natural = wraps.map(w => w.offsetTop);
+    const H = Math.max(120, wraps[0].offsetHeight);
+    list.style.setProperty('--xc-card-h', wraps[0].offsetHeight + 'px');
+    const thr = (i) => Math.min(i, 4) * 34;
+
+    let active = -1;
+    const setActive = (i) => {
+        if (i === active) return;
+        active = i;
+        wraps.forEach((w, k) => w.querySelector('.xc-card').classList.toggle('xc-active', k === i));
+    };
+    // Deck: every card sticks at the SAME top position, so the next card slides over the previous one and takes its place.
+    // The top card is the last one that has covered at least half of the previous card (or card 1 at scroll 0).
+    const update = () => {
+        const sc = list.scrollTop;
+        let a = 0;
+        for (let i = 1; i < wraps.length; i++) {
+            if (natural[i] - sc <= 0.5 * H) a = i; else break;
+        }
+        setActive(a);
+    };
+    // Room at the end so the last card can also reach the top position.
+    // A real spacer element, not padding: a sticky card can only travel inside its parent's content box, so padding let the last
+    // cards be pushed up out of sight (their titles cut off above the button bar).
+    const tail = document.createElement('div');
+    tail.className = 'xc-tail';
+    tail.style.height = Math.max(0, list.clientHeight - H) + 'px';
+    cards.appendChild(tail);
+    list.addEventListener('scroll', update, { passive: true });
+    update();
+
+    // Snap: when the finger is lifted and the list stops, the card nearest the top (a card that has covered at least half
+    // of the one before it) settles exactly on the first card's position.
+    let touching = false, snapTimer = null, animating = false, animFrame = 0;
+    // Our own glide (ease-out, about a third of a second): the browser's built-in smooth scroll looked like a jump.
+    const glideTo = (target) => {
+        cancelAnimationFrame(animFrame);
+        const from = list.scrollTop, dist = target - from;
+        const dur = Math.min(800, 450 + Math.abs(dist) * 2.5);
+        const t0 = performance.now();
+        animating = true;
+        const step = (now) => {
+            const p = Math.min(1, (now - t0) / dur);
+            const e = -(Math.cos(Math.PI * p) - 1) / 2;   // ease-in-out (sine): starts gently, ends gently
+            list.scrollTop = from + dist * e;
+            if (p < 1 && !touching) animFrame = requestAnimationFrame(step); else animating = false;
+        };
+        animFrame = requestAnimationFrame(step);
+    };
+    const snap = () => {
+        if (touching) return;
+        const sc = list.scrollTop;
+        let best = 0;
+        for (let i = 1; i < wraps.length; i++) if (Math.abs(natural[i] - sc) < Math.abs(natural[best] - sc)) best = i;
+        const target = natural[best];
+        if (Math.abs(target - sc) > 1) glideTo(target);
+    };
+    const queueSnap = () => { clearTimeout(snapTimer); snapTimer = setTimeout(snap, 120); };
+    list.addEventListener('scroll', () => { if (!animating) queueSnap(); }, { passive: true });
+    list.addEventListener('touchstart', () => { touching = true; animating = false; cancelAnimationFrame(animFrame); clearTimeout(snapTimer); }, { passive: true });
+    list.addEventListener('touchend', () => { touching = false; queueSnap(); }, { passive: true });
+    list.addEventListener('touchcancel', () => { touching = false; queueSnap(); }, { passive: true });
+
+    rail.addEventListener('click', (e) => {
+        const b = e.target.closest('.xc-act');
+        if (!b || active < 0) return;
+        const sel = b.dataset.act ? '[data-act="' + b.dataset.act + '"]' : '[data-ract="' + b.dataset.ract + '"]';
+        const target = wraps[active].querySelector('.xc-rail ' + sel);
+        if (target) target.click();
+    });
+}
+
+function showExpiringDocumentsPanel(activeTab = 'reminders', opts = {}) {
     haptic.press();
+    if (!opts.rerender) remindersCalMode = false;
     const existing = document.getElementById('expiringDocsOverlay');
     if (existing) existing.remove();
 
@@ -5901,6 +6809,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     // opening the tab you are not already on.
     const dueNow = new Date();
     const hasDueReminder = reminders.some(r => isReminderLiveUnseen(r, dueNow));
+    const hasPendingExpiry = getAllExpiringFiles(3).some(e => !isExpiryAcknowledged(e.file));
 
     // Two tabs in one track and an action beside it, rather than three pills
     // in a row where the action looked like a third tab. The track makes the
@@ -5910,22 +6819,49 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     // action belongs to it.
     const tabRowHtml = `
         <div style="display:flex;align-items:center;gap:8px;margin:0 0 12px;">
-            <div class="expdoc-tab-row" style="display:flex;gap:4px;flex:1 1 0;min-width:0;padding:4px;border-radius:999px;background:${c.tabInactiveBg};border:1px solid ${c.tabInactiveBorder};">
-                <button class="expdoc-tab${hasDueReminder ? ' expdoc-tab-due' : ''}${activeTab === 'reminders' ? ' expdoc-tab-active' : ''}" data-tab="reminders" style="flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 5px;border-radius:999px;font-size:0.68rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:none;background:transparent;color:${activeTab === 'reminders' ? '#fff' : c.tabInactiveText};"><i class="fas fa-calendar-days" style="font-size:0.72rem;flex:0 0 auto;"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Reminders</span></button>
-                <button class="expdoc-tab${activeTab === 'expiring' ? ' expdoc-tab-active' : ''}" data-tab="expiring" style="flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 5px;border-radius:999px;font-size:0.68rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:none;background:transparent;color:${activeTab === 'expiring' ? '#fff' : c.tabInactiveText};"><i class="fas fa-clock" style="font-size:0.72rem;flex:0 0 auto;"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Expiring</span></button>
+            <div class="expdoc-tab-row${(activeTab === 'reminders' && hasDueReminder) || (activeTab === 'expiring' && hasPendingExpiry) ? ' xc-row-breathe' : ''}" style="display:flex;gap:4px;flex:1 1 0;min-width:0;padding:4px;border-radius:999px;background:${c.tabInactiveBg};border:1px solid ${c.tabInactiveBorder};">
+                <button class="expdoc-tab${hasDueReminder ? ' expdoc-tab-due xc-breathe' : ''}${activeTab === 'reminders' ? ' expdoc-tab-active' : ''}" data-tab="reminders" style="flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 5px;border-radius:999px;font-size:0.68rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:none;background:transparent;color:${activeTab === 'reminders' ? '#fff' : c.tabInactiveText};"><i class="fas fa-calendar-days" style="font-size:0.72rem;flex:0 0 auto;"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Reminders</span></button>
+                <button class="expdoc-tab${hasPendingExpiry ? ' xc-breathe' : ''}${activeTab === 'expiring' ? ' expdoc-tab-active' : ''}" data-tab="expiring" style="flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 5px;border-radius:999px;font-size:0.68rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;border:none;background:transparent;color:${activeTab === 'expiring' ? '#fff' : c.tabInactiveText};"><i class="fas fa-clock" style="font-size:0.72rem;flex:0 0 auto;"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Expiring</span></button>
             </div>
             <button id="expdocAddReminder" aria-label="Add reminder" ${activeTab === 'reminders' ? 'title="Add reminder"' : 'disabled aria-disabled="true" title="Switch to Reminders to add one"'} style="flex:0 0 auto;display:flex;align-items:center;gap:5px;padding:3px 8px 3px 3px;border-radius:999px;border:none;${activeTab === 'reminders'
-                ? 'background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;box-shadow:0 5px 14px rgba(99,62,231,0.34);'
-                : 'background:rgba(124,58,237,0.12);color:#9b89c9;box-shadow:none;pointer-events:none;'}font-size:0.68rem;font-weight:700;font-family:Inter,sans-serif;cursor:pointer;white-space:nowrap;transition:background .22s ease,color .22s ease,box-shadow .22s ease;"><span style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;flex:0 0 auto;transition:background .22s ease,color .22s ease;${activeTab === 'reminders' ? 'background:#fff;color:#6d35e0;' : 'background:rgba(167,139,250,0.26);color:#cdbcfb;'}"><i class="fas fa-plus" style="font-size:0.74rem;"></i></span><span class="expdoc-add-label">Add reminder</span></button>
+                ? 'background:#22222a;color:#fff;box-shadow:none;'
+                : 'background:rgba(124,58,237,0.12);color:#9b89c9;box-shadow:none;pointer-events:none;'}font-size:0.68rem;font-weight:700;font-family:Inter,sans-serif;cursor:pointer;white-space:nowrap;transition:background .22s ease,color .22s ease,box-shadow .22s ease;"><span style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;flex:0 0 auto;transition:background .22s ease,color .22s ease;${activeTab === 'reminders' ? 'background:#2e2e38;color:#fff;' : 'background:rgba(167,139,250,0.26);color:#cdbcfb;'}"><i class="fas fa-plus" style="font-size:0.74rem;"></i></span><span class="expdoc-add-label">Add reminder</span></button>
         </div>`;
 
-    let titleHtml, summaryHtml, bodyHtml;
+    // The counts strip under the tab row (20 Oct): all reminders, the ones still ahead, the ones past their time, and the documents
+    // that expire within 3 days or already have (the Expiring tab's list). Same numbers on both tabs.
+    const statsNow = new Date();
+    const statTotal = reminders.length;
+    const statOverdue = reminders.filter(r => {
+        if (!r.dueAt) return false;
+        const [sy, sm, sd] = r.dueAt.split('-').map(Number);
+        const [sh, smin] = (r.dueTime || '09:00').split(':').map(Number);
+        return new Date(sy, sm - 1, sd, sh, smin) <= statsNow;
+    }).length;
+    const statExpiring = getAllExpiringFiles(3).length;
+    const statsHtml = '<div class="xc-stats">' + [
+        ['<span class="xc-si xc-si-total"><i class="fas fa-file-lines"></i></span>', statTotal, 'Total'],
+        ['<span class="xc-si xc-si-active"><i class="fas fa-check"></i></span>', Math.max(0, statTotal - statOverdue), 'Active'],
+        ['<span class="xc-si xc-si-over"><i class="fas fa-calendar-days"></i></span>', statOverdue, 'Overdue'],
+        ['<span class="xc-si xc-si-exp"><i class="fas fa-clock"></i></span>', statExpiring, 'Expiring']
+    ].map(c => '<div class="xc-stat"><div class="xc-stat-top">' + c[0] + '<span class="xc-stat-num">' + c[1] + '</span></div><div class="xc-stat-lab">' + c[2] + '</div></div>').join('') + '</div>';
+
+    let titleHtml, subtitleText = '', bodyHtml, iconHtml = 'fa-calendar-days', bulkHtml = '';
+    const BULK_BTN = (n) => '<div class="xc-bulk"><button type="button" id="xcDoneAll" class="xc-done xc-done-all"><i class="fas fa-check-double"></i> Mark all done (' + n + ')</button></div>';
 
     if (activeTab === 'reminders') {
         const todayIso = localTodayIso();
         const pad2 = (n) => String(n).padStart(2, '0');
         const isoFor = (y, m, d) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
         if (remindersCalYear === null) {
+            const t = new Date();
+            remindersCalYear = t.getFullYear();
+            remindersCalMonth = t.getMonth();
+            remindersCalSelectedIso = todayIso;
+        }
+        // 21 Oct: "Pick a day" is only for adding, so it never opens on a past day. The selection can be left on one by
+        // editing an overdue reminder, or by the app staying open past midnight.
+        if (remindersCalMode && (!remindersCalSelectedIso || remindersCalSelectedIso < todayIso)) {
             const t = new Date();
             remindersCalYear = t.getFullYear();
             remindersCalMonth = t.getMonth();
@@ -5989,7 +6925,8 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
         }
         for (let d = 1; d <= daysInMonth; d++) cells.push({ day: d, iso: isoFor(remindersCalYear, remindersCalMonth, d), inMonth: true });
         let nextDay = 1;
-        while (cells.length < 42) { cells.push({ day: nextDay, iso: isoFor(nextYear, nextMonth, nextDay), inMonth: false });
+        const cellsNeededRem = Math.ceil((startOffset + daysInMonth) / 7) * 7;
+        while (cells.length < cellsNeededRem) { cells.push({ day: nextDay, iso: isoFor(nextYear, nextMonth, nextDay), inMonth: false });
             nextDay++; }
 
         const calDayCells = cells.map(cell => {
@@ -6002,7 +6939,9 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
             // did nothing useful. A past day that still holds a reminder
             // stays tappable, though, so an overdue one someone hasn't
             // deleted yet is never made unreachable.
-            const isDeadPast = cell.iso < todayIso && !hasReminders;
+            // 21 Oct: this calendar only appears for "Add reminder, Pick a day", where a past day can never be chosen,
+            // so every past day is off, even one that still holds an overdue reminder (those are on the list anyway).
+            const isDeadPast = cell.iso < todayIso && (remindersCalMode || !hasReminders);
             let color = cell.inMonth ? c.rowText : c.muted;
             let bg = 'transparent';
             let border = 'none';
@@ -6034,55 +6973,79 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
             <div style="color:${c.muted};font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;margin:16px 0 8px;font-family:Inter,sans-serif;">No due date</div>
             ${undated.map(renderReminderRow).join('')}` : '';
 
-        bodyHtml = `            <div style="background:${c.rowBg};border:${c.rowBorder};border-radius:16px;padding:10px;margin-bottom:11px;">
+        bodyHtml = `            <div class="xc-cal" style="background:${c.rowBg};border:${c.rowBorder};border-radius:16px;padding:10px;margin-bottom:11px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                     <button id="remCalPrev" aria-label="Previous month" style="width:26px;height:26px;border-radius:50%;border:${c.rowBorder};background:transparent;color:${c.rowText};cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;"><i class="fas fa-chevron-left" style="font-size:0.65rem;"></i></button>
-                    <div style="color:${c.rowText};font-weight:700;font-size:0.85rem;font-family:Inter,sans-serif;">${monthNames[remindersCalMonth]} ${remindersCalYear}</div>
+                    <div style="color:${c.rowText};font-weight:700;font-size:0.85rem;font-family:Inter,sans-serif;">${new Date(remindersCalYear, remindersCalMonth, 1).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</div>
                     <button id="remCalNext" aria-label="Next month" style="width:26px;height:26px;border-radius:50%;border:${c.rowBorder};background:transparent;color:${c.rowText};cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;"><i class="fas fa-chevron-right" style="font-size:0.65rem;"></i></button>
                 </div>
                 <div style="display:flex;margin-bottom:4px;">${weekdayRow}</div>
                 <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">${calDayCells}</div>
             </div>
 
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                <div style="color:${c.title};font-weight:700;font-size:0.85rem;font-family:Inter,sans-serif;">${escapeHtml(selectedDayLabel)}</div>
-                <div style="color:${c.muted};font-size:0.74rem;font-family:Inter,sans-serif;">${dayReminders.length} reminder${dayReminders.length === 1 ? '' : 's'}</div>
-            </div>
-            <div id="remDayList" class="stagger-rows">${dayListHtml}</div>
-            ${undatedHtml}`;
-        titleHtml = `<i class="fas fa-list-check" style="color:#f59e0b;margin-right:6px;"></i>Reminders`;
-        summaryHtml = reminders.length ? `<p style="color:${c.muted};font-size:0.8rem;margin:0 0 14px;font-family:Inter,sans-serif;">${reminders.length} total reminder${reminders.length === 1 ? '' : 's'}</p>` : '<div style="margin-bottom:10px;"></div>';
+            <div style="color:${c.title};font-weight:700;font-size:0.9rem;font-family:Inter,sans-serif;text-align:center;margin:2px 0 12px;">${escapeHtml(selectedDayLabel)}</div>
+            <button id="remCalContinue" style="width:100%;padding:12px;border-radius:14px;border:none;background:linear-gradient(135deg,#ff8a1f,#ee3a2a);color:#fff;font-weight:700;font-size:0.9rem;font-family:Inter,sans-serif;cursor:pointer;">Continue</button>`;
+        if (!remindersCalMode) {
+            const nowL = new Date();
+            const sorted = reminders.slice().sort((a, b) => {
+                const la = isReminderLiveUnseen(a, nowL) && !isReminderStale(a, nowL) ? 0 : 1;
+                const lb = isReminderLiveUnseen(b, nowL) && !isReminderStale(b, nowL) ? 0 : 1;
+                if (la !== lb) return la - lb;
+                if (!a.dueAt !== !b.dueAt) return a.dueAt ? -1 : 1;
+                return ((a.dueAt || '') + (a.dueTime || '')).localeCompare((b.dueAt || '') + (b.dueTime || ''));
+            });
+            const liveN = reminders.filter(r => isReminderLiveUnseen(r, nowL)).length;
+            if (liveN >= 2) bulkHtml = BULK_BTN(liveN);
+            bodyHtml = sorted.length ? sorted.map((r, i) => '<div class="dc-stk" style="--i:' + i + '">' + xcReminderCardHtml(r, nowL) + '</div>').join('') : `
+                <div class="fav-empty" style="text-align:center;padding:32px 20px 20px;color:${c.muted};">
+                    <i class="fas fa-bell" style="font-size:2rem;margin-bottom:12px;display:block;color:${c.mutedIcon};"></i>
+                    <p style="margin:0;font-family:Inter,sans-serif;font-size:0.9rem;">No reminders yet.</p>
+                    <p style="margin:8px 0 0;font-family:Inter,sans-serif;font-size:0.78rem;color:${c.muted};">Tap Add reminder to create one.</p>
+                </div>`;
+        }
+        iconHtml = 'fa-bell';
+        if (remindersCalMode) { titleHtml = 'Add reminder'; subtitleText = 'Pick a day'; }
+        else {
+            const dueCount = reminders.filter(r => isReminderLiveUnseen(r, new Date())).length;
+            titleHtml = 'Reminders';
+            subtitleText = reminders.length ? reminders.length + ' reminder' + (reminders.length === 1 ? '' : 's') + (dueCount ? ' · ' + dueCount + ' due now' : '') : 'Nothing set yet';
+        }
     } else {
-        // Only what is 3 days away or closer, plus anything already expired. Dates
-        // set further out are kept and alert on their own schedule; they just do not
-        // crowd this page until they are close. (Used to run to the end of the month.)
-        const entries = getAllExpiringFiles(3);
-        bodyHtml = entries.length ? entries.map(docCardHtml).join('') : `
+        // 27 Oct (user: a file I gave an expiry date to did not show here): EVERY file with an expiry date is listed, soonest / most overdue first. It used to
+        // show only what was 3 days away or closer (plus expired), so the 4-day and the 59-day ones were invisible on this page. The alerts, the bell and the
+        // 'Mark all done' count still follow the near ones only.
+        const entries = getAllExpiringFiles(36500);
+        const unackedN = entries.filter(e => e.days <= 3 && !isExpiryAcknowledged(e.file)).length;
+        if (unackedN >= 2) bulkHtml = BULK_BTN(unackedN);
+        bodyHtml = entries.length ? entries.map((e, i) => '<div class="dc-stk" style="--i:' + i + '">' + xcDocCardHtml(e) + '</div>').join('') : `
             <div class="fav-empty" style="text-align:center;padding:32px 20px 20px;color:${c.muted};">
                 <i class="fas fa-calendar-check" style="font-size:2rem;margin-bottom:12px;display:block;color:${c.mutedIcon};"></i>
-                <p style="margin:0;font-family:Inter,sans-serif;font-size:0.9rem;">Nothing expires in the next 3 days.</p>
+                <p style="margin:0;font-family:Inter,sans-serif;font-size:0.9rem;">No expiry dates set yet.</p>
                 <p style="margin:8px 0 0;font-family:Inter,sans-serif;font-size:0.78rem;color:${c.muted};">Tap ⋯ on a file → Set Expiry Date to get reminders here before it lapses.</p>
             </div>`;
 
         const overdueCount = entries.filter(e => e.status === 'overdue').length;
         const soonCount = entries.filter(e => e.status === 'soon').length;
-        const summary = entries.length
-            ? `${overdueCount ? overdueCount + ' overdue' : ''}${overdueCount && soonCount ? ', ' : ''}${soonCount ? soonCount + ' expiring soon' : ''}${!overdueCount && !soonCount ? entries.length + ' upcoming' : ''}`
-            : '';
-        titleHtml = `<i class="fas fa-calendar-days" style="color:#f59e0b;margin-right:6px;"></i>Expiring Documents`;
-        summaryHtml = summary ? `<p style="color:${c.muted};font-size:0.8rem;margin:0 0 14px;font-family:Inter,sans-serif;">${summary}</p>` : '<div style="margin-bottom:10px;"></div>';
+        const laterCount = entries.filter(e => e.status === 'ok').length;
+        const summary = [overdueCount ? overdueCount + ' overdue' : '', soonCount ? soonCount + ' expiring soon' : '', laterCount ? laterCount + ' upcoming' : ''].filter(Boolean).join(', ');
+        titleHtml = 'Expiring Documents';
+        subtitleText = summary;
     }
 
     overlay.innerHTML = `
-        <div style="position:relative;background:${c.panelBg};border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:400px;max-height:80vh;overflow-y:auto;box-shadow:${c.panelShadow};">
+        <div style="position:relative;background:${c.panelBg};border:1px solid var(--float-border);border-radius:20px;padding:28px 24px;width:100%;max-width:400px;max-height:80vh;overflow-y:auto;box-shadow:${c.panelShadow};" class="xc-panel${remindersCalMode && activeTab === 'reminders' ? ' xc-addmode' : ''}">
             <button id="expiringDocsCloseX" aria-label="Close" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:none;background:${c.closeBg};color:${c.closeColor};font-size:0.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
-            <p style="color:${c.title};font-size:0.98rem;font-weight:700;margin:0 0 4px;margin-right:26px;font-family:Inter,sans-serif;">${titleHtml}</p>
-            ${summaryHtml}
+            <div class="xc-top">
+            <div class="xc-head${activeTab === 'reminders' && !remindersCalMode ? ' xc-head-sync' : ''}"><div class="xc-ico"><i class="fas ${iconHtml}"></i></div><div class="xc-ht"><div class="xc-title">${titleHtml}</div><div class="xc-sub">${escapeHtml(subtitleText)}</div></div>${activeTab === 'reminders' && !remindersCalMode ? '<div class="xc-sync-row"><button id="expdocSyncCal" class="xc-sync' + (calAutoOn() ? ' xc-sync-disabled' : '') + '" type="button" aria-disabled="' + (calAutoOn() ? 'true' : 'false') + '"><i class="fas fa-rotate"></i><span>Sync Calendar</span></button><span class="xc-link' + (calAutoOn() ? ' on' : '') + '" aria-hidden="true"></span><button id="expdocAutoSw" type="button" class="xc-modebtn' + (calAutoOn() ? ' on' : '') + '" role="switch" aria-label="Auto-sync" aria-checked="' + (calAutoOn() ? 'true' : 'false') + '">AUTO</button></div>' : ''}</div>
             ${tabRowHtml}
-            <div id="expiringDocsList"${activeTab === 'expiring' ? ' class="stagger-rows"' : ''}>${bodyHtml}</div>
+            ${statsHtml}
+            </div>
+            ${bulkHtml}
+            <div id="expiringDocsList"${activeTab === 'expiring' ? ' class="stagger-rows dc-stack-list"' : ''}>${bodyHtml}</div>
         </div>`;
     document.body.appendChild(overlay);
     applyExpdocGlider(overlay, activeTab);
+    if (!opts.rerender && activeTab === 'reminders') setTimeout(() => autoSyncCalendarIfDue(), 300);   // Auto-sync: look at the calendar when the list is opened
 
     // Only when the user actually opened the Reminders tab. This function is
     // also how the panel redraws itself after an add, edit, delete or a month
@@ -6091,7 +7054,7 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     // appeared at launch. Redraws pass rerender:true and change nothing.
     // Opening on the Expiring tab does not mark reminders either: you cannot
     // have seen what was behind another tab.
-    if (!opts.rerender && !opts.noAck && activeTab === 'reminders') acknowledgeDueReminders();
+    // (No automatic "seen" on opening any more: a reminder stays until Done, like a document.)
 
     // The sticky note floats above this panel in its own layer, so closing
     // the panel has to take it with it -- otherwise back left the note
@@ -6101,6 +7064,8 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
         reminderBannerId = null;
         document.getElementById('reminderStickyNote')?.remove();
         overlay.remove();
+        // Whatever was seen or marked done in here must quiet the header bell now, not at the next launch.
+        if (typeof updateAttentionBell === 'function') updateAttentionBell();
     };
     overlay.querySelector('#expiringDocsCloseX').onclick = close;
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
@@ -6124,8 +7089,24 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
     });
     wireDocPictures(overlay);
     wireDocCardActions(overlay, close);
+    const syncBtn = overlay.querySelector('#expdocSyncCal');
+    if (syncBtn) syncBtn.addEventListener('click', () => {
+        // AUTO mode: the button is off (DOCMAN syncs by itself); say so instead of doing nothing silently.
+        if (calAutoOn()) { showToast('AUTO is on, so DOCMAN syncs by itself. Turn AUTO off to sync by hand.'); return; }
+        syncPhoneCalendar();
+    });
+    const modeBtn = overlay.querySelector('#expdocAutoSw');
+    if (modeBtn) modeBtn.addEventListener('click', () => toggleCalAuto());
     const addBtn = overlay.querySelector('#expdocAddReminder');
     if (addBtn) addBtn.addEventListener('click', () => {
+        if (!remindersCalMode) {
+            if (!canAddReminder()) { showPaywall('reminder'); return; }
+            // 26 Oct: no "Pick a day" page first. It asked for a day, then title, then details, then showed the
+            // calendar again in "Due date & time". Now: title, details, then ONE date & time window.
+            addReminderFlow();
+            return;
+        }
+        // Already on the calendar: carry on with the usual title / time / save steps.
         // Pre-fill the date step with whatever day is selected on the
         // calendar above -- but only if it's today or later. A past day is
         // still browsable there (to see what was due then), yet the date
@@ -6173,6 +7154,114 @@ function showExpiringDocumentsPanel(activeTab = 'expiring', opts = {}) {
             showExpiringDocumentsPanel('reminders', { rerender: true });
         });
     });
+    const contBtn = overlay.querySelector('#remCalContinue');
+    if (contBtn) contBtn.addEventListener('click', () => {
+        const todayIsoNow = localTodayIso();
+        addReminderFlow(remindersCalSelectedIso && remindersCalSelectedIso >= todayIsoNow ? remindersCalSelectedIso : undefined);
+    });
+    overlay.querySelectorAll('.xc-rem').forEach(card => {
+        const id = card.dataset.remId;
+        card.querySelectorAll('[data-ract]').forEach(btn => btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            haptic.press();
+            if (btn.dataset.ract === 'open') openReminderStickyNote(id);
+            else if (btn.dataset.ract === 'edit') editReminderFlow(id);
+            else deleteReminder(id);
+        }));
+        // Press and hold anywhere on the card shows its note (same as View). A scroll cancels the hold, and the click
+        // that follows a hold is swallowed so it cannot press a button under the finger.
+        let holdTimer = null, held = false, holdStart = { x: 0, y: 0 };
+        const holdCancel = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
+        const holdBegin = (e) => {
+            if (e.target.closest('[data-ract], .xc-done')) return;
+            const t = e.touches ? e.touches[0] : e;
+            holdStart = { x: t.clientX, y: t.clientY };
+            held = false;
+            holdCancel();
+            // A touch that has just closed another card's note opens this card's note almost at once (180 ms: long enough for a scroll
+            // swipe to cancel it first); otherwise it needs the normal hold.
+            const quick = Date.now() - (window._remNoteClosedAt || 0) < 120;
+            holdTimer = setTimeout(() => {
+                holdTimer = null;
+                held = true;
+                haptic.longPress();
+                openReminderStickyNote(id);
+            }, quick ? 180 : 280);
+        };
+        const holdMove = (e) => {
+            const t = e.touches ? e.touches[0] : e;
+            if (Math.abs(t.clientX - holdStart.x) > 10 || Math.abs(t.clientY - holdStart.y) > 10) holdCancel();
+        };
+        card.addEventListener('touchstart', holdBegin, { passive: true });
+        card.addEventListener('touchmove', holdMove, { passive: true });
+        card.addEventListener('touchend', holdCancel, { passive: true });
+        card.addEventListener('touchcancel', holdCancel, { passive: true });
+        card.addEventListener('contextmenu', (e) => e.preventDefault());
+        card.addEventListener('click', (e) => { if (held) { held = false; e.stopPropagation(); e.preventDefault(); } }, true);
+    });
+    // One press for everything that is waiting on this tab (ten reminders should not need ten taps).
+    const doneAll = overlay.querySelector('#xcDoneAll');
+    if (doneAll) doneAll.addEventListener('click', async () => {
+        haptic.press();
+        if (activeTab === 'reminders') {
+            const now2 = new Date();
+            for (const r of reminders) {
+                if (isReminderLiveUnseen(r, now2)) settleSeenReminder(r, { silence: true });
+            }
+            saveReminders();
+        } else {
+            for (const e of getAllExpiringFiles(3)) {
+                if (!isExpiryAcknowledged(e.file)) await acknowledgeExpiry(e.folderPath, e.file.name);
+            }
+        }
+        showToast('All marked done');
+        showExpiringDocumentsPanel(activeTab, { rerender: true });
+        if (typeof updateAttentionBell === 'function') updateAttentionBell();
+    });
+    // Done pill: clears the alert for that document / reminder, which also quiets the header bell.
+    overlay.querySelectorAll('.xc-done').forEach(btn => btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        haptic.press();
+        const card = btn.closest('.xc-card');
+        if (card.dataset.remId) {
+            const r = reminders.find(x => x.id === card.dataset.remId);
+            if (r) { settleSeenReminder(r, { silence: true }); saveReminders(); }
+            showToast('Reminder done');
+            showExpiringDocumentsPanel('reminders', { rerender: true });
+        } else {
+            await acknowledgeExpiry(card.dataset.dcFolder || '', card.dataset.dcFile);
+            showToast('Marked done');
+            showExpiringDocumentsPanel('expiring', { rerender: true });
+        }
+        if (typeof updateAttentionBell === 'function') updateAttentionBell();
+    }));
+    // The three-dot button: one small "Mark as done" choice, on documents and reminders alike.
+    overlay.querySelectorAll('.xc-more').forEach(btn => btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        haptic.press();
+        const card = btn.closest('.xc-card');
+        const old = card.querySelector('.xc-pop');
+        overlay.querySelectorAll('.xc-pop').forEach(p => p.remove());
+        if (old) return;
+        const pop = document.createElement('button');
+        pop.type = 'button';
+        pop.className = 'xc-pop';
+        pop.textContent = 'Mark as done';
+        pop.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            if (card.dataset.remId) {
+                const r = reminders.find(x => x.id === card.dataset.remId);
+                if (r) { settleSeenReminder(r, { silence: true }); saveReminders(); }
+                showExpiringDocumentsPanel('reminders', { rerender: true });
+            } else {
+                await acknowledgeExpiry(card.dataset.dcFolder || '', card.dataset.dcFile);
+                showExpiringDocumentsPanel('expiring', { rerender: true });
+            }
+        });
+        btn.parentNode.appendChild(pop);
+    }));
+    // 20 Oct: ONE shared button bar again (the user wants a single bar and cards that scroll past it), drawn like the reference.
+    xcSetupSharedRail(overlay);
     overlay.querySelectorAll('.reminder-delete').forEach(btn => {
         btn.addEventListener('click', (e) => { e.stopPropagation(); deleteReminder(btn.dataset.id); });
     });
@@ -6416,6 +7505,9 @@ function paintNoteRuling(body, c) {
 
 function paintNoteModalColor() {
     const c = noteColorById(noteModalColor);
+    // 27 Oct: the chosen colour also tints the whole page in the dark style (see --nt-tint at the end of style.css).
+    const tintEl = document.getElementById('noteModal');
+    if (tintEl) tintEl.style.setProperty('--nt-tint', c.id === 'slate' ? '#0b1322' : c.from);   // slate = the plain grey-black page
     const body = document.querySelector('.note-field-body');
     if (body) {
         paintNoteRuling(body, c);
@@ -6793,7 +7885,21 @@ function wireNoteReadToEdit() {
     });
 }
 
+// 27 Oct: while a field of the note is focused the keyboard is up and the card is short, so the dark-navy style drops its "Title" / "Note" labels
+// (class nt-typing, see the end of style.css) to leave the writing box its full height.
+function wireNoteTypingClass() {
+    const m = document.getElementById('noteModal');
+    if (!m || m._ntWired) return;
+    m._ntWired = true;
+    const isField = (el) => !!(el && el.matches && el.matches('#noteTitle, #noteContent'));
+    // 27 Oct: in the dark style the keyboard is asked for verbatim input while a note field is focused (native DocmanSys.setVerbatim): no underline under the word being typed.
+    const verbatim = (on) => { try { if (window.DocmanSys && DocmanSys.setVerbatim) DocmanSys.setVerbatim(!!on && !document.body.classList.contains('light-mode')); } catch (e) { /* older native layer */ } };
+    m.addEventListener('focusin', (e) => { if (isField(e.target)) { m.classList.add('nt-typing'); verbatim(true); } });
+    m.addEventListener('focusout', () => setTimeout(() => { if (!isField(document.activeElement)) { m.classList.remove('nt-typing'); verbatim(false); } }, 150));
+}
+
 function prepareNoteModal(heading, sub, color) {
+    wireNoteTypingClass();
     wireNoteReadToEdit();
     wireNoteBullets();
     keepNoteFocus();
@@ -7039,11 +8145,11 @@ async function openFile(fileName, folderPath) {
         const meta = allFiles[folderPath]?.find(f => f.name === fileName);
         await handlePdfFile(fileData, fileName, folderPath, meta?.fsPath);
     } else if (fileType === 'word') {
-        openWordViewer(fileData, fileName);
+        openWordViewer(fileData, fileName, folderPath);
     } else if (fileType === 'excel') {
-        openExcelViewer(fileData, fileName);
+        openExcelViewer(fileData, fileName, folderPath);
     } else if (fileType === 'text') {
-        openTextViewer(fileData, fileName);
+        openTextViewer(fileData, fileName, folderPath);
     } else if (fileType === 'word-legacy') {
         showConfirmModal(`Older .doc files can't be previewed in DOCMAN (only .docx).<br>Download "<b>${escapeHtml(fileName)}</b>" to open it in another app?`, (confirmed) => {
             if (confirmed) {
@@ -9967,7 +11073,7 @@ async function imgEditorReplaceOriginal() {
 
 // Reuses the existing docViewer modal shell (used for Word/Excel) to
 // show plain-text file content in a simple monospace <pre> block.
-async function openTextViewer(fileData, fileName) {
+async function openTextViewer(fileData, fileName, folderPath) {
     const viewer = document.getElementById('docViewer');
     const body = document.getElementById('docViewerBody');
     const title = document.getElementById('docViewerTitle');
@@ -9976,16 +11082,24 @@ async function openTextViewer(fileData, fileName) {
     body.innerHTML = '<div class="doc-viewer-unsupported"><i class="fas fa-spinner fa-spin"></i><p>Loading document…</p></div>';
     viewer._currentData = fileData;
     viewer._currentName = fileName;
+    viewer._currentFolder = folderPath || '';
     viewer.classList.remove('hidden');
+    document.querySelector('#docViewer .dom-find-btn')?.classList.add('hidden');
 
     document.getElementById('textZoomInBtn').classList.remove('hidden');
     document.getElementById('textZoomOutBtn').classList.remove('hidden');
+    document.getElementById('textSearchBtn').classList.remove('hidden');
+    body.classList.add('text-mode');
     textViewerZoom = 1;
 
     try {
         const text = await fileData.text();
-        body.innerHTML = `<pre class="text-viewer-content" id="textViewerContent" style="font-size:${0.85 * textViewerZoom}rem">${escapeHtml(text)}</pre>`;
+        textFindRaw = text;
+        body.innerHTML = `<div class="text-zoom-wrap" id="textZoomWrap"><pre class="text-viewer-content" id="textViewerContent">${escapeHtml(text)}</pre></div>`;
+        applyTextViewerZoom(); // measures the note once now, so the first zoom is instant
         wireTextViewerZoom();
+        wireViewerPinch();
+        wireTextFind();
     } catch (e) {
         console.error('Text preview failed:', e);
         body.innerHTML = `
@@ -9996,6 +11110,205 @@ async function openTextViewer(fileData, fileName) {
     }
 }
 
+// ---- Find for the Word and Excel viewers. Their content is HTML (headings, tables), so matches
+// are wrapped in place with <mark> rather than by rebuilding a string like the plain-text viewer.
+// A search button goes into the viewer's header and the same find bar slides up from the bottom.
+function attachDomFind(viewer, getRoot) {
+    if (viewer._domFind) return viewer._domFind;
+    const actions = viewer.querySelector('.doc-viewer-actions');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'doc-viewer-action-btn dom-find-btn hidden';
+    btn.setAttribute('aria-label', 'Find in document');
+    btn.innerHTML = '<i class="fas fa-magnifying-glass"></i>';
+    actions.insertBefore(btn, actions.firstChild);
+    const bar = document.createElement('div');
+    bar.className = 'text-find-bar hidden';
+    bar.innerHTML = '<input type="text" placeholder="Find in document" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">' +
+        '<span class="text-find-count"></span>' +
+        '<button type="button" class="df-prev" aria-label="Previous match"><i class="fas fa-chevron-up"></i></button>' +
+        '<button type="button" class="df-next" aria-label="Next match"><i class="fas fa-chevron-down"></i></button>' +
+        '<button type="button" class="df-close text-find-close" aria-label="Close find"><i class="fas fa-xmark"></i></button>';
+    viewer.appendChild(bar);
+    const input = bar.querySelector('input');
+    const count = bar.querySelector('.text-find-count');
+    let idx = 0;
+    let timer = null;
+    let vlist = null;   // matches in a sheet that is only partly drawn (read from the data)
+    const MAX = 3000;
+
+    const clear = () => {
+        const root = getRoot();
+        if (!root) return;
+        root.querySelectorAll('mark.dom-find').forEach(m => {
+            const parent = m.parentNode;
+            while (m.firstChild) parent.insertBefore(m.firstChild, m);
+            parent.removeChild(m);
+            parent.normalize();
+        });
+    };
+    const marks = () => { const r = getRoot(); return r ? r.querySelectorAll('mark.dom-find') : []; };
+    const step = (delta) => {
+        if (vlist) { vstep(delta); return; }
+        const list = marks();
+        if (!list.length) return;
+        list[idx] && list[idx].classList.remove('cur');
+        idx = (idx + delta + list.length) % list.length;
+        list[idx].classList.add('cur');
+        list[idx].scrollIntoView({ block: 'center' });
+        count.textContent = (idx + 1) + ' / ' + list.length + (list.length >= MAX ? '+' : '');
+    };
+    const markAll = (q) => {
+        const root = getRoot();
+        const needle = q.toLowerCase();
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        const nodes = [];
+        let n;
+        while ((n = walker.nextNode())) { if (n.nodeValue.toLowerCase().includes(needle)) nodes.push(n); }
+        let made = 0;
+        for (const node of nodes) {
+            if (made >= MAX) break;
+            const text = node.nodeValue.toLowerCase();
+            const starts = [];
+            for (let p = text.indexOf(needle); p !== -1; p = text.indexOf(needle, p + needle.length)) starts.push(p);
+            // last match first, so earlier offsets stay valid while the node is split
+            for (let i = starts.length - 1; i >= 0 && made < MAX; i--) {
+                const range = document.createRange();
+                range.setStart(node, starts[i]);
+                range.setEnd(node, starts[i] + q.length);
+                const m = document.createElement('mark');
+                m.className = 'dom-find';
+                range.surroundContents(m);
+                made++;
+            }
+        }
+        return made;
+    };
+    const curVirtualMark = () => { const root = getRoot(), m = vlist && vlist[idx]; return m ? root.querySelector('td[data-r="' + m.r + '"][data-c="' + m.c + '"] mark.dom-find') : null; };
+    const vshow = () => {
+        const root = getRoot(), m = vlist[idx];
+        root._vfind.reveal(m.r, m.c);
+        clear(); markAll(input.value);
+        const cur = curVirtualMark();
+        if (cur) { cur.classList.add('cur'); cur.scrollIntoView({ block: 'center', inline: 'nearest' }); }
+        count.textContent = (idx + 1) + ' / ' + vlist.length + (vlist.length >= MAX ? '+' : '');
+    };
+    const vstep = (delta) => { idx = (idx + delta + vlist.length) % vlist.length; vshow(); };
+    const run = () => {
+        const root = getRoot();
+        if (!root) return;
+        clear(); vlist = null;
+        const q = input.value;
+        if (!q) { count.textContent = ''; return; }
+        if (root._vfind) {
+            vlist = root._vfind.search(q.toLowerCase());
+            if (!vlist.length) { count.textContent = '0 / 0'; return; }
+            idx = 0; vshow(); return;
+        }
+        const made = markAll(q);
+        if (!made) { count.textContent = '0 / 0'; return; }
+        idx = 0;
+        step(0);
+    };
+    const close = () => {
+        bar.classList.add('hidden');
+        input.value = '';
+        input.blur();
+        count.textContent = '';
+        vlist = null;
+        clear();
+    };
+    btn.onclick = () => { bar.classList.remove('hidden'); input.focus(); };
+    input.oninput = () => { clearTimeout(timer); timer = setTimeout(run, 250); };
+    input.onkeydown = (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        clearTimeout(timer);
+        if (vlist || marks().length) step(e.shiftKey ? -1 : 1); else run();
+    };
+    bar.querySelector('.df-next').onclick = () => step(1);
+    bar.querySelector('.df-prev').onclick = () => step(-1);
+    bar.querySelector('.df-close').onclick = close;
+    // After the visible rows of a partly drawn sheet are redrawn, put the highlights back (without moving).
+    const remark = () => { if (vlist && input.value) { clear(); markAll(input.value); const c = curVirtualMark(); if (c) c.classList.add('cur'); } };
+    viewer._domFind = { btn, bar, close, rerun: () => { if (input.value) run(); }, remark };
+    return viewer._domFind;
+}
+
+// ---- Text viewer find: highlights every match in the card and steps through
+// them. The text is re-rendered with <mark> around matches (debounced, and
+// capped, so a very large file does not stall the phone). ----
+let textFindRaw = '';
+let textFindIndex = 0;
+let textFindTimer = null;
+const TEXT_FIND_MAX = 3000;
+
+function closeTextFind() {
+    const bar = document.getElementById('textFindBar');
+    if (bar) bar.classList.add('hidden');
+    const el = document.getElementById('textViewerContent');
+    if (el && el.querySelector('mark')) el.innerHTML = escapeHtml(textFindRaw);
+    const input = document.getElementById('textFindInput');
+    if (input) { input.value = ''; input.blur(); }
+    const count = document.getElementById('textFindCount');
+    if (count) count.textContent = '';
+}
+
+function runTextFind(keepIndex) {
+    const el = document.getElementById('textViewerContent');
+    const input = document.getElementById('textFindInput');
+    const count = document.getElementById('textFindCount');
+    if (!el || !input) return;
+    const q = input.value;
+    if (!q) { el.innerHTML = escapeHtml(textFindRaw); count.textContent = ''; return; }
+
+    const hay = textFindRaw.toLowerCase();
+    const needle = q.toLowerCase();
+    const starts = [];
+    for (let p = hay.indexOf(needle); p !== -1 && starts.length < TEXT_FIND_MAX; p = hay.indexOf(needle, p + needle.length)) {
+        starts.push(p);
+    }
+    if (!starts.length) { el.innerHTML = escapeHtml(textFindRaw); count.textContent = '0 / 0'; return; }
+
+    let html = '';
+    let last = 0;
+    for (const s of starts) {
+        html += escapeHtml(textFindRaw.slice(last, s)) + '<mark>' + escapeHtml(textFindRaw.slice(s, s + q.length)) + '</mark>';
+        last = s + q.length;
+    }
+    html += escapeHtml(textFindRaw.slice(last));
+    el.innerHTML = html;
+    if (!keepIndex) textFindIndex = 0;
+    stepTextFind(0);
+}
+
+function stepTextFind(delta) {
+    const marks = document.querySelectorAll('#textViewerContent mark');
+    const count = document.getElementById('textFindCount');
+    if (!marks.length) return;
+    marks[textFindIndex] && marks[textFindIndex].classList.remove('cur');
+    textFindIndex = (textFindIndex + delta + marks.length) % marks.length;
+    const cur = marks[textFindIndex];
+    cur.classList.add('cur');
+    cur.scrollIntoView({ block: 'center' });
+    count.textContent = (textFindIndex + 1) + ' / ' + marks.length + (marks.length >= TEXT_FIND_MAX ? '+' : '');
+}
+
+function wireTextFind() {
+    const btn = document.getElementById('textSearchBtn');
+    const bar = document.getElementById('textFindBar');
+    const input = document.getElementById('textFindInput');
+    if (!btn || !bar || !input) return;
+    btn.onclick = () => { bar.classList.remove('hidden'); input.focus(); };
+    document.getElementById('textFindClose').onclick = closeTextFind;
+    document.getElementById('textFindNext').onclick = () => stepTextFind(1);
+    document.getElementById('textFindPrev').onclick = () => stepTextFind(-1);
+    input.oninput = () => { clearTimeout(textFindTimer); textFindTimer = setTimeout(() => runTextFind(false), 250); };
+    input.onkeydown = (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); clearTimeout(textFindTimer); if (document.querySelector('#textViewerContent mark')) stepTextFind(e.shiftKey ? -1 : 1); else runTextFind(false); }
+    };
+}
+
 // ---- Text viewer zoom: pinch gesture + +/- buttons, both adjusting
 // font-size. A plain scale-transform zoom would either clip the text or
 // need extra scroll-area math to stay legible; resizing the actual font
@@ -10004,64 +11317,143 @@ let textViewerZoom = 1;
 const TEXT_ZOOM_MIN = 0.6;
 const TEXT_ZOOM_MAX = 3;
 
-function applyTextViewerZoom() {
-    const el = document.getElementById('textViewerContent');
-    const body = document.getElementById('docViewerBody');
-    if (!el || !body) return;
-
-    // Changing font-size reflows the content to a different total
-    // height. If we don't compensate, the container's scrollTop stays
-    // the same in pixels while the content height keeps changing every
-    // frame of the pinch, so the visible text appears to jump/shift
-    // instead of zooming in place. Preserving the scroll *ratio*
-    // (not the absolute pixel offset) keeps the same relative reading
-    // position stable through the reflow.
-    const maxScrollBefore = body.scrollHeight - body.clientHeight;
-    const ratio = maxScrollBefore > 0 ? body.scrollTop / maxScrollBefore : 0;
-
-    el.style.fontSize = (0.85 * textViewerZoom) + 'rem';
-
-    const maxScrollAfter = body.scrollHeight - body.clientHeight;
-    if (maxScrollAfter > 0) body.scrollTop = ratio * maxScrollAfter;
+// Zoom is a pure scale of the whole page, the way Samsung Notes does it: the text is NOT re-wrapped.
+// Re-flowing a large note on every zoom step took most of a second (one real file: 4.5 million
+// characters), and a scale costs nothing however long the note is. Zoomed in, you pan sideways.
+// Shared by the text, Word and Excel viewers: scale `inner` by z and size `wrap` to the scaled page,
+// so the scroll area is right and nothing is re-laid out. The browser's own `zoom` property was
+// tried for Word/Excel; it re-lays out and the point under the fingers did not stay put.
+function applyScaleZoom(wrap, inner, z, lazy) {
+    if (!wrap || !inner) return;
+    if (lazy && z === 1 && !wrap._baseW) { inner.style.width = ''; inner.style.transform = ''; wrap.style.width = ''; wrap.style.height = ''; return; }
+    if (!wrap._baseW) {
+        inner.style.width = ''; inner.style.transform = ''; wrap.style.width = ''; wrap.style.height = '';
+        wrap._baseW = inner.offsetWidth;
+        wrap._baseH = inner.offsetHeight;
+        inner.style.width = wrap._baseW + 'px';
+    }
+    wrap.style.width = (wrap._baseW * z) + 'px';
+    wrap.style.height = (wrap._baseH * z) + 'px';
+    inner.style.transform = z === 1 ? '' : 'scale(' + z + ')';
 }
+function applyTextViewerZoom() {
+    applyScaleZoom(document.getElementById('textZoomWrap'), document.getElementById('textViewerContent'), textViewerZoom);
+}
+function applyWordZoom() {
+    applyScaleZoom(document.getElementById('wordZoomWrap'), document.querySelector('#wordZoomWrap .doc-text-card'), wordZoomLevel);
+}
+function applySheetZoom(lazy) {
+    applyScaleZoom(document.getElementById('sheetZoomWrap'), document.querySelector('#sheetZoomWrap .doc-viewer-sheet-table'), sheetZoomLevel, lazy);
+}
+
+// The +/- buttons zoom around the middle of the screen, so the part being read stays put.
+function setTextZoomAnchored(newZ) {
+    const body = document.getElementById('docViewerBody');
+    if (!body) return;
+    const old = textViewerZoom, fx = body.clientWidth / 2, fy = body.clientHeight / 2;
+    const px = (body.scrollLeft + fx) / old, py = (body.scrollTop + fy) / old;
+    textViewerZoom = Math.min(TEXT_ZOOM_MAX, Math.max(TEXT_ZOOM_MIN, newZ));
+    applyTextViewerZoom();
+    body.scrollLeft = px * textViewerZoom - fx;
+    body.scrollTop = py * textViewerZoom - fy;
+}
+window.addEventListener('resize', () => {
+    ['textZoomWrap', 'wordZoomWrap', 'sheetZoomWrap'].forEach(id => { const w = document.getElementById(id); if (w) w._baseW = 0; });
+    applyTextViewerZoom(); applyWordZoom(); applySheetZoom();
+});
 
 function wireTextViewerZoom() {
     const body = document.getElementById('docViewerBody');
     const zoomInBtn = document.getElementById('textZoomInBtn');
     const zoomOutBtn = document.getElementById('textZoomOutBtn');
     if (!body || body._textZoomWired) {
-        if (zoomInBtn) zoomInBtn.onclick = () => { textViewerZoom = Math.min(TEXT_ZOOM_MAX, textViewerZoom + 0.15); applyTextViewerZoom(); };
-        if (zoomOutBtn) zoomOutBtn.onclick = () => { textViewerZoom = Math.max(TEXT_ZOOM_MIN, textViewerZoom - 0.15); applyTextViewerZoom(); };
+        if (zoomInBtn) zoomInBtn.onclick = () => setTextZoomAnchored(textViewerZoom + 0.15);
+        if (zoomOutBtn) zoomOutBtn.onclick = () => setTextZoomAnchored(textViewerZoom - 0.15);
         return;
     }
     body._textZoomWired = true;
 
-    if (zoomInBtn) zoomInBtn.onclick = () => { textViewerZoom = Math.min(TEXT_ZOOM_MAX, textViewerZoom + 0.15); applyTextViewerZoom(); };
-    if (zoomOutBtn) zoomOutBtn.onclick = () => { textViewerZoom = Math.max(TEXT_ZOOM_MIN, textViewerZoom - 0.15); applyTextViewerZoom(); };
+    if (zoomInBtn) zoomInBtn.onclick = () => setTextZoomAnchored(textViewerZoom + 0.15);
+    if (zoomOutBtn) zoomOutBtn.onclick = () => setTextZoomAnchored(textViewerZoom - 0.15);
 
-    let pinchStartDist = 0;
-    let pinchStartZoom = 1;
-    body.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 2 && document.getElementById('textViewerContent')) {
-            e.preventDefault();
-            const dx = e.touches[0].clientX - e.touches[1].clientX;
-            const dy = e.touches[0].clientY - e.touches[1].clientY;
-            pinchStartDist = Math.hypot(dx, dy);
-            pinchStartZoom = textViewerZoom;
-        }
+    // Pinch is wired by wireViewerPinch (shared with Word and Excel).
+}
+
+// ---- Pinch zoom for the text, Word and Excel viewers. While the fingers move only a CSS
+// transform changes (cheap, so it follows the fingers smoothly); the real zoom is applied once,
+// when the fingers lift, and the page is scrolled so the spot under the fingers stays put.
+// Re-flowing the text on every frame is what made the old text-viewer pinch jerk.
+function wirePinchZoom(target, cfg) {
+    if (!target || target._pinchWired) return;
+    target._pinchWired = true;
+    target.style.touchAction = 'pan-x pan-y';
+    let s = null;
+    // Lifting one finger of a pinch leaves the other one down, and the page treats that as the start
+    // of a pan, so the area just zoomed into jerks sideways by however much that finger wobbles (the
+    // same thing the PDF viewer had to fix). After a pinch, movement is ignored until every finger is up.
+    let hold = false;
+    const gap = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    target.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) hold = false;
+        if (e.touches.length !== 2) return;
+        const el = cfg.getEl();
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        s = { el, d0: gap(e.touches), z0: cfg.getZoom(el), rel: 1, cx, cy, ex: cx - r.left, ey: cy - r.top };
+        el.style.transformOrigin = s.ex + 'px ' + s.ey + 'px';
+        el.style.willChange = 'transform';
+        e.preventDefault();
     }, { passive: false });
-    body.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 2 && pinchStartDist > 0 && document.getElementById('textViewerContent')) {
-            e.preventDefault();
-            const dx = e.touches[0].clientX - e.touches[1].clientX;
-            const dy = e.touches[0].clientY - e.touches[1].clientY;
-            const dist = Math.hypot(dx, dy);
-            textViewerZoom = Math.min(TEXT_ZOOM_MAX, Math.max(TEXT_ZOOM_MIN, pinchStartZoom * (dist / pinchStartDist)));
-            applyTextViewerZoom();
-        }
+    target.addEventListener('touchmove', (e) => {
+        if (hold) { if (e.cancelable) e.preventDefault(); return; }
+        if (!s || e.touches.length !== 2 || !s.d0) return;
+        e.preventDefault();
+        const [lo, hi] = cfg.range(s.el);
+        const z = Math.min(hi, Math.max(lo, s.z0 * gap(e.touches) / s.d0));
+        s.rel = z / s.z0;
+        s.el.style.transform = 'scale(' + s.rel + ')';
     }, { passive: false });
-    body.addEventListener('touchend', (e) => {
-        if (e.touches.length < 2) pinchStartDist = 0;
+    const finish = (e) => {
+        if (!s || e.touches.length >= 2) return;
+        const st = s; s = null;
+        hold = e.touches.length > 0;
+        st.el.style.transform = ''; st.el.style.transformOrigin = ''; st.el.style.willChange = '';
+        if (Math.abs(st.rel - 1) < 0.005) return;
+        cfg.setZoom(st.el, st.z0 * st.rel);
+        // Where the fingers' centre point ended up after the real zoom, versus where it should be.
+        const r2 = st.el.getBoundingClientRect();
+        const dx = r2.left + st.ex * st.rel - st.cx, dy = r2.top + st.ey * st.rel - st.cy;
+        let hDone = false, vDone = false;
+        for (let a = st.el.parentElement; a && a !== document.body && !(hDone && vDone); a = a.parentElement) {
+            const cs = getComputedStyle(a);
+            if (!hDone && /(auto|scroll)/.test(cs.overflowX) && a.scrollWidth > a.clientWidth) { a.scrollLeft += dx; hDone = true; }
+            if (!vDone && /(auto|scroll)/.test(cs.overflowY) && a.scrollHeight > a.clientHeight) { a.scrollTop += dy; vDone = true; }
+            if (a === target) break;
+        }
+    };
+    target.addEventListener('touchend', (e) => { finish(e); if (e.touches.length === 0) hold = false; });
+    target.addEventListener('touchcancel', (e) => { finish(e); hold = false; });
+}
+
+let wordZoomLevel = 1;
+let sheetZoomLevel = 1;
+function wireViewerPinch() {
+    wirePinchZoom(document.getElementById('docViewerBody'), {
+        getEl: () => document.getElementById('textZoomWrap') || document.getElementById('wordZoomWrap'),
+        getZoom: (el) => el.id === 'textZoomWrap' ? textViewerZoom : wordZoomLevel,
+        setZoom: (el, z) => {
+            if (el.id === 'textZoomWrap') { textViewerZoom = z; applyTextViewerZoom(); }
+            else { wordZoomLevel = z; applyWordZoom(); }
+        },
+        range: (el) => el.id === 'textZoomWrap' ? [TEXT_ZOOM_MIN, TEXT_ZOOM_MAX] : [0.5, 3]
+    });
+    wirePinchZoom(document.getElementById('sheetViewerBody'), {
+        getEl: () => document.getElementById('sheetZoomWrap'),
+        getZoom: () => sheetZoomLevel,
+        setZoom: (el, z) => { sheetZoomLevel = z; applySheetZoom(); const b = document.getElementById('sheetViewerBody'); if (b._vcur) requestAnimationFrame(() => b._vcur && b._vcur()); },
+        range: () => [0.4, 4]
     });
 }
 
@@ -10085,7 +11477,7 @@ function confirmLargeDocPreview(fileData, kind) {
     });
 }
 
-async function openWordViewer(fileData, fileName) {
+async function openWordViewer(fileData, fileName, folderPath) {
     if (!(await confirmLargeDocPreview(fileData, 'document'))) return;
     const viewer = document.getElementById('docViewer');
     const body = document.getElementById('docViewerBody');
@@ -10095,14 +11487,23 @@ async function openWordViewer(fileData, fileName) {
     body.innerHTML = '<div class="doc-viewer-unsupported"><i class="fas fa-spinner fa-spin"></i><p>Loading document…</p></div>';
     viewer._currentData = fileData;
     viewer._currentName = fileName;
+    viewer._currentFolder = folderPath || '';
     viewer.classList.remove('hidden');
     document.getElementById('textZoomInBtn').classList.add('hidden');
     document.getElementById('textZoomOutBtn').classList.add('hidden');
+    document.getElementById('textSearchBtn').classList.add('hidden');
+    // Same page as the text viewer: a white card on grey, selectable, with find.
+    body.classList.add('text-mode');
+    wordZoomLevel = 1;
+    wireViewerPinch();
+    const find = attachDomFind(viewer, () => document.getElementById('docViewerBody'));
+    find.btn.classList.remove('hidden');
 
     try {
         const arrayBuffer = await fileData.arrayBuffer();
         const result = await mammoth.convertToHtml({ arrayBuffer });
-        body.innerHTML = result.value || '<p><em>(Empty document)</em></p>';
+        body.innerHTML = '<div class="text-zoom-wrap" id="wordZoomWrap"><div class="doc-text-card">' + (result.value || '<p><em>(Empty document)</em></p>') + '</div></div>';
+        applyWordZoom();
     } catch (e) {
         console.error('Word preview failed:', e);
         body.innerHTML = `
@@ -10115,9 +11516,14 @@ async function openWordViewer(fileData, fileName) {
 
 function closeDocViewer() {
     const viewer = document.getElementById('docViewer');
+    closeTextFind();
+    if (viewer._domFind) { viewer._domFind.close(); viewer._domFind.btn.classList.add('hidden'); }
     document.getElementById('docViewerBody').innerHTML = '';
+    document.getElementById('docViewerBody').classList.remove('text-mode');
     document.getElementById('textZoomInBtn').classList.add('hidden');
     document.getElementById('textZoomOutBtn').classList.add('hidden');
+    document.getElementById('textSearchBtn').classList.add('hidden');
+    textFindRaw = '';
     viewer._currentData = null;
     viewer.classList.add('hidden');
 }
@@ -10126,7 +11532,150 @@ function closeDocViewer() {
 // EXCEL / SPREADSHEET VIEWER (.xls, .xlsx, .csv via SheetJS)
 // ============================================================
 
-async function openExcelViewer(fileData, fileName) {
+// ---- Excel look (20 Oct): the file's own cell fills, borders, fonts and alignment ----
+// SheetJS (community) reads values, widths and merges but not cell styles, so styles.xml and each
+// sheet's <c s="N"> are read here with JSZip. Any failure returns null and the plain table is drawn.
+const XL_INDEXED = ['000000', 'FFFFFF', 'FF0000', '00FF00', '0000FF', 'FFFF00', 'FF00FF', '00FFFF', '000000', 'FFFFFF', 'FF0000', '00FF00', '0000FF', 'FFFF00', 'FF00FF', '00FFFF',
+    '800000', '008000', '000080', '808000', '800080', '008080', 'C0C0C0', '808080', '9999FF', '993366', 'FFFFCC', 'CCFFFF', '660066', 'FF8080', '0066CC', 'CCCCFF',
+    '000080', 'FF00FF', 'FFFF00', '00FFFF', '800080', '800000', '008080', '0000FF', '00CCFF', 'CCFFFF', 'CCFFCC', 'FFFF99', '99CCFF', 'FF99CC', 'CC99FF', 'FFCC99',
+    '3366FF', '33CCCC', '99CC00', 'FFCC00', 'FF9900', 'FF6600', '666699', '969696', '003366', '339966', '003300', '333300', '993300', '993366', '333399', '333333'];
+function xlTintColor(hex, tint) {
+    if (!tint) return hex;
+    let r = parseInt(hex.slice(0, 2), 16) / 255, g = parseInt(hex.slice(2, 4), 16) / 255, b = parseInt(hex.slice(4, 6), 16) / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    let h = 0, s = 0, l = (mx + mn) / 2;
+    if (mx !== mn) {
+        const d = mx - mn;
+        s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+        h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+        h /= 6;
+    }
+    l = tint < 0 ? l * (1 + tint) : l * (1 - tint) + tint;
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+    const f = t => { t = (t + 1) % 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
+    const to = v => Math.max(0, Math.min(255, Math.round(v * 255))).toString(16).padStart(2, '0');
+    return s === 0 ? to(l) + to(l) + to(l) : to(f(h + 1 / 3)) + to(f(h)) + to(f(h - 1 / 3));
+}
+async function parseXlsxStyles(arrayBuffer) {
+    try {
+        const zip = await JSZip.loadAsync(arrayBuffer);
+        const read = async p => { const f = zip.file(p); return f ? f.async('string') : null; };
+        const dp = new DOMParser();
+        const kids = (el, name) => el ? Array.from(el.children).filter(c => c.localName === name) : [];
+        const first = (doc, name) => doc.getElementsByTagNameNS('*', name)[0] || null;
+        const stylesXml = await read('xl/styles.xml');
+        if (!stylesXml) return null;
+        const sd = dp.parseFromString(stylesXml, 'application/xml');
+        // Theme colours, in the order Excel numbers them (0 light1, 1 dark1, 2 light2, 3 dark2, accents ...).
+        let theme = ['FFFFFF', '000000', 'E7E6E6', '44546A', '4472C4', 'ED7D31', 'A5A5A5', 'FFC000', '5B9BD5', '70AD47', '0563C1', '954F72'];
+        const themeXml = await read('xl/theme/theme1.xml');
+        if (themeXml) {
+            const cs = first(dp.parseFromString(themeXml, 'application/xml'), 'clrScheme');
+            if (cs) {
+                const by = {};
+                Array.from(cs.children).forEach(c => {
+                    const v = c.firstElementChild; if (!v) return;
+                    by[c.localName] = (v.getAttribute('lastClr') || v.getAttribute('val') || '').toUpperCase();
+                });
+                const order = ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink'];
+                theme = order.map((k, i) => /^[0-9A-F]{6}$/.test(by[k] || '') ? by[k] : theme[i]);
+            }
+        }
+        const colorOf = el => {
+            if (!el) return null;
+            let hex = null;
+            if (el.hasAttribute('rgb')) hex = el.getAttribute('rgb').slice(-6).toUpperCase();
+            else if (el.hasAttribute('theme')) hex = theme[+el.getAttribute('theme')] || null;
+            else if (el.hasAttribute('indexed')) hex = XL_INDEXED[+el.getAttribute('indexed')] || null;
+            if (!hex || !/^[0-9A-F]{6}$/.test(hex)) return null;
+            return '#' + xlTintColor(hex, parseFloat(el.getAttribute('tint')) || 0);
+        };
+        const fonts = kids(first(sd, 'fonts'), 'font').map(f => {
+            const flag = n => { const e = kids(f, n)[0]; return !!e && e.getAttribute('val') !== '0' && e.getAttribute('val') !== 'false'; };
+            const sz = kids(f, 'sz')[0], nm = kids(f, 'name')[0];
+            return { b: flag('b'), i: flag('i'), u: !!kids(f, 'u')[0], sz: sz ? parseFloat(sz.getAttribute('val')) : 11, color: colorOf(kids(f, 'color')[0]), name: nm ? nm.getAttribute('val') : '' };
+        });
+        const fills = kids(first(sd, 'fills'), 'fill').map(f => {
+            const pf = kids(f, 'patternFill')[0];
+            return pf && pf.getAttribute('patternType') === 'solid' ? colorOf(kids(pf, 'fgColor')[0]) : null;
+        });
+        const styleCss = { thin: '1px solid', hair: '1px solid', medium: '2px solid', thick: '3px solid', dashed: '1px dashed', dotted: '1px dotted', double: '3px double', mediumDashed: '2px dashed', dashDot: '1px dashed', mediumDashDot: '2px dashed', dashDotDot: '1px dashed', mediumDashDotDot: '2px dashed', slantDashDot: '2px dashed' };
+        const borders = kids(first(sd, 'borders'), 'border').map(bd => {
+            const o = {};
+            ['left', 'right', 'top', 'bottom'].forEach(side => {
+                const e = kids(bd, side)[0], st = e && e.getAttribute('style');
+                if (st && styleCss[st]) o[side] = styleCss[st] + ' ' + (colorOf(kids(e, 'color')[0]) || '#000');
+            });
+            return o;
+        });
+        const xfs = kids(first(sd, 'cellXfs'), 'xf').map(x => {
+            const al = kids(x, 'alignment')[0];
+            return {
+                font: fonts[+x.getAttribute('fontId')] || null, fill: fills[+x.getAttribute('fillId')] || null,
+                border: borders[+x.getAttribute('borderId')] || {},
+                h: al ? al.getAttribute('horizontal') : null, v: al ? al.getAttribute('verticalAlign') || al.getAttribute('vertical') : null,
+                wrap: !!al && (al.getAttribute('wrapText') === '1' || al.getAttribute('wrapText') === 'true'),
+                indent: al ? parseInt(al.getAttribute('indent')) || 0 : 0
+            };
+        });
+        // Sheet name -> file, then each cell's style number.
+        const wbXml = await read('xl/workbook.xml'), relXml = await read('xl/_rels/workbook.xml.rels');
+        if (!wbXml || !relXml) return { xfs, baseFont: fonts[0] || null, sheets: {} };
+        const rels = {};
+        Array.from(dp.parseFromString(relXml, 'application/xml').getElementsByTagNameNS('*', 'Relationship')).forEach(r => {
+            let t = r.getAttribute('Target') || ''; t = t.charAt(0) === '/' ? t.slice(1) : 'xl/' + t;
+            rels[r.getAttribute('Id')] = t;
+        });
+        const sheets = {};
+        for (const s of Array.from(dp.parseFromString(wbXml, 'application/xml').getElementsByTagNameNS('*', 'sheet'))) {
+            const path = rels[s.getAttribute('r:id') || s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id')];
+            const xml = path ? await read(path) : null;
+            if (!xml) continue;
+            const cells = {}, re = /<c\b([^>]*)>/g;
+            let m;
+            while ((m = re.exec(xml))) {
+                const a = /\br="([A-Z]+[0-9]+)"/.exec(m[1]), sIdx = /\bs="(\d+)"/.exec(m[1]);
+                if (a && sIdx && sIdx[1] !== '0') cells[a[1]] = +sIdx[1];
+            }
+            sheets[s.getAttribute('name')] = { cells, grid: !/<sheetView\b[^>]*showGridLines="(0|false)"/.test(xml) };
+        }
+        return { xfs, baseFont: fonts[0] || null, sheets };
+    } catch (e) {
+        console.warn('Excel styles not read, drawing the plain table:', e);
+        return null;
+    }
+}
+// The inline style for one cell. borderXfs lets a merged cell take its right and bottom edge from the far cells.
+function xlCellStyle(xf, base, cell, borderXfs) {
+    const css = [];
+    if (xf) {
+        if (xf.fill) css.push('background:' + xf.fill);
+        const f = xf.font;
+        if (f) {
+            if (f.color) css.push('color:' + f.color);
+            if (f.b) css.push('font-weight:700');
+            if (f.i) css.push('font-style:italic');
+            if (f.u) css.push('text-decoration:underline');
+            if (!base || f.sz !== base.sz) css.push('font-size:' + f.sz + 'pt');
+            if (f.name && (!base || f.name !== base.name)) css.push("font-family:'" + f.name.replace(/['"\\;]/g, '') + "',Arial,sans-serif");
+        }
+        const h = xf.h === 'centerContinuous' ? 'center' : xf.h;
+        css.push('text-align:' + (h && h !== 'general' ? (h === 'fill' || h === 'justify' || h === 'distributed' ? 'left' : h) : (cell && cell.t === 'n' ? 'right' : 'left')));
+        css.push('vertical-align:' + (xf.v === 'center' ? 'middle' : xf.v === 'top' ? 'top' : 'bottom'));
+        css.push('--va:' + (xf.v === 'center' ? 'center' : xf.v === 'top' ? 'flex-start' : 'flex-end'));
+        if (xf.indent && (!xf.h || xf.h === 'left')) css.push('padding-left:' + (3 + xf.indent * 9) + 'px');
+        css.push(xf.wrap ? 'white-space:pre-wrap;overflow-wrap:break-word' : 'white-space:nowrap');
+    } else {
+        css.push('text-align:' + (cell && cell.t === 'n' ? 'right' : 'left'), 'vertical-align:bottom', 'white-space:nowrap');
+    }
+    const b = {};
+    ['left', 'top'].forEach(s => { const o = (borderXfs[s] || xf); if (o && o.border[s]) b[s] = o.border[s]; });
+    ['right', 'bottom'].forEach(s => { const o = (borderXfs[s] || xf); if (o && o.border[s]) b[s] = o.border[s]; });
+    for (const s in b) css.push('border-' + s + ':' + b[s]);
+    return css.join(';');
+}
+
+async function openExcelViewer(fileData, fileName, folderPath) {
     if (!(await confirmLargeDocPreview(fileData, 'spreadsheet'))) return;
     const viewer = document.getElementById('sheetViewer');
     const body = document.getElementById('sheetViewerBody');
@@ -10138,30 +11687,262 @@ async function openExcelViewer(fileData, fileName) {
     tabs.innerHTML = '';
     viewer._currentData = fileData;
     viewer._currentName = fileName;
+    viewer._currentFolder = folderPath || '';
     viewer.classList.remove('hidden');
+    body.classList.add('text-mode');
+    sheetZoomLevel = 1;
+    wireViewerPinch();
+    body._vcur = null; body._vfind = null;
+    body.onscroll = () => { const f = body._vcur; if (f && !body._vraf) body._vraf = requestAnimationFrame(() => { body._vraf = 0; if (body._vcur) body._vcur(); }); };
+    const find = attachDomFind(viewer, () => document.getElementById('sheetViewerBody'));
+    find.btn.classList.remove('hidden');
 
     try {
         const arrayBuffer = await fileData.arrayBuffer();
-        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        // cellStyles: also read the file's own column widths and row heights.
+        const workbook = XLSX.read(arrayBuffer, { type: 'array', cellStyles: true });
         const sheetNames = workbook.SheetNames;
+        const xlStyles = await parseXlsxStyles(arrayBuffer);
 
-        const renderSheet = (name) => {
-            const sheet = workbook.Sheets[name];
-            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
-            if (!rows.length) {
-                body.innerHTML = '<div class="doc-viewer-unsupported"><i class="fas fa-table"></i><p>This sheet is empty.</p></div>';
+        const sheetCache = {};
+        let curCard = null;
+        const renderSheet = async (name) => {
+            // A sheet already drawn is kept and put back as it was; only the first draw costs time.
+            // Let the tapped tab light up (a frame is painted) before the heavy work starts.
+            if (workbook.SheetNames.length > 1) {
+                await new Promise(r => { let d = false; const go = () => { if (!d) { d = true; r(); } }; requestAnimationFrame(() => setTimeout(go, 0)); setTimeout(go, 120); });
+            }
+            if (curCard && curCard._v) { curCard._v.scrollTop = body.scrollTop; curCard._v.scrollLeft = curCard.scrollLeft; }
+            if (sheetCache[name]) {
+                const c = sheetCache[name];
+                body.replaceChildren(c);
+                curCard = c;
+                body._vcur = c._v ? c._v.onScroll : null; body._vfind = c._v ? c._v.vf : null;
+                applySheetZoom(true);
+                if (c._v) { body.scrollTop = c._v.scrollTop; c.scrollLeft = c._v.scrollLeft; c._v.onScroll(); }
+                find.rerun();
                 return;
             }
-            let html = '<table class="doc-viewer-sheet-table"><thead><tr>';
-            rows[0].forEach(cell => { html += `<th>${escapeHtml(String(cell))}</th>`; });
-            html += '</tr></thead><tbody>';
-            for (let i = 1; i < rows.length; i++) {
-                html += '<tr>';
-                rows[i].forEach(cell => { html += `<td>${escapeHtml(String(cell))}</td>`; });
-                html += '</tr>';
+            if (workbook.SheetNames.length > 1) {
+                body.innerHTML = '<div class="doc-viewer-unsupported"><i class="fas fa-spinner fa-spin"></i><p>Loading sheet…</p></div>';
+                await new Promise(r => { let d = false; const go = () => { if (!d) { d = true; r(); } }; requestAnimationFrame(() => setTimeout(go, 0)); setTimeout(go, 120); });
             }
-            html += '</tbody></table>';
-            body.innerHTML = html;
+            const sheet = workbook.Sheets[name];
+            const emptyMsg = '<div class="doc-viewer-unsupported"><i class="fas fa-table"></i><p>This sheet is empty.</p></div>';
+            // Draw only the used area. A sheet's declared range can run far past its data
+            // (one real report claimed 858 rows x 274 columns for 41 rows of content), and
+            // drawing that was slow and mostly blank.
+            const textOf = (cell) => cell ? (cell.w != null ? String(cell.w) : (cell.v != null ? String(cell.v) : '')) : '';
+            let minR = Infinity, minC = Infinity, maxR = -1, maxC = -1;
+            for (const addr in sheet) {
+                if (addr[0] === '!' || !textOf(sheet[addr]).trim()) continue;
+                const p = XLSX.utils.decode_cell(addr);
+                if (p.r < minR) minR = p.r; if (p.c < minC) minC = p.c;
+                if (p.r > maxR) maxR = p.r; if (p.c > maxC) maxC = p.c;
+            }
+            if (maxR < 0) { body.innerHTML = emptyMsg; curCard = null; body._vcur = null; body._vfind = null; return; }
+            // Merged cells span their rows and columns instead of squeezing into one cell.
+            const spans = {}, covered = new Set();
+            (sheet['!merges'] || []).forEach(m => {
+                if (m.s.r < minR || m.s.c < minC || m.s.r > maxR || m.s.c > maxC) return;
+                const er = Math.min(m.e.r, maxR), ec = Math.min(m.e.c, maxC);
+                spans[m.s.r + ':' + m.s.c] = { rs: er - m.s.r + 1, cs: ec - m.s.c + 1 };
+                for (let r = m.s.r; r <= er; r++) for (let cc = m.s.c; cc <= ec; cc++) {
+                    if (r !== m.s.r || cc !== m.s.c) covered.add(r + ':' + cc);
+                }
+            });
+            // Column widths and row heights come from the file, so a wide Description column is
+            // as wide here as it is in Excel. A column the file does not size gets a default.
+            const colInfo = sheet['!cols'] || [], rowInfo = sheet['!rows'] || [];
+            let totalW = 0, cols = '';
+            for (let cc = minC; cc <= maxC; cc++) {
+                const ci = colInfo[cc];
+                if (ci && ci.hidden) { cols += '<col style="visibility:collapse;width:0">'; continue; }
+                const w = Math.min(Math.round((ci && (ci.wpx || (ci.wch ? ci.wch * 7 + 5 : 0))) || 64), 2000);
+                totalW += w;
+                cols += '<col style="width:' + w + 'px">';
+            }
+            const stSheet = xlStyles && xlStyles.sheets[name], baseF = xlStyles && xlStyles.baseFont;
+            const tblCss = stSheet ? ';font-size:' + (baseF ? baseF.sz : 11) + 'pt;font-family:' + (baseF && baseF.name ? "'" + baseF.name.replace(/['"\;]/g, '') + "'," : '') + 'Arial,sans-serif' : '';
+            const styleClass = {}, rowParts = []; let styleRules = '';
+            let html = '<table class="doc-viewer-sheet-table' + (stSheet ? ' xl-styled' + (stSheet.grid ? '' : ' xl-nogrid') : '') + '" style="width:' + totalW + 'px' + tblCss + '"><colgroup>' + cols + '</colgroup><tbody>';
+            // BIG sheets (one real one has 47,000 cells: 48 rows x 977 date columns) are drawn the way Android's own Excel reader
+            // does it: only the rows AND columns on screen (plus a margin) exist. Spacer rows/cells stand in for the rest, so the
+            // page size and scroll bars are right. Row heights and column widths come from the file, so every one is a known size.
+            if ((maxR - minR + 1) * (maxC - minC + 1) > 3000) {
+                const vrows = [], idxOfRow = {};
+                for (let r = minR; r <= maxR; r++) {
+                    const ri = rowInfo[r];
+                    if (ri && ri.hidden) continue;
+                    const h = Math.max(4, Math.round((ri && (ri.hpx || (ri.hpt ? ri.hpt * 96 / 72 : 0))) || 20));
+                    idxOfRow[r] = vrows.length; vrows.push({ r, h });
+                }
+                const nRows = vrows.length, nCols = maxC - minC + 1;
+                const cum = new Float64Array(nRows + 1), colX = new Float64Array(nCols + 1);
+                for (let i = 0; i < nRows; i++) cum[i + 1] = cum[i] + vrows[i].h;
+                for (let k = 0; k < nCols; k++) {
+                    const ci = colInfo[minC + k];
+                    const w = ci && ci.hidden ? 0 : Math.min(Math.round((ci && (ci.wpx || (ci.wch ? ci.wch * 7 + 5 : 0))) || 64), 2000);
+                    colX[k + 1] = colX[k] + w;
+                }
+                // Merged cells in row-index / column-index terms.
+                const vmerges = [];
+                (sheet['!merges'] || []).forEach(m => {
+                    if (m.s.r < minR || m.s.c < minC || m.s.r > maxR || m.s.c > maxC) return;
+                    const i0 = idxOfRow[m.s.r];
+                    if (i0 === undefined) return;
+                    let i1 = i0;
+                    for (let r = Math.min(m.e.r, maxR); r >= m.s.r; r--) { if (idxOfRow[r] !== undefined) { i1 = idxOfRow[r]; break; } }
+                    vmerges.push({ i0, i1, c0: m.s.c - minC, c1: Math.min(m.e.c, maxC) - minC });
+                });
+                const vStyleClass = {};
+                let vStyleRules = '', vStyleDirty = false;
+                let orig = {}, cov = new Set();   // this window's merged cells (clipped to the window) and the cells they cover
+                const xfAt = (rr, c2) => stSheet ? (xlStyles.xfs[stSheet.cells[XLSX.utils.encode_cell({ r: rr, c: c2 })]] || null) : null;
+                const vCell = (i, k) => {
+                    const key = i + ':' + k;
+                    if (cov.has(key)) return '';
+                    const o = orig[key], m = o ? o.m : null;
+                    const srcI = m ? m.i0 : i, srcC = minC + (m ? m.c0 : k), r = vrows[srcI].r;
+                    const cellObj = sheet[XLSX.utils.encode_cell({ r, c: srcC })];
+                    let sty = '';
+                    if (stSheet) {
+                        const far = m ? { right: xfAt(r, minC + m.c1), bottom: xfAt(vrows[m.i1].r, srcC) } : {};
+                        sty = xlCellStyle(xfAt(r, srcC), baseF, cellObj, far);
+                    }
+                    if (sty && !vStyleClass[sty]) { vStyleClass[sty] = 'xs' + Object.keys(vStyleClass).length; vStyleRules += '.sheet-card .xl-styled td.' + vStyleClass[sty] + '{' + sty + '}'; vStyleDirty = true; }
+                    const h = o ? cum[i + o.rs] - cum[i] : vrows[i].h;
+                    const attrs = o ? (o.cs > 1 ? ' colspan="' + o.cs + '"' : '') + (o.rs > 1 ? ' rowspan="' + o.rs + '"' : '') : '';
+                    return '<td' + attrs + ' data-r="' + r + '" data-c="' + srcC + '"' + (sty ? ' class="' + vStyleClass[sty] + '"' : '') + '><div class="c" style="height:' + (h - 4) + 'px"><span>' + escapeHtml(textOf(cellObj)) + '</span></div></td>';
+                };
+                const spacer = (h) => h > 0 ? '<tr style="height:' + h + 'px"><td colspan="' + nCols + '" style="height:' + h + 'px;padding:0;border:0"></td></tr>' : '';
+                const gap = (n) => n > 0 ? '<td colspan="' + n + '" style="padding:0;border:0"></td>' : '';
+                html += '</tbody></table>';
+                body.innerHTML = '<div class="sheet-card"><style></style><div class="text-zoom-wrap" id="sheetZoomWrap">' + html + '</div></div>';
+                const card = body.firstElementChild, styleEl = card.querySelector('style'), tbody = card.querySelector('tbody'), wrap = card.querySelector('#sheetZoomWrap');
+                const win = { a: -1, b: -1, c0: -1, c1: -1 };
+                const showWin = (a0, b0, k0, k1) => {
+                    const a = Math.max(0, Math.min(nRows - 1, a0)), b = Math.max(a, Math.min(nRows - 1, b0));
+                    const cs = Math.max(0, Math.min(nCols - 1, k0)), ce = Math.max(cs, Math.min(nCols - 1, k1));
+                    // A merged cell that reaches into the window is drawn clipped to it (its text stays, the part outside is cut).
+                    orig = {}; cov = new Set();
+                    for (const m of vmerges) {
+                        if (m.i1 < a || m.i0 > b || m.c1 < cs || m.c0 > ce) continue;
+                        const r0 = Math.max(m.i0, a), k00 = Math.max(m.c0, cs), r1 = Math.min(m.i1, b), k11 = Math.min(m.c1, ce);
+                        orig[r0 + ':' + k00] = { m, rs: r1 - r0 + 1, cs: k11 - k00 + 1 };
+                        for (let r = r0; r <= r1; r++) for (let kk = k00; kk <= k11; kk++) { if (r !== r0 || kk !== k00) cov.add(r + ':' + kk); }
+                    }
+                    let s = spacer(cum[a]);
+                    for (let i = a; i <= b; i++) {
+                        let row = '<tr style="height:' + vrows[i].h + 'px">' + gap(cs);
+                        for (let k = cs; k <= ce; k++) row += vCell(i, k);
+                        s += row + gap(nCols - 1 - ce) + '</tr>';
+                    }
+                    s += spacer(cum[nRows] - cum[b + 1]);
+                    tbody.innerHTML = s;
+                    win.a = a; win.b = b; win.c0 = cs; win.c1 = ce;
+                    if (vStyleDirty) { styleEl.textContent = vStyleRules; vStyleDirty = false; }
+                    if (find.remark) find.remark();
+                };
+                const rowAtY = (y) => { let lo = 0, hi = nRows - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (cum[mid] <= y) lo = mid; else hi = mid - 1; } return lo; };
+                const colAtX = (x) => { let lo = 0, hi = nCols - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (colX[mid] <= x) lo = mid; else hi = mid - 1; } return lo; };
+                const onScroll = () => {
+                    const z = sheetZoomLevel || 1, wr = wrap.getBoundingClientRect(), br = body.getBoundingClientRect(), cr = card.getBoundingClientRect();
+                    const v0 = rowAtY(Math.max(0, (br.top - wr.top) / z)), v1 = rowAtY(Math.max(0, (br.bottom - wr.top) / z));
+                    const h0 = colAtX(Math.max(0, (cr.left - wr.left) / z)), h1 = colAtX(Math.max(0, (cr.right - wr.left) / z));
+                    if (win.a >= 0 &&
+                        v0 >= win.a + (win.a > 0 ? 6 : 0) && v1 <= win.b - (win.b < nRows - 1 ? 6 : 0) &&
+                        h0 >= win.c0 + (win.c0 > 0 ? 3 : 0) && h1 <= win.c1 - (win.c1 < nCols - 1 ? 3 : 0)) return;
+                    showWin(v0 - 18, v1 + 18, h0 - 12, h1 + 12);
+                };
+                // Find reads the data, not the page, so it reaches cells that are not drawn; "reveal" draws and scrolls to one.
+                let cellList = null;
+                const vf = {
+                    search: (needle) => {
+                        if (!cellList) {
+                            cellList = [];
+                            for (const addr in sheet) {
+                                if (addr[0] === '!') continue;
+                                const t = textOf(sheet[addr]);
+                                if (!t.trim()) continue;
+                                const p = XLSX.utils.decode_cell(addr);
+                                if (p.r < minR || p.r > maxR || p.c < minC || p.c > maxC || idxOfRow[p.r] === undefined) continue;
+                                cellList.push({ r: p.r, c: p.c, t: t.toLowerCase() });
+                            }
+                            cellList.sort((x, y) => x.r - y.r || x.c - y.c);
+                        }
+                        const out = [];
+                        for (const e of cellList) { if (e.t.indexOf(needle) !== -1) { out.push(e); if (out.length >= 3000) break; } }
+                        return out;
+                    },
+                    reveal: (r, c) => {
+                        const i = idxOfRow[r], k = c - minC;
+                        if (i === undefined) return;
+                        if (i < win.a || i > win.b || k < win.c0 || k > win.c1) showWin(i - 18, i + 18, k - 12, k + 12);
+                        const z = sheetZoomLevel || 1, wr = wrap.getBoundingClientRect(), br = body.getBoundingClientRect(), cr = card.getBoundingClientRect();
+                        const wrapTop = wr.top - br.top + body.scrollTop;
+                        body.scrollTop = Math.max(0, wrapTop + (cum[i] + vrows[i].h / 2) * z - body.clientHeight / 2);
+                        const wrapLeft = wr.left - cr.left + card.scrollLeft;
+                        card.scrollLeft = Math.max(0, wrapLeft + colX[k] * z - card.clientWidth / 3);
+                    }
+                };
+                let hRaf = 0;
+                card.addEventListener('scroll', () => { if (!hRaf) hRaf = requestAnimationFrame(() => { hRaf = 0; if (body._vcur === onScroll) onScroll(); }); }, { passive: true });
+                card._v = { onScroll, vf, scrollTop: 0, scrollLeft: 0 };
+                sheetCache[name] = card;
+                curCard = card;
+                body._vcur = onScroll; body._vfind = vf;
+                showWin(0, 60, 0, 30);
+                applySheetZoom(true);
+                find.rerun();
+                return;
+            }
+            for (let r = minR; r <= maxR; r++) {
+                const ri = rowInfo[r];
+                if (ri && ri.hidden) continue;
+                let rowHtml = '<tr' + (ri && (ri.hpx || ri.hpt) ? ' style="height:' + Math.round(ri.hpx || ri.hpt) + 'px"' : '') + '>';
+                for (let cc = minC; cc <= maxC; cc++) {
+                    const k = r + ':' + cc;
+                    if (covered.has(k)) continue;
+                    const sp = spans[k];
+                    const attrs = sp ? (sp.cs > 1 ? ' colspan="' + sp.cs + '"' : '') + (sp.rs > 1 ? ' rowspan="' + sp.rs + '"' : '') : '';
+                    const cellObj = sheet[XLSX.utils.encode_cell({ r, c: cc })];
+                    let sty = '';
+                    if (stSheet) {
+                        const xfAt = (rr, c2) => xlStyles.xfs[stSheet.cells[XLSX.utils.encode_cell({ r: rr, c: c2 })]] || null;
+                        const far = sp ? { right: xfAt(r, cc + sp.cs - 1), bottom: xfAt(r + sp.rs - 1, cc) } : {};
+                        sty = xlCellStyle(xfAt(r, cc), baseF, cellObj, far);
+                    }
+                    if (sty && !styleClass[sty]) { styleClass[sty] = 'xs' + Object.keys(styleClass).length; styleRules += '.sheet-card .xl-styled td.' + styleClass[sty] + '{' + sty + '}'; }
+                    rowHtml += '<td' + attrs + (sty ? ' class="' + styleClass[sty] + '"' : '') + '>' + escapeHtml(textOf(cellObj)) + '</td>';
+                }
+                rowParts.push(rowHtml + '</tr>');
+            }
+            // A big sheet (one real one is 47,000 cells) is put on the page in pieces: the first rows appear at once,
+            // the rest follow a few at a time, so the tap is answered instead of the screen freezing for seconds.
+            const FIRST_ROWS = 60, CHUNK_ROWS = 120;
+            html += rowParts.slice(0, FIRST_ROWS).join('') + '</tbody></table>';
+            body.innerHTML = '<div class="sheet-card"><style>' + styleRules + '</style><div class="text-zoom-wrap" id="sheetZoomWrap">' + html + '</div></div>';
+            sheetCache[name] = body.firstElementChild;
+            curCard = sheetCache[name];
+            body._vcur = null; body._vfind = null;
+            applySheetZoom(true);
+            find.rerun();
+            if (rowParts.length > FIRST_ROWS) {
+                const card = sheetCache[name], tbody = card.querySelector('tbody');
+                let at = FIRST_ROWS;
+                const more = () => {
+                    const part = rowParts.slice(at, at + CHUNK_ROWS);
+                    tbody.insertAdjacentHTML('beforeend', part.join(''));
+                    at += CHUNK_ROWS;
+                    if (at < rowParts.length) { setTimeout(more, 16); return; }
+                    // Whole sheet is in: the measured size is stale, measure again once (and search again).
+                    const wrap = card.querySelector('#sheetZoomWrap');
+                    if (wrap) { wrap._baseW = 0; }
+                    if (card.isConnected) { applySheetZoom(sheetZoomLevel === 1); find.rerun(); }
+                };
+                setTimeout(more, 16);
+            }
         };
 
         if (sheetNames.length > 1) {
@@ -10190,6 +11971,9 @@ async function openExcelViewer(fileData, fileName) {
 
 function closeSheetViewer() {
     const viewer = document.getElementById('sheetViewer');
+    if (viewer._domFind) { viewer._domFind.close(); viewer._domFind.btn.classList.add('hidden'); }
+    document.getElementById('sheetViewerBody').classList.remove('text-mode');
+    document.getElementById('sheetViewerBody')._vcur = null; document.getElementById('sheetViewerBody')._vfind = null;
     document.getElementById('sheetViewerBody').innerHTML = '';
     document.getElementById('sheetViewerTabs').innerHTML = '';
     viewer._currentData = null;
@@ -10257,7 +12041,13 @@ async function openExternallyNative(fsPath, fileName) {
     if (!fsPath || !PdfNative?.openExternal || !Filesystem || !isAndroid()) return false;
     try {
         const { uri } = await Filesystem.getUri({ path: fsPath, directory: 'DATA' });
-        const mimeType = getFileType(fileName) === 'pdf' ? 'application/pdf' : '*/*';
+        const ext = (fileName.split('.').pop() || '').toLowerCase();
+        const MIME = {
+            pdf: 'application/pdf', txt: 'text/plain', md: 'text/plain', rtf: 'application/rtf', csv: 'text/csv',
+            doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        };
+        const mimeType = MIME[ext] || '*/*';
         expectNativeReturn();
         await PdfNative.openExternal({ path: uri, mimeType });
         return true;
@@ -10903,7 +12693,7 @@ function createFileCard(file, folderPath, opts = {}) {
     // get the muted 'ok' style so they inform without competing for attention.
     const expiryBadge = expiryInfo
         ? `<span class="card-expiry-badge card-expiry-${expiryInfo.status}">${
-            expiryInfo.status === 'overdue' ? 'Expired' : `${expiryInfo.days}d left`
+            expiryInfo.status === 'overdue' ? 'Expired' : (expiryInfo.days === 0 ? 'Today' : `${expiryInfo.days}d left`)
           }</span>`
         : '';
     const selectDot = pdfSelectMode && isImage
@@ -11100,10 +12890,11 @@ function createFileCard(file, folderPath, opts = {}) {
                     const tags = val.split(',').map(t => t.trim()).filter(Boolean);
                     setFileTags(folderPath, file.name, tags);
                 }, { icon: 'fa-tags', subtitle: 'Comma-separated tags for this file', placeholder: 'e.g. invoice, 2026, urgent' }),
-                onSetExpiry: () => showDateModal(`Expiry date for "${escapeHtml(file.name)}":`, file.expiryDate || '', (val) => {
+                onSetExpiry: () => { if (!file.expiryDate && !canAddExpiryDate()) { showPaywall('expiry'); return; } showDateModal(`Expiry date for "${escapeHtml(file.name)}":`, file.expiryDate || '', (val) => {
                     if (val === undefined) return; // cancelled, no change
+                    if (val === null) { clearExpiryWithWarning(folderPath, file.name); return; }
                     setFileExpiryDate(folderPath, file.name, val);
-                }, { disallowPast: true, minTomorrow: true }),
+                }, { disallowPast: true, minTomorrow: true }); },
                 onDetail: () => showFileDetailModal(file, folderPath),
                 isLocked: !!file.locked,
                 onLock: () => {
@@ -11978,6 +13769,17 @@ const DEFAULT_SUBFOLDERS = {
 };
 
 const FREE_CUSTOM_DEPARTMENTS = 1;
+// 21 Oct: the free allowance for reminders and for expiry dates is 3 of EACH; the 4th of either opens the Pro screen.
+// Changing the date of one already set is never limited, and everything already saved stays and keeps working.
+const FREE_REMINDERS = 3;
+const FREE_EXPIRY_DATES = 3;
+function countExpiryDates() {
+    let n = 0;
+    for (const folder of Object.keys(allFiles || {})) n += (allFiles[folder] || []).filter(f => f && f.expiryDate).length;
+    return n;
+}
+function canAddReminder() { return entitlement.purchased || reminders.length < FREE_REMINDERS; }
+function canAddExpiryDate() { return entitlement.purchased || countExpiryDates() < FREE_EXPIRY_DATES; }
 // Per DEPARTMENT: besides the folders that ship, a free user may add 1 of
 // their own anywhere inside each department, at any depth. Anything already
 // created always stays; Pro only lifts the cap on adding more.
@@ -12001,7 +13803,8 @@ const FREE_TRIES = {
     imageedit: 'Editing images',
     topdf: 'Converting to PDF',
     mergepdf: 'Merging PDFs',
-    lock: 'Locking items'
+    lock: 'Locking items',
+    calsync: 'Calendar sync'
 };
 const FREE_TRY_COUNT = Object.keys(FREE_TRIES).length;
 // Locking is a try like the rest: the first lock is free. UNLOCKING is never
@@ -12019,10 +13822,30 @@ let devProOverride = false;   // see the dev-build block below
     try {
         const info = await window.Capacitor?.Plugins?.App?.getInfo?.();
         if (info && typeof info.id === 'string' && info.id.endsWith('.dev')) {
-            devProOverride = true;
-            entitlement.purchased = true;
+            // 21 Oct: a switch in Settings (this build only) turns Pro off again, so the free limits and the Pro screen can be seen.
+            let asFree = false;
+            try { asFree = localStorage.getItem('docman_dev_as_free') === '1'; } catch (e) { /* default: Pro */ }
+            devProOverride = !asFree;
+            entitlement.purchased = !asFree;
             updateProBadge();
-            console.warn('DOCMAN dev build: Pro unlocked for testing');
+            console.warn('DOCMAN dev build: ' + (asFree ? 'testing as a FREE user' : 'Pro unlocked for testing'));
+            const devRow = document.getElementById('settingsDevFreeRow');
+            if (devRow) {
+                const sub = document.getElementById('settingsDevFreeSub');
+                const paint = () => { if (sub) sub.textContent = devProOverride ? 'Off: Pro unlocked. Tap to test as a free user' : 'On: behaving like a free user. Tap for Pro'; };
+                devRow.hidden = false;
+                paint();
+                devRow.onclick = () => {
+                    haptic.press();
+                    devProOverride = !devProOverride;
+                    entitlement.purchased = devProOverride;
+                    try { localStorage.setItem('docman_dev_as_free', devProOverride ? '0' : '1'); } catch (e) { /* not remembered */ }
+                    updateProBadge();
+                    if (typeof updateProStatusSubtitle === 'function') updateProStatusSubtitle();
+                    paint();
+                    showToast(devProOverride ? 'Pro unlocked again' : 'Now testing as a free user');
+                };
+            }
         }
     } catch (e) {
         // Not a native build, or no App plugin: stay locked.
@@ -12208,7 +14031,8 @@ const PAYWALL_FEATURES = [
     ['fa-folder-tree', 'Unlimited departments & folders', 'Organise everything exactly your way'],
     ['fa-magnifying-glass', 'Read text in scanned pages', 'Search and copy from photographed documents'],
     ['fa-wand-magic-sparkles', 'Image editor & PDF tools', 'Crop, enhance, convert and merge into PDFs'],
-    ['fa-lock', 'Lock anything private', 'Departments, folders, files & notes behind a PIN']
+    ['fa-lock', 'Lock anything private', 'Departments, folders, files & notes behind a PIN'],
+    ['fa-bell', 'Unlimited reminders & calendar sync', 'Free includes ' + FREE_REMINDERS + ' reminders, ' + FREE_EXPIRY_DATES + ' expiry dates and one calendar sync']
 ];
 
 // The pill at the top of the screen: why it opened.
@@ -12216,7 +14040,10 @@ function paywallChip(feature) {
     if (FREE_TRIES[feature]) return ['fa-lock', `You’ve used your free try of ${FREE_TRIES[feature]}`, 'lock'];
     const reasons = {
         department: 'You have added your own department',
-        subfolder: 'You have added this department’s extra folder'
+        subfolder: 'You have added this department’s extra folder',
+        reminder: 'You have set your ' + FREE_REMINDERS + ' free reminders',
+        expiry: 'You have set your ' + FREE_EXPIRY_DATES + ' free expiry dates',
+        calauto: 'Auto-sync is part of DOCMAN Pro'
     };
     if (reasons[feature]) return ['fa-lock', reasons[feature], 'lock'];
     const left = freeTriesLeft();
@@ -12757,6 +14584,58 @@ function clearSearch() {
     render();
 }
 
+// A search left alone for 10 seconds is dropped: the word is cleared and the app returns to the home
+// screen. Otherwise coming back to the phone later shows a filtered list with the search still in
+// place, and it looks as if the files are gone. "Left alone" = no touch, key or scroll anywhere;
+// it is also checked when the app comes back to the foreground, since timers pause in the background.
+const SEARCH_IDLE_MS = 10000;
+let searchLastActive = Date.now();
+function searchIdleCheck() {
+    if (!isSearchMode) return;
+    if (Date.now() - searchLastActive < SEARCH_IDLE_MS) return;
+    clearNavReturn();
+    currentPath = [];
+    clearSearch();
+}
+['touchstart', 'pointerdown', 'keydown', 'input', 'scroll'].forEach(ev =>
+    document.addEventListener(ev, () => { searchLastActive = Date.now(); }, { capture: true, passive: true }));
+setInterval(searchIdleCheck, 2000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) searchIdleCheck(); });
+
+// Main-page logo: a calendar showing today's weekday and date, read from the phone's clock. Refreshed on
+// launch, on return to the app and every 30 s, so it turns over at midnight by itself.
+const LOGO_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function updateLogoDate() {
+    const icon = document.querySelector('#appLogoBtn .logo-tray-icon');
+    if (!icon) return;
+    const now = new Date();
+    const d = icon.querySelector('.lc-d'), n = icon.querySelector('.lc-n');
+    // The alarm-clock picture shows the real time: digital time on its top band and the two hands on the clock face.
+    const tm = icon.querySelector('.lc-t');
+    if (tm) {
+        const hh = now.getHours(), mm = now.getMinutes();
+        // Same clock style as the phone (the app's other times use the same locale call): 12 hour shows 3:06, 24 hour shows 15:06.
+        let h12 = false;
+        try {
+            if (window.DocmanSys && typeof window.DocmanSys.is24Hour === 'function') h12 = !window.DocmanSys.is24Hour();   // the phone's own setting
+            else h12 = !!new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hour12;
+        } catch (e) { /* 24 h */ }
+        const txt = (h12 ? String((hh % 12) || 12) : String(hh).padStart(2, '0')) + ':' + String(mm).padStart(2, '0');
+        if (tm.textContent !== txt) tm.textContent = txt;
+        icon.style.setProperty('--lc-hdeg', ((hh % 12) * 30 + mm * 0.5) + 'deg');
+        icon.style.setProperty('--lc-mdeg', (mm * 6 + now.getSeconds() * 0.1) + 'deg');
+    }
+    if (!d || !n) return;
+    const day = LOGO_DAYS[now.getDay()], num = String(now.getDate());
+    if (d.textContent !== day) d.textContent = day;
+    if (n.textContent !== num) n.textContent = num;
+    n.classList.toggle('lc-two', num.length > 1);
+}
+updateLogoDate();
+setInterval(updateLogoDate, 10000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { updateLogoDate(); setTimeout(() => autoSyncCalendarIfDue(), 1500); } });
+
+
 // ============================================================
 // ADVANCED SORTING
 // ============================================================
@@ -12989,6 +14868,7 @@ function showSortMenu(triggerEl) {
 // ============================================================
 
 function render() {
+    updateAttentionBell();
     const rawQuery = document.getElementById('searchInput').value.trim();
     const query = rawQuery.toLowerCase();
 
@@ -13226,7 +15106,8 @@ function render() {
     // only on never hiding what's already there.
     const canShowOwnContent = !isRoot;
     const selectablePath = currentPath.join('/');
-    const canSelectHere = canShowOwnContent && ((allFiles[selectablePath] || []).length + (allNotes[selectablePath] || []).length) > 0;
+    // Select follows the section on screen: a folder with notes but no files must not offer Select under FILES (and the other way round).
+    const canSelectHere = canShowOwnContent && ((currentActiveTab === 'pdfs' ? (allFiles[selectablePath] || []) : (allNotes[selectablePath] || [])).length) > 0;
     const canAddOwnContent = !isRoot && !hasSubfolders;
     const canAddSubfolder = !isRoot && !hasOwnContent;
 
@@ -13349,6 +15230,8 @@ function render() {
                 guardFolderEntry([...currentPath, key], () => {
                     navigateWithPageTurn(() => {
                         clearNavReturn();
+                        // 26 Oct: a folder opened from a folder starts on FILES, even if the folder above was left on NOTES
+                        if (currentActiveTab !== 'pdfs') applyFilesNotesChrome('pdfs');
                         currentPath.push(key);
                         render();
                     }, 'forward');
@@ -13358,6 +15241,7 @@ function render() {
         });
     }
 
+    updateFilesNotesBadges(canShowOwnContent);
     if (canShowOwnContent) {
         if (currentActiveTab === 'pdfs') {
             const files = sortFileList(getFilesForCurrentFolder());
@@ -13378,7 +15262,9 @@ function render() {
                 // toward an action that isn't offered.
                 const dz = document.createElement('div');
                 dz.className = 'empty-state';
-                dz.innerHTML = `<img src="Images/empty-cloud.png" alt="" class="empty-state-icon"><p>No files here yet</p>`;
+                const otherNotes = getNotesForCurrentFolder().length;
+                dz.innerHTML = `<img src="Images/empty-cloud.png" alt="" class="empty-state-icon"><p>No files here yet</p>` +
+                    (otherNotes ? `<button type="button" class="empty-state-hop" onclick="setActiveTab('notes')">This folder has ${otherNotes} note${otherNotes === 1 ? '' : 's'} &rarr; open NOTES</button>` : '');
                 contentDiv.appendChild(dz);
             }
         } else {
@@ -13397,7 +15283,9 @@ function render() {
                 // insertAdjacentHTML, never innerHTML += : the latter re-parses
                 // everything already in #content, which silently kills the
                 // listeners on the folder toolbar above (Favourite).
-                contentDiv.insertAdjacentHTML('beforeend', '<div class="empty-state empty-state-note"><i class="fas fa-sticky-note"></i><p>No notes yet. Click + New Note to add.</p></div>');
+                const otherFiles = getFilesForCurrentFolder().length;
+                contentDiv.insertAdjacentHTML('beforeend', '<div class="empty-state empty-state-note"><i class="fas fa-sticky-note"></i><p>No notes yet. Click + New Note to add.</p>' +
+                    (otherFiles ? '<button type="button" class="empty-state-hop" onclick="setActiveTab(\'pdfs\')">This folder has ' + otherFiles + ' file' + (otherFiles === 1 ? '' : 's') + ' &rarr; open FILES</button>' : '') + '</div>');
             }
         }
     }
@@ -14685,7 +16573,7 @@ function renderDashboardView() {
                 <div class="dash-dep dash-expiry-row" data-folder="${escapeHtml(e.folderPath)}" data-file="${escapeHtml(e.file.name)}" style="--h:${e.status === 'overdue' ? '#f43f5e' : '#f59e0b'};--h2:${e.status === 'overdue' ? '#b91c3c' : '#b45309'}">
                     <div class="dash-dep-ico"><i class="fas ${getFileIcon(e.file.name)}"></i></div>
                     <div class="dash-dep-mid"><div class="dash-dep-n">${escapeHtml(e.file.name)}</div></div>
-                    <span class="card-expiry-badge card-expiry-${e.status}">${e.status === 'overdue' ? 'Expired' : `${e.days}d left`}</span>
+                    <span class="card-expiry-badge card-expiry-${e.status}">${e.status === 'overdue' ? 'Expired' : (e.days === 0 ? 'Today' : `${e.days}d left`)}</span>
                     <div class="dash-go"><i class="fas fa-chevron-right"></i></div>
                 </div>
             `).join('')}
@@ -14986,6 +16874,15 @@ function applyFilesNotesChrome(tab) {
         newNoteBtn.classList.remove('hidden');
         if (toggleEl) { toggleEl.classList.add('active-notes'); toggleEl.classList.remove('active-files'); }
     }
+}
+
+// Small count badges on the FILES / NOTES labels (shown on the side that is NOT lit): the number of files and notes in this folder.
+function updateFilesNotesBadges(show) {
+    const lf = document.querySelector('.ft-toggle-label-files'), ln = document.querySelector('.ft-toggle-label-notes');
+    if (!lf || !ln) return;
+    const nf = show ? getFilesForCurrentFolder().length : 0, nn = show ? getNotesForCurrentFolder().length : 0;
+    if (nf) lf.setAttribute('data-count', nf > 99 ? '99+' : String(nf)); else lf.removeAttribute('data-count');
+    if (nn) ln.setAttribute('data-count', nn > 99 ? '99+' : String(nn)); else ln.removeAttribute('data-count');
 }
 
 function setActiveTab(tab) {
@@ -16279,10 +18176,23 @@ async function ensurePublicStoragePermission() {
 //
 // Share stays as the fallback for a native shell built before the plugin
 // existed, so an older install keeps whatever worked for it.
-async function saveBackupCopy(path, directory, name) {
+async function saveBackupCopy(path, directory, name, pickerOnly) {
     const Filesystem = getFilesystemPlugin();
     const BackupSave = window.Capacitor?.Plugins?.BackupSave;
     if (!Filesystem) return;
+
+    // 21 Oct: Google Drive's own "Save to Drive" screen first, so the user is not dropped into the phone's file manager and
+    // left to find Drive. If Drive is not installed (or an older native shell has no such call), the picker below runs as before.
+    if (!pickerOnly && BackupSave && BackupSave.saveToDrive) {
+        try {
+            const { uri } = await Filesystem.getUri({ path, directory });
+            expectNativeReturn();
+            const viaDrive = await BackupSave.saveToDrive({ uri, name, mimeType: 'application/octet-stream' });
+            if (viaDrive && viaDrive.opened) return;
+        } catch (e) {
+            console.warn('Save to Drive unavailable, using the file picker:', e);
+        }
+    }
 
     if (BackupSave && BackupSave.saveCopy) {
         const { uri } = await Filesystem.getUri({ path, directory });
@@ -16307,7 +18217,7 @@ async function saveBackupCopy(path, directory, name) {
                 'That copy is on this phone, next to the one already in Documents.' +
                 '<br><br>If the phone is lost, stolen or broken, both go with it. ' +
                 'Save one to Google Drive, or another cloud, while you can.',
-                (again) => { if (again) saveBackupCopy(path, directory, name).catch(e => console.warn('Save a copy failed:', e)); },
+                (again) => { if (again) saveBackupCopy(path, directory, name, true).catch(e => console.warn('Save a copy failed:', e)); },
                 { okLabel: 'Choose again', cancelLabel: 'Leave it', title: 'Still only on this phone' }
             );
             return;
@@ -17134,6 +19044,15 @@ function clearAllAppData() {
 // SETTINGS PANEL RENDERERS
 // ============================================================
 
+// 27 Oct: the Storage page and the Settings row used navigator.storage.estimate(), which is only the WebView's own data (0.06 MB), while the files themselves live
+// on the phone's file system. Both now show the real size of what is stored in DOCMAN, the same sum the Storage Dashboard uses.
+function totalStoredBytes() {
+    let bytes = 0;
+    for (const p in allFiles) if (allFiles[p]) for (const f of allFiles[p]) bytes += f.size || 0;
+    for (const p in allNotes) if (allNotes[p]) for (const n of allNotes[p]) bytes += new Blob([JSON.stringify(n)]).size;
+    return bytes;
+}
+
 function renderStoragePanel() {
     let docCount = 0,
         noteCount = 0;
@@ -17143,6 +19062,8 @@ function renderStoragePanel() {
     document.getElementById('storageDocCount').textContent = docCount;
     document.getElementById('storageNoteCount').textContent = noteCount;
 
+    const stored = totalStoredBytes();
+    if (stored > 0) { document.getElementById('storageSummaryUsed').textContent = (stored / (1024 * 1024)).toFixed(2) + ' MB'; return; }
     try {
         if (navigator.storage && navigator.storage.estimate) {
             navigator.storage.estimate().then(est => {
@@ -17614,6 +19535,8 @@ function updateProStatusSubtitle() {
 
 async function updateStorageSummarySubtitle() {
     const sub = document.getElementById('settingsStorageSub');
+    const stored = totalStoredBytes();
+    if (stored > 0) { if (sub) sub.textContent = `${(stored / (1024 * 1024)).toFixed(1)} MB used`; return; }
     try {
         if (navigator.storage && navigator.storage.estimate) {
             const est = await navigator.storage.estimate();
@@ -19767,6 +21690,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (v._currentData) nativeDownload(v._currentData, v._currentName);
     };
 
+    // "Open with another app": text, Word and Excel. A file kept on the phone's storage goes
+    // straight to Android's app chooser; one held only in the app's database falls back to the share sheet.
+    const openWithOther = async (viewerId) => {
+        const v = document.getElementById(viewerId);
+        const name = v._currentName;
+        if (!name) return;
+        const meta = (allFiles[v._currentFolder] || []).find(f => f.name === name);
+        if (isNativePlatform() && meta?.fsPath && await openExternallyNative(meta.fsPath, name)) return;
+        if (v._currentData) nativeDownload(v._currentData, name);
+    };
+    const docExtBtn = document.getElementById('docExternalBtn');
+    if (docExtBtn) docExtBtn.onclick = () => openWithOther('docViewer');
+    const sheetExtBtn = document.getElementById('sheetExternalBtn');
+    if (sheetExtBtn) sheetExtBtn.onclick = () => openWithOther('sheetViewer');
+
     const closeSheetBtn = document.getElementById('closeSheetViewer');
     if (closeSheetBtn) closeSheetBtn.onclick = closeSheetViewer;
     const shareSheetBtn = document.getElementById('shareSheetViewerBtn');
@@ -19831,7 +21769,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('clearSearchBtn').addEventListener('click', clearSearch);
     document.getElementById('homeBtn').addEventListener('click', goHome);
     const appLogoBtn = document.getElementById('appLogoBtn');
-    if (appLogoBtn) appLogoBtn.addEventListener('click', () => showExpiringDocumentsPanel());
+    if (appLogoBtn) appLogoBtn.addEventListener('click', () => {
+        // Ringing bell: the same panel as at launch. Otherwise the usual Expiring panel.
+        if (appLogoBtn.classList.contains('na-attn')) {
+            const { expiring, due } = getAttentionSets();
+            if (expiring.length || due.length) { haptic.press(); showExpiryCardsPopup(expiring, due, () => updateAttentionBell()); return; }
+        }
+        showExpiringDocumentsPanel();
+    });
     document.getElementById('uploadBtn').addEventListener('click', showUploadOptions);
 
     const sortBtnEl = document.getElementById('sortBtn');
@@ -19959,6 +21904,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 for (let item of notesReq.result) {
                     allNotes[item.folderPath] = item.notes;
                 }
+                autoRollMissedReminders();   // 27 Oct: before the bell is armed, so a rolled reminder is not counted
+                armLaunchBell();
                 render();
 
                 // One-time-per-session check for documents expiring soon
@@ -19969,8 +21916,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                 registerExpiryNotificationActions();
                 flushPendingNotificationActions();
                 rescheduleAllExpiryNotifications();
+                setTimeout(() => silenceAckedReminderAlarms(), 2500);
+                setTimeout(() => armCalendarReminders(false), 4000);   // after the document alerts, so the alarm budget is counted right
+                setTimeout(() => autoSyncCalendarIfDue(), 7000);
                 recordReviewUsageDay();
-                setTimeout(() => checkExpiryTodayOnLoad(() => checkLaunchAlertsOnLoad()), 1200);
+                // 26 Oct: the banner comes 0.25 s after the start-up screen goes (was a fixed 1.8 s after the data loaded, which could leave several
+                // seconds of an idle home screen). The start-up screen itself is unchanged. 6.5 s fallback in case the event never fires.
+                // Watches the start-up screen itself (gone or hidden) instead of its event, which can fire before this code is listening.
+                let launchBannerTries = 0;
+                const launchBannerWatch = () => {
+                    const sp = document.getElementById('splashScreen');
+                    if (sp && !sp.classList.contains('hidden') && ++launchBannerTries < 60) { setTimeout(launchBannerWatch, 60); return; }
+                    // User's number (26 Oct): the banner starts about 4.7 s after the icon is tapped. The page itself starts ~0.7 s after the tap
+                    // (measured on the phone), so the banner waits until the page has been running 3.75 s (performance.now), never less than 0.12 s after the splash.
+                    setTimeout(() => checkLaunchAlertsOnLoad(), Math.max(120, 3750 - performance.now()));
+                };
+                // Something needs attention: do not sit through the whole start-up reveal (index.html docmanSkipSplashWait).
+                try { const pending = getAttentionSets(); if ((pending.expiring.length || pending.due.length) && !launchedFromNotification && window.docmanSkipSplashWait) window.docmanSkipSplashWait(1200); } catch (e) { /* the normal reveal then */ }
+                launchBannerWatch();
 
                 const migrationRun = localStorage.getItem('docman_migration_done');
                 if (!migrationRun) {

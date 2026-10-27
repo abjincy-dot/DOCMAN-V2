@@ -1,0 +1,6 @@
+/* 22 Oct: switching Reminders <-> Expiring no longer makes the page jerk: the top row has the SAME height (31 px) on both tabs (the Reminders tab has the Sync buttons,
+   the Expiring tab the title), so the tab row, the counts and the X stay exactly where they are. */
+.xc-top .xc-head { min-height: 31px; }
+.xc-panel #expiringDocsCloseX { top: 25.5px !important; }
+/* 22 Oct: the X must sit ABOVE the top frame (the frame was painted over it, so taps never reached the button) */
+.xc-panel #expiringDocsCloseX { z-index: 20; }

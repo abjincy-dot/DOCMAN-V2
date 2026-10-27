@@ -1,0 +1,25 @@
+// usage: node alert-lifecycle-test.js <port>   Real alarms with throwaway reminders (id prefix 'audit-'); short evaluate calls from node, so nothing long runs inside the page. Cleans up at the end (and on error).
+const port = process.argv[2] || '9222';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+(async () => {
+    const list = await (await fetch('http://127.0.0.1:' + port + '/json')).json();
+    const ws = new WebSocket(list.find(t => t.type === 'page').webSocketDebuggerUrl);
+    await new Promise(r => ws.onopen = r);
+    let id = 0; const pend = {}; ws.onmessage = m => { const d = JSON.parse(m.data); if (d.id && pend[d.id]) pend[d.id](d); };
+    const ev = (e) => new Promise(r => { const i = ++id; pend[i] = r; ws.send(JSON.stringify({ id: i, method: 'Runtime.evaluate', params: { expression: e, awaitPromise: true, returnByValue: true } })); }).then(d => d.result.exceptionDetails ? 'EXC ' + d.result.exceptionDetails.exception.description : d.result.result.value);
+    const cleanup = `(async()=>{const p=window.Capacitor.Plugins.LocalNotifications;for(const r of reminders.filter(r=>String(r.id).startsWith('audit-')))await cancelReminderNotification(r.id);for(let i=reminders.length-1;i>=0;i--)if(String(reminders[i].id).startsWith('audit-'))reminders.splice(i,1);saveReminders();return JSON.stringify({auditLeft:reminders.filter(r=>String(r.id).startsWith('audit-')).length,reminders:reminders.length,pending:(await p.getPending()).notifications.length});})()`;
+    const helpers = `window.__a=window.__a||{};window.__a.mine=async(rid)=>{const p=window.Capacitor.Plugins.LocalNotifications;const ids=new Set(reminderNotificationIds(rid));return ((await p.getPending()).notifications||[]).filter(n=>ids.has(n.id));};window.__a.deliv=async(rid)=>{const p=window.Capacitor.Plugins.LocalNotifications;const ids=new Set(reminderNotificationIds(rid));return ((await p.getDeliveredNotifications()).notifications||[]).filter(n=>ids.has(n.id)).length;};1`;
+    try {
+        await ev(helpers);
+        console.log('1 setup      ', await ev(`(async()=>{const p=window.Capacitor.Plugins.LocalNotifications;const pad=n=>String(n).padStart(2,'0'),iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());let due=new Date(Date.now()+60000);due.setSeconds(0,0);due=new Date(due.getTime()+60000);const mk=(tag,d)=>({id:'audit-'+tag+'-'+Date.now(),title:'AUDIT '+tag,dueAt:iso(d),dueTime:pad(d.getHours())+':'+pad(d.getMinutes()),endTime:null,repeat:'none',repeatAnchorDay:d.getDate(),noteRef:null,place:null,details:null,createdAt:Date.now()});const A=mk('A',due),B=mk('B',new Date(due.getTime()+60000));reminders.unshift(A,B);saveReminders();await scheduleReminderNotification(A);await scheduleReminderNotification(B);window.__a.A=A.id;window.__a.B=B.id;const s=(await window.__a.mine(A.id)).map(n=>new Date(n.schedule.at)).sort((a,b)=>a-b);return JSON.stringify({A_due:A.dueTime,B_due:B.dueTime,A_slots:s.length,spacingMin:s.length>1?Math.round((s[1]-s[0])/60000):null,last:s.length?s[s.length-1].toTimeString().slice(0,5):null});})()`));
+        const dueA = await ev(`reminders.find(r=>r.id===window.__a.A).dueTime`);
+        console.log('   waiting for', dueA, 'and B one minute later ...');
+        for (let i = 0; i < 40; i++) { await sleep(5000); const d = await ev(`(async()=>JSON.stringify({a:await window.__a.deliv(window.__a.A),b:await window.__a.deliv(window.__a.B),now:new Date().toTimeString().slice(0,8)}))()`); if (i % 4 === 0) console.log('   ', d); const o = JSON.parse(d); if (o.a > 0 && o.b > 0) { console.log('2 delivered  ', d); break; } }
+        console.log('3 Done on A  ', await ev(`(async()=>{const rA=reminders.find(x=>x.id===window.__a.A);settleSeenReminder(rA,{silence:true});saveReminders();await new Promise(r=>setTimeout(r,2500));return JSON.stringify({A:{pendingLeft:(await window.__a.mine(rA.id)).length,delivered:await window.__a.deliv(rA.id),acked:rA.dueAckFor===reminderOccurrenceKey(rA)},B_notDone:{pendingRepeats:(await window.__a.mine(window.__a.B)).length,delivered:await window.__a.deliv(window.__a.B)}});})()`));
+        console.log('4 heal       ', await ev(`(async()=>{await silenceAckedReminderAlarms();return JSON.stringify({A:(await window.__a.mine(window.__a.A)).length,B:(await window.__a.mine(window.__a.B)).length});})()`));
+        console.log('5 title edit ', await ev(`(async()=>{const rA=reminders.find(x=>x.id===window.__a.A);rA.title='AUDIT A edited';await scheduleReminderNotification(rA);return JSON.stringify({A_alarmsAfterTitleEdit:(await window.__a.mine(rA.id)).length});})()`));
+        console.log('6 B Done too ', await ev(`(async()=>{const rB=reminders.find(x=>x.id===window.__a.B);settleSeenReminder(rB,{silence:true});saveReminders();await new Promise(r=>setTimeout(r,2000));return JSON.stringify({B:{pendingLeft:(await window.__a.mine(rB.id)).length,delivered:await window.__a.deliv(rB.id)}});})()`));
+    } catch (e) { console.log('ERROR', e); }
+    console.log('cleanup      ', await ev(cleanup));
+    ws.close(); process.exit(0);
+})();

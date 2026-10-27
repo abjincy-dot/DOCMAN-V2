@@ -1,0 +1,86 @@
+
+/* 20 Oct: Reminders / Expiring panel in LIGHT mode. It was always dark; now frame, tabs, counts strip and cards follow the theme.
+   Dark mode is untouched (every rule starts with body.light-mode). The orange button bar and the status colours are kept. */
+body.light-mode .xc-panel { background: linear-gradient(160deg, #fffaf3, #f3e9db) !important; border: 1.5px solid #c2570f !important; box-shadow: 0 0 22px rgba(255, 110, 20, 0.2), 0 20px 50px rgba(60, 40, 20, 0.35) !important; }
+body.light-mode .xc-panel .xc-head, body.light-mode .xc-panel .xc-head * { color: #2b2118; }
+body.light-mode .xc-panel .xc-head .xc-ico, body.light-mode .xc-panel .xc-head .xc-ico * { color: inherit; }
+body.light-mode .xc-panel #expiringDocsCloseX { background: #fff !important; color: #2b2118 !important; border: 1px solid rgba(120, 80, 40, 0.4) !important; box-shadow: 0 2px 5px rgba(60, 40, 20, 0.25); }
+body.light-mode .xc-panel .expdoc-tab-row { background: #efe4d4 !important; border-color: rgba(150, 100, 50, 0.4) !important; }
+body.light-mode .xc-panel .expdoc-tab-row .expdoc-tab { border-color: rgba(150, 100, 50, 0.45) !important; }
+body.light-mode .xc-panel .expdoc-tab:not(.expdoc-tab-active) { color: #5a4630 !important; }
+body.light-mode .xc-panel #expdocAddReminder { background: #fff !important; color: #2b2118 !important; border: 1px solid rgba(150, 100, 50, 0.5); box-shadow: 0 2px 5px rgba(60, 40, 20, 0.18); }
+body.light-mode .xc-panel #expdocAddReminder > span:first-child { background: #efe4d4 !important; color: #2b2118 !important; border-color: rgba(150, 100, 50, 0.4); }
+body.light-mode .xc-panel #expdocAddReminder[disabled] { background: #efe4d4 !important; color: #9a8a76 !important; border: 1px solid rgba(150, 100, 50, 0.3) !important; box-shadow: none; }
+body.light-mode .xc-panel #expdocAddReminder[disabled] > span:first-child { background: #e4d6c2 !important; color: #9a8a76 !important; }
+
+/* counts strip */
+body.light-mode .xc-stats { background: linear-gradient(160deg, #ffffff, #f5ece0); border-color: rgba(194, 87, 15, 0.6); box-shadow: 0 3px 8px rgba(120, 70, 20, 0.18), inset 0 2px 0 rgba(255, 255, 255, 0.9), inset 0 -3px 8px rgba(150, 100, 50, 0.12); }
+body.light-mode .xc-stat-num { color: #2b2118; }
+body.light-mode .xc-stat-lab { color: #6b5a47; }
+body.light-mode .xc-stat + .xc-stat::before { background: rgba(120, 80, 40, 0.25); }
+
+/* cards (same 3D construction as the dark ones, in light) */
+body.light-mode #expiringDocsList.xc-has-rail .xc-body {
+    background: radial-gradient(circle at 100% 100%, rgba(255, 130, 40, 0.24), transparent 58%),
+        linear-gradient(160deg, #ffffff 0%, #f8efe3 55%, #ecdcc8 100%) !important;
+    border: 1.5px solid #c2570f !important;
+    box-shadow:
+        inset 0 2px 0 rgba(255, 255, 255, 0.95),
+        inset 0 -4px 10px rgba(150, 95, 40, 0.28),
+        inset 0 0 0 1px rgba(255, 150, 60, 0.2),
+        0 6px 12px -3px rgba(80, 50, 20, 0.45),
+        0 0 8px rgba(194, 87, 15, 0.2) !important;
+}
+body.light-mode #expiringDocsList .xc-body .dc-name { color: #2b2118; }
+body.light-mode #expiringDocsList .xc-body .dc-where, body.light-mode #expiringDocsList .xc-body .xc-left { color: #6b5a47; }
+body.light-mode #expiringDocsList .xc-body .dc-exp.dc-red { color: #d62a4a; }
+body.light-mode #expiringDocsList .xc-body .dc-exp.dc-amber { color: #c47a00; }
+body.light-mode #expiringDocsList.xc-has-rail .xc-card, body.light-mode #expiringDocsList.xc-has-rail .xc-card.xc-active { background: transparent; }
+body.light-mode .xc-done { background: linear-gradient(135deg, #ffe3c4, #ffc79a) !important; color: #7a2d00 !important; border-color: rgba(194, 87, 15, 0.7) !important; box-shadow: 0 2px 5px rgba(120, 70, 20, 0.25); }
+body.light-mode .xc-done i { color: #b84a00; }
+body.light-mode .xc-done-all { background: linear-gradient(135deg, #ffe3c4, #ffc79a) !important; color: #7a2d00 !important; }
+body.light-mode .xc-panel .xc-head .xc-ico, body.light-mode .xc-panel .xc-head .xc-ico * { color: #f5a30a !important; }
+body.light-mode .xc-panel .expdoc-tab-row .tab-glider, body.light-mode .xc-panel .expdoc-tab-row.has-glider .expdoc-tab-active { background: linear-gradient(90deg, #ff8a1f, #ee3a2a) !important; }
+body.light-mode .xc-done i, body.light-mode .xc-done-all i { color: #b84a00 !important; }
+body.light-mode #expiringDocsList .xc-body .dc-bar { background: rgba(120, 80, 40, 0.18); }
+
+/* the "Needs your attention" list (launch / bell / notifications) */
+body.light-mode #expiryCardsPopup.dc-popup-overlay, body.light-mode .dc-popup-overlay { background: rgba(48, 34, 20, 0.62); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
+body.light-mode .na-box { background: linear-gradient(180deg, #fffaf3, #f3e9db); border: 1.5px solid #c2570f; box-shadow: 0 18px 44px rgba(60, 40, 20, 0.45); color: #2b2118; }
+body.light-mode .na-box .na-title, body.light-mode .na-detail .na-title { color: #2b2118; }
+body.light-mode .na-detail .na-title b { color: #e06a00; }
+body.light-mode .na-sub, body.light-mode .na-detail .na-sub, body.light-mode .na-where, body.light-mode .na-detail .na-where, body.light-mode .na-lt small, body.light-mode .na-sec-t small { color: #6b5a47; }
+body.light-mode .na-x, body.light-mode .na-detail .na-x { background: #fff; color: #2b2118; border: 1px solid rgba(120, 80, 40, 0.4); box-shadow: 0 2px 5px rgba(60, 40, 20, 0.2); }
+body.light-mode .na-cards .na-card, body.light-mode .na-detail .na-cards .na-card, body.light-mode .na-card, body.light-mode .na-row {
+    background: linear-gradient(160deg, #ffffff 0%, #f8efe3 55%, #ecdcc8 100%), #fff;
+    border: 1.5px solid #c2570f; color: #2b2118;
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.95), inset 0 -4px 10px rgba(150, 95, 40, 0.25), 0 6px 12px -3px rgba(80, 50, 20, 0.4);
+}
+body.light-mode .na-name { color: #2b2118; }
+body.light-mode .na-t-red { color: #d62a4a; }
+body.light-mode .na-t-amber { color: #c47a00; }
+body.light-mode .na-t-purple { color: #6d4bd8; }
+body.light-mode .na-act { background: #fff; color: #2b2118; border: 1px solid rgba(150, 100, 50, 0.5); }
+body.light-mode .na-act[data-act="done"] { background: linear-gradient(135deg, #2f6fe0, #1b4fb8); color: #fff; border-color: rgba(27, 79, 184, 0.8); }
+body.light-mode .na-card .na-edit, body.light-mode .na-detail .na-card .na-edit { background: linear-gradient(135deg, #ffe0e4, #ffc4cc) !important; color: #7a1020 !important; border: 1px solid rgba(214, 42, 74, 0.55) !important; }
+body.light-mode .na-all, body.light-mode .na-detail .na-all { background: #fff; color: #2b2118; border: 1px solid rgba(150, 100, 50, 0.5); }
+body.light-mode .na-chev { color: #6b5a47; }
+body.light-mode .na-divider { background: rgba(120, 80, 40, 0.2); }
+
+/* the add / edit reminder windows (title, details, date) */
+body.light-mode .xc-flow > div { background: linear-gradient(160deg, #fffaf3, #f3e9db) !important; border: 1.5px solid #c2570f !important; box-shadow: 0 0 22px rgba(255, 110, 20, 0.2), 0 20px 50px rgba(60, 40, 20, 0.4) !important; }
+body.light-mode .xc-flow #modalInput { background: #fff !important; color: #2b2118 !important; border: 1px solid rgba(150, 100, 50, 0.5) !important; }
+body.light-mode .xc-flow #modalCloseX, body.light-mode .xc-flow #dateModalCloseX { background: #fff !important; color: #2b2118 !important; border: 1px solid rgba(120, 80, 40, 0.4) !important; }
+body.light-mode .xc-flow #modalCancel, body.light-mode .xc-flow #dateModalCancel { color: #2b2118 !important; border: 1px solid rgba(150, 100, 50, 0.55) !important; background: #fff !important; }
+body.light-mode .xc-flow [style*="var(--glass-bg)"] { background: #fff !important; }
+body.light-mode .xc-flow #calDays .cal-day:not([style*="8b5cf6"]) { border: 1px solid rgba(150, 100, 50, 0.25) !important; color: #2b2118; }
+body.light-mode .xc-flow #calDays .cal-day:disabled { border-color: rgba(150, 100, 50, 0.12) !important; color: #b7a892; }
+body.light-mode .xc-flow #calPrevMonth, body.light-mode .xc-flow #calNextMonth { border: 1px solid rgba(150, 100, 50, 0.5) !important; color: #2b2118; }
+body.light-mode .xc-flow #toggleEndTime, body.light-mode .xc-flow #dateModalSelectedLabel { color: #b85a00 !important; }
+body.light-mode .na-detail .na-card .na-acts .na-act[data-act="open"] { background: #fff !important; color: #2b2118 !important; border: 1px solid rgba(150, 100, 50, 0.55) !important; }
+body.light-mode .na-detail .na-card .na-acts .na-act[data-act="done"] { background: linear-gradient(180deg, #2f7bf0, #1b4fb8) !important; color: #fff !important; }
+body.light-mode .na-box .na-all, body.light-mode .na-box .na-all * { background-color: transparent; color: #2b2118 !important; }
+body.light-mode .na-box .na-all { background: #fff !important; border: 1px solid rgba(150, 100, 50, 0.55) !important; }
+body.light-mode .xc-flow > div p, body.light-mode .xc-flow > div h3 { color: #2b2118 !important; }
+body.light-mode .na-box .na-link { background: #fff !important; color: #2b2118 !important; border: 1px solid rgba(150, 100, 50, 0.55) !important; box-shadow: 0 2px 5px rgba(60, 40, 20, 0.18); }
+body.light-mode .na-box .na-link::after, body.light-mode .na-box .na-link::before { border-color: #2b2118 !important; }

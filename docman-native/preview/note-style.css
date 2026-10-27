@@ -1,0 +1,77 @@
+/* The reminder note in the style of the user's reference: yellow top band, a dotted perforation line, white ruled paper. No divider line. */
+.rnote-sticky {
+    position: fixed; display: block !important; padding: 0 !important; overflow: hidden; border: 1px solid #d9d9d9 !important; border-radius: 22px !important;
+    background-color: #ffffff !important;
+    background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 27px, #c9c9c9 27px, #c9c9c9 28px) !important;
+    background-position: 0 62px !important; background-repeat: repeat-y; background-size: 100% 100% !important;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.55);
+}
+.rnote-sticky::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 44px; z-index: 0;
+    background: linear-gradient(180deg, #ffe066 0%, #ffd21a 55%, #ffc800 100%); box-shadow: 0 3px 4px rgba(0, 0, 0, 0.22);
+}
+.rnote-sticky::after {
+    content: ""; position: absolute; left: 0; right: 0; top: 49px; height: 8px; z-index: 0;
+    background: radial-gradient(circle, #c2c2c2 2.4px, transparent 3px) 0 50% / 12px 8px repeat-x;
+}
+.rnote-sticky .rnote-main { position: relative; z-index: 1; padding: 66px 16px 14px 18px; }
+.rnote-sticky .rnote-label { position: absolute; top: -58px; left: 0; color: #5a4300 !important; font-weight: 800; margin: 0; }
+.rnote-sticky .rnote-title { color: #1b1b1b !important; }
+.rnote-sticky .rnote-when, .rnote-sticky .rnote-details, .rnote-sticky .rnote-place { color: #333 !important; }
+.rnote-sticky .rnote-side { position: absolute; top: 4px; right: 8px; z-index: 2; padding: 0 !important; border: 0 !important; }
+.rnote-sticky .rnote-side-btn { width: 34px !important; height: 34px !important; background: rgba(255, 255, 255, 0.55) !important; border: 0 !important; box-shadow: none !important; color: #5a4300 !important; }
+/* paper lines: every text line is 28 px tall and sits on a ruled line; the label sits on the yellow band */
+.rnote-sticky .rnote-main { padding: 62px 16px 6px 18px !important; }
+.rnote-sticky .rnote-label { top: 14px; left: 18px; font-size: 0.72rem; }
+.rnote-sticky .rnote-title { line-height: 28px; margin: 0; font-size: 1.05rem; }
+.rnote-sticky .rnote-when { line-height: 28px; margin: 0; }
+.rnote-sticky .rnote-details { line-height: 28px; margin: 0; font-size: 0.85rem; }
+.rnote-sticky .rnote-place { line-height: 28px; margin: 0; }
+.rnote-sticky .rnote-open-note { margin: 0 0 4px; }
+/* no "Reminder" word: the title sits in the yellow band */
+.rnote-sticky .rnote-label { display: none !important; }
+.rnote-sticky .rnote-title {
+    position: absolute; top: 0; left: 18px; right: 54px; height: 44px; line-height: 44px !important; margin: 0 !important;
+    font-size: 1.1rem; font-weight: 800; color: #3b2f0a !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* smaller header: the band is 30 px, the title 0.92rem */
+.rnote-sticky { background-position: 0 48px !important; }
+.rnote-sticky::before { height: 30px; }
+.rnote-sticky::after { top: 34px; }
+.rnote-sticky .rnote-main { padding-top: 48px !important; }
+.rnote-sticky .rnote-title { height: 30px; line-height: 30px !important; font-size: 0.92rem; left: 16px; right: 44px; }
+.rnote-sticky .rnote-side { top: 2px; right: 6px; }
+.rnote-sticky .rnote-side-btn { width: 26px !important; height: 26px !important; font-size: 0.8rem !important; }
+/* ruled lines as a 28 px tile with the line at its bottom, starting under the band: every text line (28 px) sits on a line */
+.rnote-sticky {
+    background-image: linear-gradient(to bottom, transparent 27px, #c9c9c9 27px, #c9c9c9 28px) !important;
+    background-size: 100% 28px !important; background-repeat: repeat-y !important; background-position: 0 48px !important;
+}
+/* 20 Oct (2): the ruled lines belong to the SCROLLING text (background-attachment: local on the scroll box), so they move with it; the band and
+   the title stay put. The lines are thinner and lighter. */
+.rnote-sticky { background-image: none !important; background-color: #ffffff !important; }
+.rnote-sticky .rnote-main {
+    position: static !important; margin-top: 48px; padding: 0 16px 6px 18px !important; max-height: calc(46vh - 48px); overflow-y: auto;
+    background-image: linear-gradient(to bottom, transparent 27.4px, #d3d3d3 27.4px, #d3d3d3 28px) !important;
+    background-size: 100% 28px !important; background-repeat: repeat-y !important; background-attachment: local !important; background-position: 0 0 !important;
+}
+.rnote-sticky.rnote-cover .rnote-main { min-height: 0; }
+/* 20 Oct (3): an even smaller header: band 24 px, title 0.8rem, small close button; everything below moves up 8 px */
+.rnote-sticky::before { height: 24px; }
+.rnote-sticky::after { top: 28px; }
+.rnote-sticky .rnote-title { height: 24px; line-height: 24px !important; font-size: 0.8rem; left: 14px; right: 36px; }
+.rnote-sticky .rnote-side { top: 1px; right: 5px; }
+.rnote-sticky .rnote-side-btn { width: 22px !important; height: 22px !important; font-size: 0.68rem !important; }
+.rnote-sticky .rnote-main { margin-top: 40px; max-height: calc(46vh - 40px); }
+/* 20 Oct (4): the details no longer scroll inside their own box (28vh): the WHOLE note body scrolls as one, so the ruled lines (on the
+   body, background-attachment: local) move together with the text. */
+.rnote-sticky .rnote-details { max-height: none !important; overflow: visible !important; }
+/* 20 Oct (5): tighter ruling (24 px between lines instead of 28), and the ruled lines fill the WHOLE note, so a short note shows
+   a neat sheet of lines instead of one line and a blank area. */
+.rnote-sticky { display: flex !important; flex-direction: column; }
+.rnote-sticky .rnote-main {
+    flex: 1 1 auto; min-height: 0;
+    background-image: linear-gradient(to bottom, transparent 23.4px, #d6d6d6 23.4px, #d6d6d6 24px) !important; background-size: 100% 24px !important;
+}
+.rnote-sticky .rnote-when, .rnote-sticky .rnote-details, .rnote-sticky .rnote-place { line-height: 24px !important; font-size: 0.8rem; }
+.rnote-sticky .rnote-open-note { margin: 0; height: 24px; }

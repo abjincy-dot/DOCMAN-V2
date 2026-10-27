@@ -1,0 +1,2 @@
+/* 23 Oct: the header calendar is 2 mm (about 11 px of 64) lower; width unchanged (96 %). The live date is inside it, so it scales along. */
+.logo .logo-tray-icon { transform: translateY(-8px) scale(0.96, 0.83) !important; }

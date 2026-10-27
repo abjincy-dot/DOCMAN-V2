@@ -198,7 +198,7 @@
 
   <header class="head" id="top">
     <h1>Privacy Policy</h1>
-    <p class="stamp">Last updated &middot; September 26, 2026</p>
+    <p class="stamp">Last updated &middot; October 21, 2026</p>
   </header>
 
   <main class="card">
@@ -224,7 +224,9 @@
         stored in the app's private native storage on your device.</li>
       <li><strong>Folder and department structure, names, colors, and icons</strong> &mdash;
         stored locally.</li>
-      <li><strong>Notes you create</strong> &mdash; stored locally. This includes a
+      <li><strong>Notes you create</strong> &mdash; stored locally, along with how you chose to show
+        each one: its colour, its text size, and whether its page is ruled. Searching your notes reads
+        their text on your device only, and a note you have locked is left out of the results. This includes a
         <strong>quick note</strong> attached to a particular document: it is held with your other
         notes in the app&rsquo;s private storage, is shown only inside DOCMAN, and is removed when
         you delete the note, delete the document, or uninstall the app.</li>
@@ -236,7 +238,8 @@
         signature so you can place it again later. It is stored as an image in the app&rsquo;s private
         storage on your device, is never shared or uploaded, and is removed when you delete it in the
         app (Sign &rarr; Delete saved signature), when you turn off &ldquo;Save this signature for next
-        time&rdquo;, or when DOCMAN is uninstalled.</li>
+        time&rdquo;, or when DOCMAN is uninstalled. The ink colour and pen thickness you last chose are
+        remembered with it, in the same private storage and nowhere else.</li>
       <li><strong>Safety Snapshots</strong> &mdash; immediately before a backup is restored, DOCMAN
         copies your current data into its own private storage so a mistaken restore can be undone. The
         most recent few are kept, they are never shared or uploaded, and they are removed when DOCMAN
@@ -244,7 +247,13 @@
       <li><strong>Photo thumbnails</strong> &mdash; small preview images of your photos, kept in the
         app&rsquo;s private cache so folders open quickly. They are rebuilt from your own files when
         needed and never leave your device.</li>
-      <li><strong>Reminders you create</strong> (title, due date, and time) &mdash; stored locally.</li>
+      <li><strong>Reminders you create</strong> (title, due date and time, whether you set it to
+        repeat every month or every year, and &mdash; if you attached it to a note &mdash; which note
+        it belongs to) &mdash; stored locally.</li>
+      <li><strong>Calendar events you choose to import</strong> &mdash; only if you press
+        &ldquo;Sync Calendar&rdquo; and allow Android's calendar permission. DOCMAN reads the
+        upcoming events (title, date, time, place) from your phone's calendar and lists them as
+        reminders, stored locally. See Section 6.</li>
       <li><strong>Favorites, recents, and search history</strong> &mdash; stored locally.</li>
       <li><strong>Items you delete</strong> &mdash; held in the app's local Recycle Bin until you
         permanently delete them or the retention period elapses, then removed from the device.</li>
@@ -333,18 +342,45 @@
       features are unaffected either way, and nothing about this exchanges any data with us or
       anyone else &mdash; it only changes what Android itself allows the app to do on your
       device.</p>
-    <p><strong>What appears on your lock screen.</strong> These alerts show their text on the
-      lock screen, which means a document name or a reminder title &mdash; &ldquo;Passport
-      expires today,&rdquo; for instance &mdash; can be read by anyone holding your phone without
-      unlocking it. That is deliberate, because an alert you cannot read is an alert that gets
-      ignored, but it is your choice: Android can hide notification content on the lock screen,
-      either for every app under your phone's lock-screen settings or for DOCMAN alone under its
-      notification settings. Nothing is sent anywhere either way &mdash; this only affects what
-      is drawn on your own screen.</p>
+    <p><strong>Sync Calendar.</strong> The Reminders screen has an optional &ldquo;Sync Calendar&rdquo;
+      button. Only when you press it, DOCMAN asks Android for permission to <em>read</em> your
+      calendar and then copies your upcoming events (up to a year ahead) from the calendar app
+      on your phone into your DOCMAN reminders, stored on your device like any other reminder.
+      An optional &ldquo;Auto&rdquo; switch beside the button repeats the same read, on your device,
+      whenever you open the app. DOCMAN never writes to, changes or deletes anything in your calendar, and the events are
+      not sent to us or to anyone else. If you decline the permission, nothing is read and every
+      other feature works as before. You can withdraw the permission at any time in Android's
+      Settings &gt; Apps &gt; DOCMAN &gt; Permissions; reminders already imported stay in DOCMAN until
+      you delete them.</p>
+    <p><strong>What appears on your lock screen.</strong> These alerts are worded so that they do
+      not give away what you keep. They never contain a document name or a reminder title &mdash;
+      an expiry alert says, for instance, &ldquo;A document expires today. Open DOCMAN to see
+      which,&rdquo; and a reminder says &ldquo;You have a reminder due.&rdquo; You see which
+      document or reminder it is only after you open DOCMAN. Because that wording is already
+      general, DOCMAN lets Android show it on the lock screen; if you prefer, Android can hide
+      notification content there altogether, for every app under your phone's lock-screen
+      settings or for DOCMAN alone under its notification settings. Nothing is sent anywhere
+      either way &mdash; this only affects what is drawn on your own screen.</p>
     <p>A reminder that has fallen due repeats every 30 minutes for up to three hours until you
-      acknowledge it, and an expiry alert repeats through the day it falls due. Those repeats are
-      scheduled on your device in advance, like the first alert, and stop as soon as you dismiss
+      acknowledge it. An expiry alert arrives 7 days, 3 days and 1 day before a document runs out,
+      then every 30 minutes between 7 am and 9 pm on the day itself until you acknowledge it, and
+      once a day for up to a week afterwards if it still has not been dealt with. When several
+      documents run out on the same day, DOCMAN raises one alert that says how many &mdash;
+      &ldquo;3 documents expire today&rdquo; &mdash; instead of one for each. Those alerts are
+      scheduled on your device in advance, like the first one, and stop as soon as you dismiss
       them.</p>
+    <p>When you open DOCMAN, it may also show one list, &ldquo;Needs your attention&rdquo;, with a bell
+      at the top of the screen, listing the reminders that are due and the documents expiring within
+      three days or already overdue, so you can act on them straight away. An item stays in that
+      list until you mark it done or change its date; tapping an alert opens the same list. The
+      list is built on your device from information already stored on your device. The small
+      picture on each card is chosen on your device from the document&rsquo;s name, the name of
+      the folder it is in, and its file type; DOCMAN does not read the contents of a file to pick
+      it, and nothing about it is sent anywhere.</p>
+    <p>A reminder you set to repeat every month or every year works out its own next date on your
+      device as soon as you acknowledge it, and schedules the next alert the same local way. Nothing
+      about a repeating reminder is sent anywhere, and nothing about it is kept outside the app&rsquo;s
+      own private storage.</p>
 
     <h2 id="s7"><span class="n">07</span>Network Access</h2>
     <p>DOCMAN does not require or use internet access for its core functionality &mdash;
@@ -402,8 +438,12 @@
       you; the backup is then encrypted with AES-256 using that password or key. The file is
       also saved directly to your device's Documents folder, and you can additionally share it
       using Android's standard share sheet &mdash; to Google Drive, email, another app, or
-      elsewhere, entirely at your choice. DOCMAN does not automatically upload this backup
-      anywhere.</p>
+      elsewhere, entirely at your choice. After a backup, the &ldquo;Save a copy&rdquo; button
+      hands the backup file to the Google Drive app&rsquo;s own &ldquo;Save to Drive&rdquo; screen
+      (or, if Drive is not installed, to Android&rsquo;s file picker) so that you can keep a copy
+      off your phone; from that point Google Drive handles the file under Google&rsquo;s own
+      terms and privacy policy. DOCMAN does not automatically upload this backup anywhere, and
+      nothing is sent unless you choose where it goes.</p>
     <p>Your password or recovery key is never stored or transmitted by DOCMAN &mdash; it exists
       only in your own memory or wherever you chose to save it. Anyone who obtains the backup
       file cannot open the documents inside it without that password or recovery key, and
@@ -412,7 +452,9 @@
     <p>When you use &ldquo;Share&rdquo;, DOCMAN provides only the file or files you selected to the
       app you choose, via Android's standard, restricted file-sharing mechanism (FileProvider).
       Sharing several documents at once first places temporary copies of just those files in the
-      app&rsquo;s own private cache, which Android clears on its own; nothing is uploaded by DOCMAN.</p>
+      app&rsquo;s own private cache, which Android clears on its own; nothing is uploaded by DOCMAN.
+      The &ldquo;Open with another app&rdquo; button in the text, Word and Excel viewers works the
+      same way: it hands only that one file to the app you pick, and DOCMAN itself sends nothing.</p>
 
     <h2 id="s10"><span class="n">10</span>Data Deletion</h2>
     <p>You can delete your data at any time:</p>

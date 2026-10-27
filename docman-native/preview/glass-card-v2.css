@@ -1,0 +1,40 @@
+/* 26 Oct: "Needs your attention" = ONE transparent glass card at a time (swipe for the next), View + Done to the right of the description. Look = the user's reference
+   (a clear acrylic card: the app shows through it, thin bright rim, avatar ring on the left, name and three numbers on one line). Replaces the old list popup (.na-box).
+   Undo: restore showExpiryCardsPopup's render() from git and delete this block. */
+#expiryCardsPopup.dc-popup-overlay { background: rgba(6, 3, 14, 0.66) !important; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding: 0 14px; }
+.gl-card { position: relative; width: 100%; max-width: 360px; box-sizing: border-box; border-radius: 20px; padding: 18px 18px 14px; color: #fff; font-family: Inter, sans-serif;
+    background: linear-gradient(135deg, rgba(255,255,255,.17), rgba(255,255,255,.04) 38%, rgba(255,255,255,.05) 70%, rgba(255,255,255,.13)), linear-gradient(160deg, rgba(214,70,200,.13), rgba(160,60,210,.10)), rgba(24,12,40,.46);
+    -webkit-backdrop-filter: blur(9px) saturate(1.15); backdrop-filter: blur(9px) saturate(1.15);
+    border: 1px solid rgba(255,255,255,.58);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.75), inset 1px 0 0 rgba(255,255,255,.4), inset 0 -1px 0 rgba(255,255,255,.22), 0 0 20px rgba(225,130,235,.34), 0 10px 34px rgba(0,0,0,.45);
+    animation: glIn .28s ease-out both; touch-action: pan-y; }
+.gl-card::before { content: ""; position: absolute; inset: 3px; border-radius: 17px; border: 1px solid rgba(255,255,255,.16); pointer-events: none; }
+@keyframes glIn { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+.gl-x { position: absolute; top: 10px; right: 12px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: none; color: #fff; font-size: .95rem; display: flex; align-items: center; justify-content: center; padding: 0; z-index: 2; }
+.gl-head { display: flex; gap: 14px; align-items: center; padding-right: 22px; }
+.gl-ring { flex: none; width: 72px; height: 72px; border-radius: 50%; padding: 3px; box-sizing: border-box; background: linear-gradient(135deg,#fff3e0,#ffb36b 45%,#d9b8ff); box-shadow: 0 0 14px rgba(255,200,150,.55); }
+.gl-ring > div { width: 100%; height: 100%; border-radius: 50%; background: rgba(20,12,36,.82); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.gl-ring > div > svg { width: 32px; height: 32px; }
+.gl-ring .gl-doc .dc-pic { width: 34px; height: 42px; border-radius: 4px; }
+.gl-id { min-width: 0; flex: 1; }
+.gl-name { font-weight: 800; font-size: .8rem; letter-spacing: .3px; text-transform: uppercase; line-height: 1.25; overflow-wrap: anywhere; }
+.gl-stats { display: flex; gap: 14px; margin-top: 7px; }
+.gl-stats > div { min-width: 0; }
+.gl-stats b { display: block; font-size: 1.1rem; font-weight: 800; line-height: 1.1; white-space: nowrap; }
+.gl-stats span { font-size: .68rem; color: rgba(255,255,255,.78); }
+.gl-sub { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0 4px; }
+.gl-kind { font-size: .74rem; color: rgba(255,255,255,.7); }
+.gl-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-weight: 700; font-size: .7rem; }
+.gl-pill.gl-red { background: rgba(255,80,110,.20); color: #ffa0b0; border: 1px solid rgba(255,120,145,.5); }
+.gl-pill.gl-amber { background: rgba(255,180,60,.18); color: #ffd08a; border: 1px solid rgba(255,200,110,.5); }
+.gl-body { display: flex; gap: 10px; align-items: flex-end; margin-top: 4px; }
+.gl-desc { flex: 1; min-width: 0; font-size: .8rem; line-height: 1.4; font-weight: 600; color: #fff; max-height: 5.6em; overflow: hidden; overflow-wrap: anywhere; }
+.gl-btns { flex: none; width: 88px; display: flex; flex-direction: column; gap: 7px; }
+.gl-btn { height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; font: 700 .78rem Inter, sans-serif; color: #fff; padding: 0;
+    border: 1px solid rgba(255,255,255,.5); background: rgba(255,255,255,.12); box-shadow: inset 0 1px 0 rgba(255,255,255,.4); }
+.gl-btn span { display: flex; } .gl-btn svg { width: 15px; height: 15px; stroke: #fff; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.gl-btn.gl-done { background: linear-gradient(135deg, rgba(139,123,255,.92), rgba(91,77,224,.9)); border-color: rgba(205,195,255,.8); box-shadow: 0 0 12px rgba(130,110,255,.55), inset 0 1px 0 rgba(255,255,255,.45); }
+.gl-btn:active { transform: translateY(2px); }
+.gl-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 11px; font-size: .7rem; color: rgba(255,255,255,.7); gap: 8px; }
+.gl-dots { display: flex; gap: 5px; flex-wrap: wrap; max-width: 90px; } .gl-dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.4); } .gl-dots i.on { background: #fff; width: 16px; border-radius: 4px; }
+.gl-more { background: none; border: 0; padding: 0; color: #e2d8ff; font: 600 .7rem Inter, sans-serif; }

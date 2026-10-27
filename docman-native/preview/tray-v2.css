@@ -1,0 +1,8 @@
+/* 22 Oct: the header calendar + tray picture is the user's NEW artwork (Images/calendar-tray-v2.png: stray specks removed, the painted "Thu 22" erased so the live
+   day and date are drawn on top). The old picture (Images/calendar-tray.png) is untouched. The old width / height squeeze (1 x 0.916) was tuned for the old picture
+   and is dropped; text positions are re-measured for the new one (picture 883 x 1103, aspect .80: fractions of its height = cqh). */
+.logo .logo-tray-icon { transform: translateY(-8px) !important; }
+.logo .logo-tray-icon::after { background: url('Images/calendar-tray-v2.png') center / contain no-repeat !important; }
+.logo-tray-icon .lc-d { top: 7.66cqh; font-size: 9.8cqh; color: #b30404; }
+.logo-tray-icon .lc-n { top: 16.49cqh; font-size: 24.4cqh; transform: scaleX(1.06); }
+.logo-tray-icon .lc-n.lc-two { top: 18.19cqh; font-size: 21cqh; }

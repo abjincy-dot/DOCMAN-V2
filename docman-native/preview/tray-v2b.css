@@ -1,0 +1,7 @@
+/* 22 Oct: "Thu" was not visible (dark red on the red-pink band of the new picture): the day name is now WHITE with a thin dark-red outline and a little larger;
+   the whole icon is very slightly narrower (96 %, height unchanged). */
+.logo .logo-tray-icon { transform: translateY(-8px) scale(0.96, 1) !important; }
+.logo-tray-icon .lc-d {
+    top: 7.2cqh; font-size: 10.6cqh; color: #fff; letter-spacing: 0.01em;
+    text-shadow: 0 0 1px #a30000, 0 0 2px #a30000, 1px 1px 0 #b00000, -1px 1px 0 #b00000, 0 1.5px 2px rgba(120, 0, 0, 0.7);
+}

@@ -1,0 +1,5 @@
+/* 22 Oct (final, the user chose option C): the orange bar is ONE flat amber-orange, the colour of the yellow top line. The corner piece that joins the bar to
+   the line has the same colour, so nothing breaks, and the pills no longer cast dark shadows. Bar height stays the card height. */
+#expiringDocsList .xc-shared-rail { background: #f98a0d !important; border-color: #f98a0d !important; box-shadow: 0 0 7px rgba(255, 150, 20, 0.5) !important; }
+#expiringDocsList .xc-shared-rail::before { background: radial-gradient(circle at 100% 100%, transparent 26.5px, #f98a0d 27px) !important; }
+#expiringDocsList .xc-shared-rail .xc-act { box-shadow: inset 0 0 5px rgba(255, 150, 20, 0.3) !important; }

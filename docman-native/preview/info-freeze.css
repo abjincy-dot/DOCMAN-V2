@@ -1,0 +1,11 @@
+/* 21 Oct: the "i" screen: the DOCMAN header and the four count boxes stay fixed at the top; only "How to Use DOCMAN" scrolls under them
+   (soft fade at both ends of the scrolling area), and the version line keeps its own space below. */
+.dept-info-scroll { overflow: hidden; display: flex; flex-direction: column; }
+.dept-info-scroll > .dept-info-header, .dept-info-scroll > .dept-info-stats { flex: none; }
+.dept-info-scroll > .dept-info-help {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-bottom: 0; padding-top: 8px; padding-bottom: 14px;
+    -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+}
+.dept-info-scroll > .dept-info-version { flex: none; margin-top: 10px; }

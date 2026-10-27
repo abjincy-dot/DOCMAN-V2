@@ -1,0 +1,8 @@
+/* 21 Oct: Settings > Storage summary card: the cylinder, "0.23 MB" and the Documents / Notes counts share ONE row, so the card is about half as tall.
+   Only this card's layout changes (the rows below, the text and the colours are untouched). */
+#settingsPanel-storage .storage-summary-card { flex-wrap: nowrap; gap: 10px; padding: 12px 14px; }
+#settingsPanel-storage .storage-summary-icon { width: 52px; height: 60px; flex: none; }
+#settingsPanel-storage .storage-summary-info { flex: 1 1 auto; min-width: 0; }
+#settingsPanel-storage .storage-summary-stats { flex: none; flex-wrap: nowrap; gap: 6px; }
+#settingsPanel-storage .storage-stat-pill { padding: 6px 9px; min-width: 56px; gap: 2px; border-radius: 12px; }
+#settingsPanel-storage .storage-stat-pill small { font-size: 0.58rem; }

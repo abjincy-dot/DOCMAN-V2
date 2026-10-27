@@ -1,0 +1,15 @@
+/* 21 Oct: Auto-sync switch inside the Sync Calendar pill. The header is tightened a little so the pill never reaches the X. */
+.xc-autosw { position: relative; width: 30px; height: 18px; border-radius: 999px; background: #3a3f50; border: 1px solid rgba(255, 255, 255, 0.25); flex: none; display: inline-block; transition: background .2s; }
+.xc-autosw::before { content: ""; position: absolute; inset: -9px -6px; }                       /* bigger touch target */
+.xc-autosw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); transition: transform .2s; }
+.xc-autosw.on { background: linear-gradient(90deg, #ff8a1f, #ee3a2a); border-color: rgba(255, 200, 140, 0.6); box-shadow: 0 0 8px rgba(255, 120, 30, 0.45); }
+.xc-autosw.on::after { transform: translateX(12px); }
+.xc-panel .xc-head { gap: 8px; }
+.xc-panel .xc-title { font-size: 1.02rem; }
+.xc-panel .xc-sync { gap: 6px; padding: 0 9px 0 10px; font-size: 0.74rem; }
+.xc-panel .xc-sync .xc-sync-sep { width: 1px; height: 16px; background: rgba(255, 255, 255, 0.28); margin: 0 1px; }
+.xc-panel .xc-sync .xc-sync-auto { font-size: 0.58rem; font-weight: 700; letter-spacing: 0.03em; color: #ffb26b; }
+body.light-mode .xc-autosw { background: #e4d6c2; border-color: rgba(120, 80, 40, 0.4); }
+body.light-mode .xc-autosw.on { background: linear-gradient(90deg, #ff8a1f, #ee3a2a); border-color: rgba(194, 87, 15, 0.7); }
+body.light-mode .xc-panel .xc-sync .xc-sync-sep { background: rgba(120, 80, 40, 0.3); }
+body.light-mode .xc-panel .xc-sync .xc-sync-auto { color: #b85a00; }

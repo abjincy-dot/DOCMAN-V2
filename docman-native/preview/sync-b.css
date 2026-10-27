@@ -1,0 +1,34 @@
+/* 22 Oct: Sync Calendar, layout B. On the Reminders tab the bell + title are gone; the row holds a standalone 3D push button "Sync Calendar" (the cards' raised
+   look: slate gradient, orange border, bright top edge, dark bottom edge, shadow, presses DOWN when tapped) and, beside it, a SEPARATE AUTO switch. */
+.xc-panel .xc-head-sync .xc-ico, .xc-panel .xc-head-sync .xc-ht { display: none; }
+.xc-sync-row { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
+.xc-panel .xc-sync-row .xc-sync {
+    margin-left: 0; flex: 1 1 auto; justify-content: center; height: 40px; padding: 0 12px; gap: 9px; font-size: 0.86rem; min-width: 0;
+    background: radial-gradient(circle at 100% 100%, rgba(255, 110, 20, 0.26), transparent 55%),
+        linear-gradient(160deg, #3f465a 0%, #292e3e 52%, #14171f 100%) !important;
+    border: 1.5px solid #c2570f !important;
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.30), inset 0 8px 10px -6px rgba(255, 255, 255, 0.14), inset 0 -3px 8px rgba(0, 0, 0, 0.55),
+        0 5px 9px -3px rgba(0, 0, 0, 0.65), 0 0 7px rgba(194, 87, 15, 0.25) !important;
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+.xc-panel .xc-sync-row .xc-sync:active {
+    transform: translateY(2px) !important;
+    box-shadow: inset 0 3px 7px rgba(0, 0, 0, 0.65), 0 1px 2px rgba(0, 0, 0, 0.6) !important;
+}
+.xc-panel .xc-sync i { font-size: 1.05rem; }
+.xc-panel .xc-sync.xc-sync-busy i { animation: xcSyncSpin 0.9s linear infinite; }
+@keyframes xcSyncSpin { to { transform: rotate(360deg); } }
+.xc-auto {
+    flex: none; display: flex; align-items: center; gap: 7px; height: 40px; padding: 0 10px 0 12px; border-radius: 999px; cursor: pointer;
+    border: 1.5px solid rgba(205, 216, 236, 0.45); background: rgba(255, 255, 255, 0.04);
+}
+.xc-auto .xc-sync-auto { font: 700 0.68rem Inter, sans-serif; letter-spacing: 0.03em; color: #ffb26b; }
+.xc-auto .xc-autosw { width: 38px; height: 22px; }
+.xc-auto .xc-autosw::after { width: 16px; height: 16px; }
+.xc-auto .xc-autosw.on::after { transform: translateX(16px); }
+body.light-mode .xc-panel .xc-sync-row .xc-sync {
+    background: radial-gradient(circle at 100% 100%, rgba(255, 130, 40, 0.24), transparent 58%), linear-gradient(160deg, #ffffff 0%, #f8efe3 55%, #ecdcc8 100%) !important;
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.95), inset 0 -3px 8px rgba(150, 95, 40, 0.28), 0 5px 9px -3px rgba(80, 50, 20, 0.4) !important;
+}
+body.light-mode .xc-auto { border-color: rgba(150, 100, 50, 0.5); background: rgba(255, 255, 255, 0.6); }
+body.light-mode .xc-auto .xc-sync-auto { color: #b85a00; }

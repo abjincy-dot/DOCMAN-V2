@@ -1,0 +1,7 @@
+
+/* 21 Oct: the Storage screen's top icon is a 3D coral / white / blue cylinder stack instead of the flat gradient box. */
+#settingsPanel-storage .storage-summary-icon {
+    background: none !important; box-shadow: none !important; border-radius: 0 !important;
+    width: 58px; height: 66px; filter: drop-shadow(0 6px 10px rgba(59, 130, 246, 0.45));
+}
+#settingsPanel-storage .storage-summary-icon svg { width: 100%; height: 100%; display: block; }

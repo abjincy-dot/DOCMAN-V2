@@ -1,0 +1,25 @@
+
+/* 26 Oct (glass card, part 6): ONE smooth motion like the header bell (naBellIn): the card rises from below while it zooms from small to full size on the same sine ease
+   (cubic-bezier(.45,0,.55,1)), gives one small gentle sway like the bell's ring, then stays. No blur, no 3D steps, no staggered stops: the stacked cards under it travel with it.
+   Replaces part 5's flight. Undo: delete this block (part 5 returns). */
+.gl-card.gl-fly { animation: glRise 1.35s cubic-bezier(.45, 0, .55, 1) both; transform-origin: 50% 100%; }
+.gl-wrap.gl-fly .gl-p1 { animation: glRiseP1 1.35s cubic-bezier(.45, 0, .55, 1) .04s both; }
+.gl-wrap.gl-fly .gl-p2 { animation: glRiseP2 1.35s cubic-bezier(.45, 0, .55, 1) .08s both; }
+@keyframes glRise {
+    0%   { opacity: 0; transform: translateY(44vh) scale(.6) rotate(3deg); animation-timing-function: cubic-bezier(.45, 0, .55, 1); }
+    24%  { opacity: 1; }
+    62%  { opacity: 1; transform: translateY(0) scale(1) rotate(1.8deg); animation-timing-function: ease-in-out; }
+    76%  { transform: translateY(0) scale(1) rotate(-1.2deg); animation-timing-function: ease-in-out; }
+    88%  { transform: translateY(0) scale(1) rotate(.6deg); animation-timing-function: ease-in-out; }
+    100% { opacity: 1; transform: none; }
+}
+@keyframes glRiseP1 {
+    0%   { opacity: 0; transform: translateY(44vh) scale(.58); }
+    30%  { opacity: 1; }
+    62%, 100% { opacity: 1; transform: translateY(20px) scale(.95); }
+}
+@keyframes glRiseP2 {
+    0%   { opacity: 0; transform: translateY(44vh) scale(.56); }
+    30%  { opacity: .8; }
+    62%, 100% { opacity: .8; transform: translateY(38px) scale(.90); }
+}

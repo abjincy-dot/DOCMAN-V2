@@ -3,6 +3,7 @@ package com.docman;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -22,6 +23,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(InAppReviewPlugin.class);
         registerPlugin(BackupFilePlugin.class);
         registerPlugin(BackupSavePlugin.class);
+        registerPlugin(CalendarImportPlugin.class);
         super.onCreate(savedInstanceState);
         // Force-discard the WebView's own HTTP disk/memory cache on every
         // launch. Capacitor serves app.js/index.html/etc. from this WebView
@@ -60,6 +62,24 @@ public class MainActivity extends BridgeActivity {
         // late (this is what caused the crash-on-launch).
         getBridge().getWebView().setWebChromeClient(new DocmanWebChromeClient(getBridge()));
         exposeNavBarInsetToCss();
+        // The web layer cannot see the phone's 12 / 24 hour setting (the WebView locale says 24 h on a 12 h phone), so the header clock asks here.
+        getBridge().getWebView().addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public boolean is24Hour() { return android.text.format.DateFormat.is24HourFormat(MainActivity.this); }
+            // 27 Oct: the note editor asks for verbatim input (no composing underline) while a note field is focused. The keyboard reads the
+            // field type when it connects, so the connection is restarted right after the flag changes.
+            @JavascriptInterface
+            public void setVerbatim(boolean on) {
+                DocmanWebView.setVerbatim(on);
+                runOnUiThread(() -> {
+                    try {
+                        android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                        android.webkit.WebView wv = getBridge().getWebView();
+                        if (imm != null && wv != null) imm.restartInput(wv);
+                    } catch (Exception e) { /* the keyboard keeps its old mode until the next focus */ }
+                });
+            }
+        }, "DocmanSys");
         // The exact-alarm toggle is no longer opened from here. Doing it in
         // onCreate meant a fresh install landed on an Android Settings screen
         // before the app had drawn anything, with nothing on it to say what it

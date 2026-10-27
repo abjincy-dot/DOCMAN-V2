@@ -1,0 +1,8 @@
+/* 22 Oct (final): the orange bar goes back to its OLD colour (amber edges, red-orange centre: it blends with the yellow top line, a flat colour broke at the
+   top-right corner) and back to the card's height. The pills stay the labelled ones; their spacing is 6 px (was 4) and each has a larger invisible
+   touch area, which is all that fits inside the card height. */
+#expiringDocsList .xc-shared-rail { padding: 4px 0; gap: 6px; }
+#expiringDocsList .xc-shared-rail .xc-act { position: relative; }
+#expiringDocsList .xc-shared-rail .xc-act::after { content: ""; position: absolute; inset: -3px -5px; }
+/* 1 mm (5.4 px) more room between the counts box and the first card: margin 8 px -> 13.4 px */
+.xc-stats { margin-bottom: 13.4px; }

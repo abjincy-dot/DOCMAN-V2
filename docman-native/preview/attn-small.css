@@ -1,0 +1,62 @@
+/* "Needs your attention" restyled to the reference picture (preview + candidate for the end of style.css). */
+.na-box.na-detail {
+    border: 1.5px solid rgba(110, 140, 235, 0.38);
+    background: linear-gradient(180deg, #0c1230, #060919);
+    border-radius: 30px; padding: 20px 14px 14px;
+}
+.na-detail .na-title { font-size: 1.35rem; letter-spacing: -0.01em; }
+.na-detail .na-title b { color: #ff9a1a; font-weight: 800; }
+.na-detail .na-sub { color: #8f9ac2; font-size: 0.85rem; margin-top: 4px; }
+.na-detail .na-x { width: 38px; height: 38px; background: #141b38; border: 1px solid rgba(120, 140, 200, 0.5); }
+
+.na-detail .na-cards .na-card {
+    border: 1px solid rgba(150, 175, 255, 0.62); border-radius: 22px; padding: 10px 10px 9px;
+    background: linear-gradient(180deg, #121a3a, #0b1128), #0b1128;
+}
+.na-detail .na-card-top { gap: 12px; margin-bottom: 2px; }
+.na-detail .na-card .dc-pic, .na-detail .na-card .xc-bell {
+    width: 50px; height: 50px; border-radius: 12px; overflow: hidden; flex: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+.na-detail .na-card .xc-bell { box-shadow: none; overflow: visible; }
+.na-detail .na-card .xc-bell { display: flex; align-items: center; justify-content: center; background: none; border: none; box-shadow: none; }
+.na-detail .na-card .xc-bell svg { width: 46px; height: 46px; transform: scaleX(-1); }
+.na-detail .na-name { font-size: 1rem; font-weight: 800; }
+.na-detail .na-where { font-size: 0.8rem; color: #8f9ac2; margin-top: 1px; }
+.na-detail .na-exp { font-size: 0.84rem; margin-top: 3px; }
+.na-detail .na-exp svg { width: 15px; height: 15px; }
+
+/* Wide Edit button: filled, a coloured bar down its left edge, chevron at the right. */
+.na-detail .na-card .na-edit {
+    position: relative; overflow: hidden; padding: 0 40px; height: 38px; margin-top: 8px;
+    border: 1px solid rgba(255, 170, 70, 0.55); border-radius: 14px; color: #fff; font-size: 0.88rem; font-weight: 700;
+    background: linear-gradient(90deg, #8a4e12, #5c340c);
+}
+.na-detail .na-card .na-edit::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 7px; background: #ff9a1a;
+}
+.na-detail .na-card .na-edit::after {
+    content: ""; position: absolute; right: 16px; top: 50%; width: 9px; height: 9px; margin-top: -6px;
+    border-right: 2.5px solid #fff; border-top: 2.5px solid #fff; transform: rotate(45deg);
+}
+.na-detail .na-card .na-edit span { color: #ffc065; }
+.na-detail .na-card[data-kind="rem"] .na-edit {
+    border-color: rgba(255, 90, 120, 0.55); background: linear-gradient(90deg, #7f2640, #521628);
+}
+.na-detail .na-card[data-kind="rem"] .na-edit::before { background: #ff4d6d; }
+.na-detail .na-card[data-kind="rem"] .na-edit span { color: #ff9db0; }
+
+.na-detail .na-card .na-acts { gap: 8px; margin-top: 7px; }
+.na-detail .na-card .na-acts .na-act { height: 34px; padding: 0; font-size: 0.86rem; font-weight: 700; border-radius: 14px; }
+.na-detail .na-card .na-acts .na-act[data-act="open"] { background: #18203a; border: 1px solid rgba(140, 155, 200, 0.4); }
+.na-detail .na-card .na-acts .na-act[data-act="done"] { background: linear-gradient(180deg, #0f4fb8, #0a3a8a); border: 1px solid #2f7bf0; }
+.na-detail .na-act span { width: 20px; height: 20px; }
+
+.na-detail .na-link {
+    position: relative; height: 42px; margin-top: 10px; border-radius: 16px; color: #fff; font-size: 0.9rem; font-weight: 700;
+    border: 1px solid rgba(120, 140, 210, 0.38); background: rgba(255, 255, 255, 0.02);
+}
+.na-detail .na-link::after {
+    content: ""; position: absolute; right: 18px; top: 50%; width: 9px; height: 9px; margin-top: -6px;
+    border-right: 2.5px solid #fff; border-top: 2.5px solid #fff; transform: rotate(45deg);
+}

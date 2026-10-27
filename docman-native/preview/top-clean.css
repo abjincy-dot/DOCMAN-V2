@@ -1,0 +1,8 @@
+/* 22 Oct: the white frame is the ONLY border around the top tools: the counts box loses its own orange border and box (a thin line separates it from the
+   tabs) and the faint capsule behind the tabs goes. Frame size and the X position stay as they were. */
+.xc-top .xc-stats {
+    border: none !important; background: transparent !important; box-shadow: none !important; border-radius: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.2) !important; margin: 4px 0 0; padding: 8px 0 4px;
+}
+.xc-top .expdoc-tab-row { background: transparent !important; border-color: transparent !important; box-shadow: none !important; }
+body.light-mode .xc-top .xc-stats { border-top-color: rgba(120, 80, 40, 0.3) !important; }

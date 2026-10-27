@@ -1,0 +1,5 @@
+
+/* 26 Oct: LIGHT MODE only. The "Add reminder" pill had a white 0.55 border on a white pill (no visible edge, only a soft shadow) while the Reminders / Expiring tabs next to it have a brown hairline.
+   It gets the same thin brown line as the tabs. Dark mode is unchanged. Undo: delete this block. */
+body.light-mode #expdocAddReminder { border: 1px solid rgba(150, 100, 50, 0.5) !important; }
+body.light-mode #expdocAddReminder[disabled] { border-color: rgba(150, 100, 50, 0.3) !important; }

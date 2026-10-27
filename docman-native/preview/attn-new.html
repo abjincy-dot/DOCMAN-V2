@@ -1,0 +1,50 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#04050c;font-family:Inter,"Segoe UI",Arial,sans-serif;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh}
+.na-box{position:relative;width:100%;max-width:360px;display:flex;flex-direction:column;padding:18px 14px 14px;border-radius:28px;border:1px solid rgba(120,150,255,.45);background:linear-gradient(180deg,#0d1330,#070a1c);color:#fff}
+.na-x{position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;font-size:15px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.3)}
+.na-title{font-size:1.3rem;font-weight:800;line-height:1.18}.na-sub{margin-top:6px;font-size:.82rem;color:rgba(255,255,255,.66)}
+.na-top{display:flex;align-items:center;gap:10px;margin:0 44px 12px 2px}
+.na-cards{display:flex;flex-direction:column;gap:10px}
+.na-card{border-radius:18px;padding:10px}
+.na-card-top{display:flex;align-items:center;gap:12px}
+.na-info{flex:1;min-width:0}
+.na-name{font-size:.98rem;font-weight:700;text-transform:uppercase}
+.na-where{margin-top:1px;font-size:.76rem;color:rgba(255,255,255,.6)}
+.na-exp{display:flex;align-items:center;gap:5px;margin-top:3px;font-size:.8rem;font-weight:700}
+.na-exp svg{width:14px;height:14px}
+.na-t-amber{color:#ffb020}.na-t-purple{color:#a78bfa}
+.na-acts{display:flex;gap:8px;margin-top:10px}
+.na-act{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 6px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.07);color:#fff;font-family:inherit;font-size:.82rem;font-weight:600}
+.na-act span{width:17px;height:17px;display:block}.na-act svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.na-edit{width:100%;margin-top:10px;padding:11px 6px;font-size:.86rem;border:1px solid rgba(255,200,61,.75);color:#ffc83d}
+.na-link{display:block;width:100%;margin-top:10px;padding:10px;background:none;color:#7da2ff;font-family:inherit;font-size:.86rem;font-weight:700;border:1px solid rgba(125,162,255,.4);border-radius:999px}
+.dc-pic{display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#5ab0ff,#2f9e5a)}
+</style>
+<link rel="stylesheet" href="attn-new.css">
+</head><body>
+<div class="na-box na-detail">
+<div class="na-x">✕</div>
+<div class="na-top"><div><div class="na-title">Needs your <b>attention</b></div><div class="na-sub">2 items need action</div></div></div>
+<div class="na-cards">
+
+<div class="na-card" data-kind="doc"><div class="na-card-top">
+<div class="dc-pic"><svg viewBox="0 0 64 64" width="64" height="64"><circle cx="44" cy="20" r="7" fill="#ffd34d"/><path d="M0 52l18-24 14 16 10-10 22 18v12H0z" fill="#2c7a3e"/></svg></div>
+<div class="na-info"><div class="na-name">92359</div><div class="na-where">Work / Reports</div>
+<div class="na-exp na-t-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span>Expires in 3 days</span></div></div></div>
+<button class="na-act na-edit"><span><svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></span>Edit expiry date</button>
+<div class="na-acts"><button class="na-act" data-act="open"><span><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></span>Open</button>
+<button class="na-act" data-act="done"><span><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></span>Done</button></div></div>
+
+<div class="na-card" data-kind="rem"><div class="na-card-top">
+<div class="xc-bell"><svg viewBox="0 0 80 80"><defs><linearGradient id="cB" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#fff0a8"/><stop offset="0.45" stop-color="#ffc83d"/><stop offset="1" stop-color="#e8860c"/></linearGradient><linearGradient id="cR" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffb32e"/><stop offset="1" stop-color="#d97706"/></linearGradient><radialGradient id="cC" cx="0.4" cy="0.35" r="0.7"><stop offset="0" stop-color="#ffd76a"/><stop offset="1" stop-color="#d97706"/></radialGradient></defs><g><circle cx="40" cy="9" r="5" fill="url(#cC)"/><path d="M40 13c-14 0-22 10-22 24v13l-7 11h58l-7-11V37c0-14-8-24-22-24z" fill="url(#cB)"/><path d="M33 20c-7 4-10 11-10 18" stroke="#fffbe6" stroke-opacity=".75" stroke-width="3.2" stroke-linecap="round" fill="none"/><rect x="9" y="58" width="62" height="7" rx="3.5" fill="url(#cR)"/><path d="M31 67a9 9 0 0 0 18 0z" fill="url(#cC)"/></g></svg></div>
+<div class="na-info"><div class="na-name">YEHDH</div><div class="na-where">Reminder</div>
+<div class="na-exp na-t-purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 17v-6a6 6 0 0 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/></svg><span>Due today · 11:06 AM</span></div></div></div>
+<button class="na-act na-edit"><span><svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></span>Edit reminder</button>
+<div class="na-acts"><button class="na-act" data-act="open"><span><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></span>Open</button>
+<button class="na-act" data-act="done"><span><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></span>Done</button></div></div>
+
+</div>
+<button class="na-link">Reminders &amp; expiry dates</button>
+</div></body></html>

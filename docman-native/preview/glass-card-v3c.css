@@ -1,0 +1,6 @@
+
+/* 26 Oct (glass card, part 3): the small picture under the title: a document's own picture, or the bell picture for a reminder. */
+.gl-thumb { margin-top: 7px; display: flex; }
+.gl-thumb .dc-pic { width: 30px; height: 38px; border-radius: 4px; }
+.gl-thumb .xc-bell { width: 36px; height: 36px; }
+.gl-thumb .xc-bell svg { width: 100%; height: 100%; }

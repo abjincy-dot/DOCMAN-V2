@@ -1,0 +1,10 @@
+/* 24 Oct: v7 = v6 with the two binder rings rising higher above the calendar (+20 rows, only the part of each ring above the sheet is lengthened: preview/rings-up.js)
+   and the orange rim along the LEFT side and BOTTOM-LEFT of the sheet turned dark (preview/rim-off.js). The picture is 353 x 440 (was 420 tall), so the live date
+   positions are recomputed for it. */
+.logo .logo-tray-icon::after { background: url('Images/calendar-tray-v7.png') center / contain no-repeat !important; filter: none !important; }
+.logo-tray-icon .lc-d { top: 20.77cqh !important; font-size: 12.22cqh !important; }
+.logo-tray-icon .lc-n { top: 28.03cqh !important; font-size: 25.77cqh !important; }
+.logo-tray-icon .lc-n.lc-two { top: 29.74cqh !important; font-size: 22.34cqh !important; }
+
+/* 24 Oct: v8 = v7 but the LEFT side and bottom-left have NO orange glow at all, only a hair-thin orange edge line (preview/rim-thin.js, HAIR=7 px at 1000 tall). Same size and date positions as v7. */
+.logo .logo-tray-icon::after { background-image: url('Images/calendar-tray-v8.png') !important; }

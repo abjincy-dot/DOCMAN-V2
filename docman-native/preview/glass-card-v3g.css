@@ -1,0 +1,14 @@
+
+/* 26 Oct (glass card, part 7): STACK. Every pending item is a full glass card in .gl-list, which scrolls vertically (several items). A small header row with the count and one X
+   sits above the list, one "All reminders & expiry dates" link below it. Cards rise in one after another (inline animation-delay); Done folds one card away (.gl-out).
+   Undo: restore the previous render() (single card + swipe) and delete this block. */
+.gl-wrap.gl-many { display: flex; flex-direction: column; gap: 10px; }
+.gl-list { display: flex; flex-direction: column; gap: 14px; }
+.gl-many .gl-list { max-height: calc(100vh - 190px); max-height: calc(100dvh - 190px); overflow-y: auto; overscroll-behavior: contain; padding: 4px 2px 10px; margin: 0 -2px; scrollbar-width: none; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10px, #000 calc(100% - 14px), transparent 100%); mask-image: linear-gradient(to bottom, transparent 0, #000 10px, #000 calc(100% - 14px), transparent 100%); }
+.gl-many .gl-list::-webkit-scrollbar { display: none; }
+.gl-list .gl-card { flex: none; }
+.gl-top { display: flex; align-items: center; justify-content: space-between; color: #fff; font: 700 .86rem Inter, sans-serif; padding: 0 4px; }
+.gl-x.gl-x-top { position: static; width: 34px; height: 34px; }
+.gl-foot-shared { justify-content: center; margin-top: 0; }
+.gl-card.gl-out { animation: glOut .26s ease-in both; }
+@keyframes glOut { to { opacity: 0; transform: translateX(40px) scale(.94); } }

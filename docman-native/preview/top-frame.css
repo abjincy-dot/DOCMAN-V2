@@ -1,0 +1,9 @@
+/* 22 Oct: a rounded rectangle border around the top tool area (title row with Sync Calendar, the tab row, and the counts box). The frame uses the panel's
+   side margin so the content inside is not narrower; the X sits inside the frame. */
+.xc-top { position: relative; border: 1.5px solid #c2570f; border-radius: 18px; padding: 10px 6px 4px; margin: 0 -6px 12px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0)); box-shadow: 0 0 10px rgba(255, 110, 20, 0.18); }
+.xc-top .xc-head { margin-bottom: 8px; }
+.xc-top .xc-stats { margin-bottom: 4px; }
+.xc-panel #expiringDocsCloseX { top: 28px !important; right: 14px !important; }
+body.light-mode .xc-top { border-color: #c2570f; background: linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.2)); box-shadow: 0 2px 8px rgba(120, 70, 20, 0.15); }
+.xc-panel .xc-top { flex: none; }

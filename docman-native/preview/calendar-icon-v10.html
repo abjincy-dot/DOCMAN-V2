@@ -1,0 +1,24 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b0f1f;font-family:Inter,"Segoe UI",Arial,sans-serif;color:#fff;padding:20px;display:flex;gap:30px;align-items:flex-start}
+.lab{font-size:12px;color:#99a;margin:0 0 8px}
+.hdr{width:300px;height:96px;background:linear-gradient(180deg,#141a35,#0b1022);border-radius:16px;display:flex;align-items:center;padding:0 12px;gap:12px}
+.hdr b{font-size:20px}
+.cal{position:relative;width:76px;height:76px;container-type:size;flex:none}
+.big{width:300px;height:300px}
+.cal img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.cal .d,.cal .n{position:absolute;left:0;width:100%;text-align:center;line-height:1;font-weight:900;letter-spacing:-.02em}
+.cal .d{top:21.19cqh;font-size:12.35cqh;color:#e10000}
+.cal .n{transform:scaleX(1.26);-webkit-text-stroke:.045em #060f1c;top:31.37cqh;font-size:17.25cqh;color:#060f1c}
+.cal .n.two{font-size:14.86cqh;top:32.57cqh}
+</style></head><body>
+<div><p class="lab">Header, real size</p><div class="hdr"><div class="cal" id="c1"><img src="calendar-tray-v5.png"><span class="d"></span><span class="n"></span></div><b>DOCMAN</b></div>
+<p class="lab" style="margin-top:18px">Same icon, enlarged</p><div class="cal big" id="c2"><img src="calendar-tray-v5.png"><span class="d"></span><span class="n"></span></div></div>
+<div><p class="lab">Different dates (day name + number)</p><div style="display:grid;grid-template-columns:repeat(3,110px);gap:10px" id="grid"></div></div>
+<script>
+const D=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function paint(el,dt){el.querySelector('.d').textContent=D[dt.getDay()];const n=el.querySelector('.n');n.textContent=dt.getDate();n.classList.toggle('two',dt.getDate()>9)}
+const now=new Date();paint(document.getElementById('c1'),now);paint(document.getElementById('c2'),now);
+const g=document.getElementById('grid');
+[[2026,9,1],[2026,9,8],[2026,9,19],[2026,9,23],[2026,9,28],[2026,9,31],[2026,10,4],[2026,10,17],[2026,11,25]].forEach(a=>{const w=document.createElement('div');w.className='cal';w.style.width=w.style.height='110px';w.innerHTML='<img src="calendar-tray-v5.png"><span class="d"></span><span class="n"></span>';g.appendChild(w);paint(w,new Date(a[0],a[1],a[2]))});
+</script></body></html>

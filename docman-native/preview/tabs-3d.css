@@ -1,0 +1,22 @@
+/* 22 Oct: the tabs (Reminders / Expiring) and Add reminder get the same raised 3D push-button depth as Sync Calendar (bright top edge, dark bottom edge, shadow
+   underneath, press down 2 px). Colours are NOT changed: only shadows and the press movement are added. */
+.xc-panel .expdoc-tab-row .tab-glider {
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.38), inset 0 -3px 6px rgba(120, 20, 0, 0.45), 0 4px 8px -2px rgba(0, 0, 0, 0.6), 0 0 6px 0 rgba(255, 110, 30, 0.2) !important;
+}
+.xc-panel .expdoc-tab:not(.expdoc-tab-active), .xc-panel #expdocAddReminder {
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.16), inset 0 -3px 6px rgba(0, 0, 0, 0.45), 0 4px 7px -3px rgba(0, 0, 0, 0.6) !important;
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+.xc-panel .expdoc-tab:not(.expdoc-tab-active):active, .xc-panel #expdocAddReminder:not([disabled]):active {
+    transform: translateY(2px);
+    box-shadow: inset 0 3px 7px rgba(0, 0, 0, 0.6), 0 1px 2px rgba(0, 0, 0, 0.6) !important;
+}
+.xc-panel #expdocAddReminder[disabled] { box-shadow: none !important; }
+body.light-mode .xc-panel .expdoc-tab:not(.expdoc-tab-active), body.light-mode .xc-panel #expdocAddReminder {
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.9), inset 0 -3px 6px rgba(150, 95, 40, 0.25), 0 4px 7px -3px rgba(80, 50, 20, 0.4) !important;
+}
+body.light-mode .xc-panel .expdoc-tab-row .tab-glider {
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.5), inset 0 -3px 6px rgba(120, 20, 0, 0.35), 0 4px 8px -2px rgba(80, 50, 20, 0.4) !important;
+}
+/* 22 Oct: the tab row (Reminders / Expiring / Add reminder) sits a little lower: +6 px under the Sync row */
+.xc-top .xc-head { margin-bottom: 14px; }

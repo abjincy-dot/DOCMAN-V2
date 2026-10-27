@@ -1,0 +1,11 @@
+/* 23 Oct: the header calendar is the user's dark-to-orange glowing artwork (Images/calendar-tray-v5.png, made by preview/make-tray-v5.js: the gradient backdrop
+   cut out with a smooth model of it, the painted "Thu 22" and its glow rebuilt from a surface fitted to the calendar face). Live day and date WHITE with an orange
+   glow, like the artwork. Older pictures v2/v3/v4 kept. Width stays 96 %. */
+.logo .logo-tray-icon::after { background: url('Images/calendar-tray-v5.png') center / contain no-repeat !important; }
+.logo-tray-icon .lc-d, .logo-tray-icon .lc-n { left: 0; }
+.logo-tray-icon .lc-d {
+    top: 16.2cqh; font-size: 13cqh; font-weight: 900; letter-spacing: -0.01em; color: #fff;
+    text-shadow: 0 0 3px rgba(255, 120, 20, 0.95), 0 0 8px rgba(255, 90, 0, 0.6), 0 1px 0 rgba(0, 0, 0, 0.4);
+}
+.logo-tray-icon .lc-n { top: 24.3cqh; font-size: 27.7cqh; color: #fff; text-shadow: 0 0 4px rgba(255, 120, 20, 0.95), 0 0 10px rgba(255, 90, 0, 0.6), 0 1.5px 0 rgba(0, 0, 0, 0.4); }
+.logo-tray-icon .lc-n.lc-two { top: 26.2cqh; font-size: 23.9cqh; }

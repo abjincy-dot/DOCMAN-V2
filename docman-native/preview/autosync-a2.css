@@ -1,0 +1,10 @@
+/* PREVIEW ONLY: switch inside the Sync Calendar pill, with the X kept clear. */
+.xc-autosw { position: relative; width: 30px; height: 18px; border-radius: 999px; background: #3a3f50; border: 1px solid rgba(255,255,255,0.25); flex: none; display: inline-block; }
+.xc-autosw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+.xc-autosw.on { background: linear-gradient(90deg, #ff8a1f, #ee3a2a); border-color: rgba(255,200,140,0.6); box-shadow: 0 0 8px rgba(255,120,30,.45); }
+.xc-autosw.on::after { transform: translateX(12px); }
+.xc-panel .xc-head { gap: 8px; }
+.xc-panel .xc-title { font-size: 1.02rem; }
+.xc-panel .xc-sync.xc-sync-a { gap: 6px; padding: 0 9px 0 10px; font-size: 0.74rem; }
+.xc-panel .xc-sync.xc-sync-a .xc-sync-sep { width: 1px; height: 16px; background: rgba(255,255,255,0.28); margin: 0 1px; }
+.xc-panel .xc-sync.xc-sync-a .xc-sync-auto { font-size: 0.58rem; font-weight: 700; letter-spacing: 0.03em; color: #ffb26b; }

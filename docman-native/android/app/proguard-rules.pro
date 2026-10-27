@@ -22,3 +22,15 @@
 # PDFBox ships JPEG2000 support that references an optional library we do not
 # bundle; nothing in DOCMAN reaches that code path.
 -dontwarn com.gemalto.jp2.**
+
+# 21 Oct: Sync Calendar (CalendarImportPlugin) and the other plugins use runtime annotations (permissions, activity callbacks). Keep the
+# annotation data and the callback methods so a release (R8) build behaves like the debug build.
+-keepattributes *Annotation*
+-keep class com.docman.*Plugin { *; }
+-keepclassmembers class * {
+    @com.getcapacitor.annotation.ActivityCallback <methods>;
+    @com.getcapacitor.annotation.PermissionCallback <methods>;
+}
+
+# DocmanSys.is24Hour() is called from the web layer
+-keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }

@@ -1,4 +1,4 @@
-# DOCMAN — Handover (15 Oct 2026, end of chat)
+# DOCMAN — Handover (18 Oct 2026, end of chat — read section 0 first, then 1b)
 
 Start a **new chat** and point it at this file, plus CLAUDE.md, CURRENT_STATE.md and PROGRESS.md.
 Everything here is settled; none of it needs re-discovering. **Read §1b first.**
@@ -9,6 +9,44 @@ start-up banner, the 7/3/1-day alerts that merge per date, and the signature Str
 upload 66 to Internal testing, test Sign on the release build, paste the new store listing.
 
 ---
+
+## 00. 25 Oct 2026 evening — dev-only visual changes (all installed on the phone; NOT in AAB 80; they go into 81, ask the user before building)
+
+All are the last blocks of www/style.css (style.css?v=947), each with its own Undo note; CURRENT_STATE.md "latest 20-31" has the detail. In order: DOCMAN header box = navy #181833 + maroon glow top-right, home header 1 mm taller with a visible bottom border; home search bar 30 px high, no "Search" word; thin multicolour border (the search bar's) on the Recent/Sort box and on the department pills; department pills have 3D depth again; start-up screen documents re-cut sharper (tiles at 2x, still 25 %), haze behind logo/text removed; AUTO button same height as Sync Calendar, no glow. Traps met: a border cannot be thinner than 1 device pixel (0.6 px and 0.8 px snap to 1 and 2 device px on the phone), so "thinner" = fainter colours; a first reading of "smoke" (add white smoke) was wrong, the user wanted the haze GONE; a dark-to-transparent cut of the splash tiles erased the dark drawing lines and was dropped. Open: the grey frosted square behind-left of the logo is the shine sweep, user was asked whether to remove it, no answer yet. adb is not on PATH here: use $LOCALAPPDATA/Android/Sdk/platform-tools.
+
+## 0. 18 Oct 2026 — Reminders / Expiring panel redesign (READ THIS BEFORE TOUCHING THE PANEL)
+
+Everything below is in the working tree and installed in **DOCMAN dev only** (`com.docman.dev`). It is NOT in AAB 69, nothing was built for Play, nothing is committed. The user (writes Malayalam/English mixed) has not yet verified it all on the phone.
+
+**What exists now (all in `www/app.js`, `www/style.css`, `www/index.html`; cache-bust `app.js?v=669`, `style.css?v=708`):**
+- Panel `showExpiringDocumentsPanel(activeTab='reminders')` opens on Reminders. Grey glass + orange theme. All new CSS is at the END of style.css under `.xc-*` / `.xc-flow` / `.xc-cal` (later rules win; several "(N)" comment blocks, each one a user correction).
+- Cards: `xcDocCardHtml` / `xcReminderCardHtml` (orange rail left with View/Edit/Remind or Open/Edit/Delete, grey-blue face with orange glow, yellow bell `XC_BELL`, bar, Done pill bottom-right). The wallet-stack animation (`dc-stk`) is KEPT on purpose (the user asked for it back).
+- Add reminder: press Add reminder -> pick-a-day calendar page (`remindersCalMode=true`, `.xc-cal`) -> Continue -> title prompt -> `showDateModal` (date + wheels + repeat) -> Save -> back to the LIST (`remindersCalMode=false`; the list is drawn BEFORE the alarm is scheduled. Both the loop and the flash were bugs the user hit).
+- `showDateModal` always gets class `xc-flow`, so the reminder AND the three expiry-date edits share one calendar look (title icon, "Selected" line as plain text, 27px ringed dates, 32px wheel rows, no up/down arrows, chips Never/Every month/Every year, Clear hidden when a date is required, Remove pill for the end time). The card is anchored near the top (7vh).
+- Done logic: opening the Reminders tab NO LONGER auto-marks reminders seen (the user's 17 Oct rule: an item stays until Done or a new date). Done pill on cards, **Mark all done (N)** above the list. Reminder Done = `settleSeenReminder(r)` (repeating ones advance), document Done = `acknowledgeExpiry`. Closing the panel calls `updateAttentionBell()`.
+- Tabs breathe while something waits: brightness 0.2 -> 1 (`xcDim`, 2.8 s); the active tab animates its `.tab-glider` (row class `xc-row-breathe`), an inactive tab animates the button (`.xc-breathe`). History: an opacity pulse was invisible, a ring was clipped by `overflow:hidden`, an inner light was too faint; the user then defined it exactly as "brightness 20% down, gradually back to its original colour".
+- The "Needs your attention" popup uses the plain yellow bell too.
+- Bug fixed: Clear in the ADD date step crashed (null result) -> "something went wrong".
+
+**Traps found today (also add to the list in section 1b):**
+- The phone often has the **Play app (`com.docman`) in front instead of DOCMAN dev**; the user showed the old purple UI twice. Check `adb shell dumpsys window | grep mCurrentFocus`.
+- An inline `!important` in a style attribute beats a stylesheet `!important` (Add-reminder pill border).
+- `margin-top` next to a heading's `margin-bottom` collapses; use padding (Repeat chips).
+- The tab button has `overflow:hidden`: anything drawn outside it is clipped.
+- `.dc-stack-list` has a max-height that cut the Expiring list short once the panel got a fixed 80vh.
+- Windows sometimes fails the first write of app.js/style.css from node (`UNKNOWN: unknown error, open`); just retry. Bash heredocs containing apostrophes plus backticks broke twice: write long edit scripts with the Write tool.
+- Dev-build recipe: `export JAVA_HOME="C:/Program Files/Android/Android Studio/jbr"`, `npx cap sync android`, `android/gradlew installDebug -q`; adb = `$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe`. Devtools: `adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` then a node WebSocket `Runtime.evaluate`. Launch popups can cover a test dialog: first remove `document.body.children` with zIndex >= 9999.
+- To test the Done pills without touching the user's data: set `file.expiryAckFor=null` in memory only, open the panel, restore afterwards.
+
+**PENDING DECISION — the next piece of work. The user has NOT yet said "build it"; ask first.**
+The user finds the cards big and the rail buttons small. After several previews they converged on a **fixed-rail layout**: `preview/nested-rail-3.png` (source HTML `preview/nested-rail-3-source.html`; earlier steps: card-size-options.png, fixed-rail-*.png, nested-rail*.png).
+- An orange-bordered rectangle box at the top holds the three buttons **Reminders | Expiring | Add reminder** (thin orange border, flush to the panel's left edge).
+- The solid old-orange **vertical button bar hangs from that box's left side**, runs down flush to the panel's left edge and follows the panel's rounded bottom-left corner. It is narrow (just the box border) at the top and widens below the box with a concave fillet. It is FIXED. It holds big 40 px round buttons with labels: View/Edit/Remind (Expiring) or Open/Edit/Delete (Reminders), plus an orange **Done** button (lit only when the selected item still waits).
+- Right of the bar: a search row (search box + "All done (N)") and a SCROLLING list of slim cards (about 84 px: picture or bell, name, path/due, coloured status square + text, coloured bar, a chevron at top right). Tapping a card SELECTS it (brighter outline); the bar buttons act on the selected card; the first card is selected when the panel opens.
+- Open questions for the user: (1) should the search box filter the list (probably yes)? (2) their reference also had a "..." per card and a share button; they were asked and did not answer, default = leave both off. (3) the preview shortened "Mark all done" to "All done (N)".
+- Wallet stacking does not fit slim cards; decide with the user (the preview has none).
+- Never build an AAB without telling the user the versionCode (would be 70) and waiting for a yes.
+
 
 ## 1. Standing rules — do not break these
 
@@ -34,6 +72,15 @@ upload 66 to Internal testing, test Sign on the release build, paste the new sto
   `git` and with `build.gradle`. Keep doing the as-work-lands writing too.
 - Play listing screenshots carry **no status bar, no nav bar, no notification icons** —
   the whole existing set is app content only. Crop them off before handing one over.
+
+## 1a. 16 Oct 2026 addendum — READ BEFORE §1b
+Full detail: `CURRENT_STATE.md` ("16 Oct 2026") and `PROGRESS.md`. In short: AAB 67 (text viewer) is on Internal
+testing; the single "Needs your attention" banner, counting, the header bell, View-goes-to-folder, the Expiring
+stack and the Word/Excel viewers (+ open-with) are installed to DOCMAN dev only, **unverified and in no AAB**.
+Traps worth keeping: (1) counted state is in localStorage (`docman_attn_seen_v1`, one-day stamps) because file
+objects are copied field-by-field in 8 places; (2) the notification-silencing "Got it, stop reminding" must stay
+separate from plain counting (a document 3 days out must keep its alerts); (3) the bell is armed only by the
+launch check, never by in-session changes; (4) `adb screencap` is black when the phone is locked.
 
 ## 1b. Where everything stands — 15 Oct 2026, end of chat (READ THIS FIRST)
 

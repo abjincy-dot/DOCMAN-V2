@@ -1,0 +1,16 @@
+/* 24 Oct: the "This folder has N notes -> open NOTES" (and "... files -> open FILES") button looks like the Sync Calendar button: slate raised 3D, orange border,
+   white text, presses down 2 px. */
+.empty-state .empty-state-hop {
+    color: #fff !important; font: 600 0.82rem Inter, sans-serif; border-radius: 999px; padding: 9px 16px; cursor: pointer;
+    background: radial-gradient(circle at 100% 100%, rgba(255, 110, 20, 0.26), transparent 55%), linear-gradient(160deg, #3f465a 0%, #292e3e 52%, #14171f 100%) !important;
+    border: 1.5px solid #c2570f !important;
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.30), inset 0 8px 10px -6px rgba(255, 255, 255, 0.14), inset 0 -3px 8px rgba(0, 0, 0, 0.55),
+        0 5px 9px -3px rgba(0, 0, 0, 0.65), 0 0 7px rgba(194, 87, 15, 0.25) !important;
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+.empty-state .empty-state-hop:active { transform: translateY(2px) !important; box-shadow: inset 0 3px 7px rgba(0, 0, 0, 0.65), 0 1px 2px rgba(0, 0, 0, 0.6) !important; }
+body.light-mode .empty-state .empty-state-hop {
+    color: #2b2118 !important;
+    background: radial-gradient(circle at 100% 100%, rgba(255, 130, 40, 0.24), transparent 58%), linear-gradient(160deg, #ffffff 0%, #f8efe3 55%, #ecdcc8 100%) !important;
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.95), inset 0 -3px 8px rgba(150, 95, 40, 0.28), 0 5px 9px -3px rgba(80, 50, 20, 0.4) !important;
+}

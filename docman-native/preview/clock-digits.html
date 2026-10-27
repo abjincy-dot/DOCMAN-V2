@@ -1,0 +1,29 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}body{margin:0;background:#000;font-family:Inter,Arial,sans-serif;color:#fff}
+.row{position:relative;width:1080px;height:430px;overflow:hidden;border-bottom:6px solid #000}
+.row img{position:absolute;left:0;top:0;width:1080px}
+.lab{position:absolute;right:16px;top:10px;font-size:26px;color:#ffd7a0;background:rgba(0,0,0,.55);padding:4px 14px;border-radius:12px}
+.clk{position:absolute;left:78px;top:300px;height:54px;width:152px;border-radius:27px;display:flex;align-items:center;justify-content:center;gap:6px}
+.blink{animation:b 1s steps(2) infinite}@keyframes b{50%{opacity:.25}}
+/* A: glass pill, warm glow digits */
+.A{background:linear-gradient(180deg,rgba(40,48,80,.92),rgba(14,18,36,.95));border:1.5px solid rgba(255,170,70,.75);box-shadow:0 0 14px rgba(255,140,40,.35),inset 0 1px 0 rgba(255,255,255,.25),inset 0 -4px 8px rgba(0,0,0,.4)}
+.A .t{font:800 34px/1 Inter,Arial;letter-spacing:1px;color:#ffd08a;text-shadow:0 0 10px rgba(255,150,50,.85),0 0 2px #fff4}
+.A .ap{font:700 15px/1 Inter,Arial;color:#ff9a3d;align-self:flex-end;margin-bottom:12px}
+/* B: LCD gold with ghost segments */
+.B{background:#0a0d1a;border:1.5px solid rgba(255,200,90,.55);border-radius:12px;box-shadow:0 0 12px rgba(255,190,60,.25),inset 0 0 10px rgba(0,0,0,.8)}
+.B .t{position:relative;font:700 36px/1 "Courier New",monospace;letter-spacing:2px;color:#ffc94a;text-shadow:0 0 8px rgba(255,190,50,.9)}
+.B .t:before{content:"88:88";position:absolute;left:0;top:0;color:rgba(255,200,80,.1);text-shadow:none;z-index:-1}
+.B .ap{font:700 14px/1 Arial;color:#ffb020;align-self:flex-end;margin-bottom:12px}
+/* C: minimal white with seconds bar */
+.C{background:rgba(12,16,34,.88);border:1.5px solid rgba(255,255,255,.35);flex-direction:column;gap:3px;border-radius:20px;height:58px;box-shadow:0 4px 12px rgba(0,0,0,.5)}
+.C .t{font:600 32px/1 Inter,Arial;letter-spacing:1px;color:#fff}
+.C .sec{width:104px;height:4px;border-radius:2px;background:rgba(255,255,255,.18);overflow:hidden}.C .sec i{display:block;height:100%;width:62%;background:linear-gradient(90deg,#ff9a3d,#ee3a2a);border-radius:2px}
+
+.D{position:absolute;left:62px;top:308px;width:180px;text-align:center;line-height:1}
+.D1 .t{font:800 46px/1 Inter,Arial;letter-spacing:1px;color:#ffd08a;text-shadow:0 0 12px rgba(255,150,50,.9),0 2px 4px rgba(0,0,0,.8)}
+.D1 .ap{font:700 18px/1 Inter,Arial;color:#ff9a3d;margin-left:4px;text-shadow:0 0 8px rgba(255,140,40,.8)}
+.D2 .t{font:700 46px/1 Inter,Arial;letter-spacing:2px;color:#fff;text-shadow:0 0 10px rgba(120,170,255,.8),0 2px 4px rgba(0,0,0,.8)}
+.D2 .ap{font:700 18px/1 Inter,Arial;color:#9fc0ff;margin-left:4px}
+.D3 .t{font:800 46px/1 Inter,Arial;letter-spacing:1px;background:linear-gradient(180deg,#fff2c0,#ffb02e 55%,#f2650a);-webkit-background-clip:text;color:transparent;filter:drop-shadow(0 2px 3px rgba(0,0,0,.8)) drop-shadow(0 0 8px rgba(255,130,30,.6))}
+.D3 .ap{font:700 18px/1 Inter,Arial;color:#ff9a3d;margin-left:4px}
+</style></head><body><div class="row"><img src="../../DOCMAN%20Play%20Store%20Assets/screens-your-set-2026-10-19/original/02-home.jpg"><span class="lab">1  Glowing gold digits</span><div class="D D1"><span class="t">1:48</span><span class="ap">PM</span></div></div><div class="row"><img src="../../DOCMAN%20Play%20Store%20Assets/screens-your-set-2026-10-19/original/02-home.jpg"><span class="lab">2  White digits, cool glow</span><div class="D D2"><span class="t">1:48</span><span class="ap">PM</span></div></div><div class="row"><img src="../../DOCMAN%20Play%20Store%20Assets/screens-your-set-2026-10-19/original/02-home.jpg"><span class="lab">3  Gold-to-orange gradient digits</span><div class="D D3"><span class="t">1:48</span><span class="ap">PM</span></div></div></body></html>

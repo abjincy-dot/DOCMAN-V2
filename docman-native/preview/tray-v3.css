@@ -1,0 +1,9 @@
+/* 23 Oct: the header calendar + tray picture is the user's ORANGE artwork (Images/calendar-tray-v3.png, made by preview/make-tray-v3.js: black background cut out,
+   painted "Thu 22" removed). The live day and date are WHITE with a soft 3D shadow, like the artwork. The v2 picture and file are kept. Width stays at 96 %. */
+.logo .logo-tray-icon::after { background: url('Images/calendar-tray-v3.png') center / contain no-repeat !important; }
+.logo-tray-icon .lc-d {
+    top: 15.6cqh; font-size: 12cqh; font-weight: 900; letter-spacing: -0.01em; color: #fff;
+    text-shadow: 0 1px 0 rgba(190, 70, 0, 0.6), 0 2px 3px rgba(110, 35, 0, 0.45);
+}
+.logo-tray-icon .lc-n { top: 22.5cqh; font-size: 27cqh; color: #fff; text-shadow: 0 1.5px 0 rgba(190, 70, 0, 0.6), 0 3px 4px rgba(110, 35, 0, 0.45); }
+.logo-tray-icon .lc-n.lc-two { top: 24.3cqh; font-size: 23.3cqh; }

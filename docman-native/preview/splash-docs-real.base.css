@@ -1,0 +1,14 @@
+/* 23 Oct: start-up screen background = the documents from the user's reference picture (PDF, passport, drawings, folder, Word, Excel, photos, notebook, signed page),
+   each its own soft-edged tile in the same place as in the reference, BEHIND the logo and title, at 25 % visibility, drifting a little FASTER (about 3 s a sway)
+   so the movement shows during the short start-up. Replaces the drawn SVG documents. */
+.splash-docs-real { position: absolute; inset: 0; z-index: 1; opacity: var(--sd-op, 0.25); pointer-events: none; overflow: hidden; }
+.splash-docs-real .sdr {
+    position: absolute; display: block; height: auto;
+    -webkit-mask-image: radial-gradient(ellipse at center, #000 58%, transparent 78%); mask-image: radial-gradient(ellipse at center, #000 58%, transparent 78%);
+    animation: sdrFloat var(--d, 3s) ease-in-out infinite alternate;
+}
+@keyframes sdrFloat {
+    0%   { transform: translate(0, 0) rotate(0deg) scale(1); }
+    100% { transform: translate(var(--mx, 10px), var(--my, -12px)) rotate(var(--rr, 3deg)) scale(1.03); }
+}
+@media (prefers-reduced-motion: reduce) { .splash-docs-real .sdr { animation: none; } }

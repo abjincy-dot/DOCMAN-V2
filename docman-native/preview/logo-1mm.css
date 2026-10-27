@@ -1,0 +1,2 @@
+/* 21 Oct: the calendar/tray header icon was a little too tall: 1 mm wider (+5.4 px of 46.5) and 1 mm shorter (-5.4 px of 64). The date text scales with it. */
+.logo .logo-tray-icon { transform: translateY(-8px) scale(1, 0.916) !important; }

@@ -1,0 +1,13 @@
+
+/* 26 Oct (glass card, part 4): the card FLIES in like a bird: it comes up from the bottom right on a curve, banks left and right on the way (tilt) and glides down to its place with a soft settle.
+   Replaces part 2's straight rise. Undo: delete this block (the straight rise returns). */
+.gl-card.gl-fly { animation: glSwoop 1.25s cubic-bezier(.45, .05, .25, 1) both; transform-origin: 50% 100%; will-change: transform, opacity; }
+@keyframes glSwoop {
+    0%   { opacity: 0; transform: translate(46vw, 72vh) rotate(14deg) scale(.55); }
+    22%  { opacity: 1; transform: translate(26vw, 40vh) rotate(-11deg) scale(.78); }
+    46%  { transform: translate(-17vw, 17vh) rotate(8deg) scale(.93); }
+    68%  { transform: translate(8vw, -4.5vh) rotate(-4.5deg) scale(1.03); }
+    84%  { transform: translate(-3vw, 1.6vh) rotate(2deg) scale(.995); }
+    93%  { transform: translate(1vw, -.6vh) rotate(-.7deg) scale(1); }
+    100% { opacity: 1; transform: none; }
+}

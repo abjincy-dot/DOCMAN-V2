@@ -1,0 +1,11 @@
+/* 22 Oct (the user's reference picture "Try this"): the frame around the top tools has a soft white-grey line, the counts are their OWN box inside it (thin
+   white-grey border, no orange), the tab row has no capsule, and the "Total" icon is blue. Replaces the "only one border" cleanup. */
+.xc-top { border-color: rgba(205, 216, 236, 0.6); box-shadow: 0 0 10px rgba(205, 216, 236, 0.08); }
+.xc-top .xc-stats {
+    border: 1.5px solid rgba(205, 216, 236, 0.45) !important; background: rgba(255, 255, 255, 0.025) !important; box-shadow: none !important;
+    border-radius: 18px; margin: 6px 0 2px; padding: 8px 4px 6px;
+}
+.xc-top .expdoc-tab-row { background: transparent !important; border-color: transparent !important; box-shadow: none !important; }
+.xc-si-total { background: #2f7be8; color: #fff; }
+body.light-mode .xc-top { border-color: #c2570f; box-shadow: 0 2px 8px rgba(120, 70, 20, 0.15); }
+body.light-mode .xc-top .xc-stats { border-color: rgba(194, 87, 15, 0.45) !important; background: rgba(255, 255, 255, 0.5) !important; }

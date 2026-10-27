@@ -1,0 +1,45 @@
+/* 26 Oct: "Needs your attention" = ONE glass card at a time (swipe for the next). Look = the user's mock (26 Oct, 9:43): smoky glass with a light fuchsia wash, an iridescent rim
+   (orange, pink, white, blue, violet), ring avatar, name + three numbers, a pill with a clock, round View / Edit buttons, a divider, then the description with Done.
+   Replaces the old list popup (.na-box). Undo: restore showExpiryCardsPopup's render() from git and delete this block. */
+#expiryCardsPopup.dc-popup-overlay { background: rgba(6, 3, 14, 0.66) !important; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding: 0 14px; }
+.gl-card { position: relative; width: 100%; max-width: 360px; box-sizing: border-box; border-radius: 26px; padding: 18px 18px 14px; color: #fff; font-family: Inter, sans-serif; border: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,.14), rgba(255,255,255,.03) 40%, rgba(255,255,255,.05) 70%, rgba(255,255,255,.11)), linear-gradient(160deg, rgba(214,70,200,.13), rgba(120,90,230,.10)), rgba(24,12,40,.52);
+    -webkit-backdrop-filter: blur(9px) saturate(1.15); backdrop-filter: blur(9px) saturate(1.15);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -1px 0 rgba(255,255,255,.18), -7px 0 22px rgba(255,150,110,.26), 7px 3px 22px rgba(130,150,255,.30), 0 12px 34px rgba(0,0,0,.5), 0 9px 0 -5px rgba(255,255,255,.07);
+    animation: glIn .28s ease-out both; touch-action: pan-y; }
+.gl-card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.6px; pointer-events: none;
+    background: linear-gradient(115deg, #ffb36b 0%, #ff8ad8 20%, rgba(255,255,255,.85) 42%, #9ab4ff 72%, #c58bff 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+.gl-card::before { content: ""; position: absolute; inset: 4px; border-radius: 22px; border: 1px solid rgba(255,255,255,.10); pointer-events: none; }
+@keyframes glIn { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+.gl-x { position: absolute; top: 12px; right: 12px; width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(255,255,255,.4); background: rgba(255,255,255,.07); color: #fff; font-size: .9rem; display: flex; align-items: center; justify-content: center; padding: 0; z-index: 2; }
+.gl-head { display: flex; gap: 14px; align-items: center; padding-right: 36px; }
+.gl-ring { flex: none; width: 74px; height: 74px; border-radius: 50%; padding: 2.5px; box-sizing: border-box; background: conic-gradient(from 200deg, #ffb36b, #ff8ad8 35%, #ffd9c0 55%, #ffb36b); box-shadow: 0 0 14px rgba(255,170,130,.5); }
+.gl-ring > div { width: 100%; height: 100%; border-radius: 50%; background: rgba(22,14,32,.9); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.gl-ring > div > svg { width: 32px; height: 32px; }
+.gl-ring .gl-doc .dc-pic { width: 34px; height: 42px; border-radius: 4px; }
+.gl-id { min-width: 0; flex: 1; }
+.gl-name { font-weight: 800; font-size: .84rem; letter-spacing: .3px; text-transform: uppercase; line-height: 1.25; overflow-wrap: anywhere; }
+.gl-stats { display: flex; gap: 14px; margin-top: 5px; }
+.gl-stats > div { min-width: 0; }
+.gl-stats b { display: block; font-size: 1.12rem; font-weight: 800; line-height: 1.1; white-space: nowrap; }
+.gl-stats span { font-size: .7rem; color: #a99dff; }
+.gl-sub { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; min-height: 44px; }
+.gl-kind { flex: none; font-size: .76rem; color: #a99dff; max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gl-pill { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-weight: 700; font-size: .72rem; white-space: nowrap; }
+.gl-pill svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.gl-pill.gl-red { background: rgba(255,80,110,.18); color: #ffa0b0; border: 1px solid rgba(255,120,145,.55); }
+.gl-pill.gl-amber { background: rgba(255,170,50,.18); color: #ffc66b; border: 1px solid rgba(255,190,90,.6); }
+.gl-round { margin-left: auto; display: flex; gap: 8px; flex: none; }
+.gl-rbtn { width: 42px; height: 42px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; color: #fff; border: 1px solid rgba(255,255,255,.45); background: rgba(255,255,255,.08); box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 2px 6px rgba(0,0,0,.35); }
+.gl-rbtn span { display: flex; } .gl-rbtn svg { width: 19px; height: 19px; stroke: #fff; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.gl-rbtn:active { transform: translateY(2px); }
+.gl-body { display: flex; gap: 10px; align-items: center; margin-top: 11px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.14); }
+.gl-desc { flex: 1; min-width: 0; font-size: .82rem; line-height: 1.4; font-weight: 700; color: #fff; max-height: 5.6em; overflow: hidden; overflow-wrap: anywhere; }
+.gl-btn { flex: none; min-width: 92px; height: 36px; padding: 0 14px; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; font: 700 .82rem Inter, sans-serif; color: #fff; border: 1px solid rgba(190,180,255,.65);
+    background: linear-gradient(135deg, #5547e8, #3b2fc9); box-shadow: 0 0 14px rgba(90,75,235,.55), inset 0 1px 0 rgba(255,255,255,.35); }
+.gl-btn span { display: flex; } .gl-btn svg { width: 15px; height: 15px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.gl-btn:active { transform: translateY(2px); }
+.gl-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: .72rem; color: #a99dff; gap: 8px; }
+.gl-dots { display: flex; gap: 5px; flex-wrap: wrap; max-width: 90px; } .gl-dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.4); } .gl-dots i.on { background: #fff; width: 18px; border-radius: 4px; }
+.gl-more { background: none; border: 0; padding: 0; color: #b9aeff; font: 600 .72rem Inter, sans-serif; }

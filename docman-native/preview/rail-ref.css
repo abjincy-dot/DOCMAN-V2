@@ -1,0 +1,37 @@
+/* PREVIEW (21-22 Oct): the Reminders / Expiring page closer to the user's reference image:
+   (1) labelled text pills in the orange bar instead of round icon buttons, (2) shorter cards, (3) a much shorter counts box. */
+
+/* (3) counts box: icon + number on one line, label right under it */
+.xc-stats { padding: 6px 4px 5px; margin-bottom: 8px; }
+.xc-stat { gap: 1px; }
+.xc-stat-top { gap: 5px; }
+.xc-stat-num { font-size: 1.05rem; }
+.xc-stat-lab { font-size: 0.62rem; }
+.xc-si { width: 20px; height: 20px; font-size: 10px; }
+.xc-si-total { border-radius: 6px; }
+.xc-si-active { font-size: 11px; }
+.xc-si-over { font-size: 17px; width: 20px; }
+.xc-si-exp { font-size: 11px; }
+
+/* (2) cards: the same rows, tighter */
+#expiringDocsList.xc-has-rail .xc-card, #expiringDocsList.xc-has-rail .xc-card.xc-active { min-height: 98px; }
+#expiringDocsList.xc-has-rail .xc-body { padding: 5px 12px 4px 10px; gap: 6px; }
+#expiringDocsList .xc-body .xc-bell { width: 44px; }
+#expiringDocsList .xc-body .xc-bell svg { width: 32px; height: 32px; }
+#expiringDocsList .xc-body .dc-name { font-size: 0.84rem; }
+#expiringDocsList .xc-body .dc-where { font-size: 0.6rem; margin-top: 0; }
+#expiringDocsList .xc-body .dc-exp { font-size: 0.72rem; margin-top: 1px; gap: 5px; }
+#expiringDocsList .xc-body .dc-exp svg { width: 12px; height: 12px; }
+#expiringDocsList .xc-body .dc-bar { margin-top: 3px; }
+#expiringDocsList .xc-body .xc-foot { margin-top: 3px; }
+#expiringDocsList .xc-body .xc-left { font-size: 0.64rem; margin-top: 0; }
+
+/* (1) the orange bar: slimmer, with text pills (View / Edit / Delete) */
+#expiringDocsList .xc-shared-rail { flex-basis: 52px; padding: 5px 0; gap: 4px; }
+#expiringDocsList .xc-shared-rail::before { left: 51px; }
+#expiringDocsList .xc-shared-rail .xc-act { font-size: 0.66rem; font-weight: 700; color: #fff; letter-spacing: 0.01em; }
+#expiringDocsList .xc-shared-rail .xc-act span { display: none; }
+#expiringDocsList .xc-shared-rail .xc-act {
+    width: 42px; height: 24px; padding: 0; border-radius: 999px; border: 1.5px solid #fd8d02; background: #141112;
+    box-shadow: inset 0 0 6px rgba(255, 140, 0, 0.35), 0 0 4px rgba(0, 0, 0, 0.5); align-items: center; justify-content: center;
+}

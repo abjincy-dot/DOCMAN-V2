@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/sacramento/sacramento.css">
-<link rel="stylesheet" href="style.css?v=646">
+<link rel="stylesheet" href="style.css?v=993">
 
 </head>
 <body>
@@ -342,6 +342,20 @@ border: 1px solid rgba(255,255,255,0.2);
 </style>
 
 <div id="splashScreen">
+  <div class="splash-docs splash-docs-real" aria-hidden="true">
+  <img class="sdr sdr-drawing-top" src="Images/splash/drawing-top.webp" alt="">
+  <img class="sdr sdr-pdf-top" src="Images/splash/pdf-top.webp" alt="">
+  <img class="sdr sdr-passport" src="Images/splash/passport.webp" alt="">
+  <img class="sdr sdr-photo-icon" src="Images/splash/photo-icon.webp" alt="">
+  <img class="sdr sdr-folder" src="Images/splash/folder.webp" alt="">
+  <img class="sdr sdr-notebook" src="Images/splash/notebook.webp" alt="">
+  <img class="sdr sdr-word" src="Images/splash/word.webp" alt="">
+  <img class="sdr sdr-pdf-acrobat" src="Images/splash/pdf-acrobat.webp" alt="">
+  <img class="sdr sdr-pump-photos" src="Images/splash/pump-photos.webp" alt="">
+  <img class="sdr sdr-signed-page" src="Images/splash/signed-page.webp" alt="">
+  <img class="sdr sdr-excel" src="Images/splash/excel.webp" alt="">
+  <img class="sdr sdr-drawing-bottom" src="Images/splash/drawing-bottom.webp" alt="">
+</div>
   <div class="splash-bg-layer">
     <div class="splash-orb splash-orb-1"></div>
     <div class="splash-orb splash-orb-2"></div>
@@ -364,7 +378,7 @@ border: 1px solid rgba(255,255,255,0.2);
 <div class="app">
   <div class="top-panel">
   <header class="header">
-<div class="logo" id="appLogoBtn" role="button" tabindex="0" aria-label="Expiring documents"><div class="logo-inner"><div class="logo-tray-icon"></div></div></div>
+<div class="logo" id="appLogoBtn" role="button" tabindex="0" aria-label="Expiring documents"><div class="logo-inner"><div class="logo-tray-icon"><span class="lc-d"></span><span class="lc-n"></span><span class="lc-t"></span><span class="lc-hh"></span><span class="lc-hm"></span><span class="lc-hub"></span></div></div></div>
 
     <div class="header-title">
       <h1><span class="logo-doc">DOC</span><span class="logo-man">MAN</span><span class="logo-pro" aria-label="Pro">PRO</span></h1>
@@ -401,7 +415,7 @@ border: 1px solid rgba(255,255,255,0.2);
       <button id="notesTabBtn" class="hidden"></button>
     </div>
     <div class="search-container">
-      <svg class="search-icon-svg" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352a144 144 0 1 0 0-288 144 144 0 1 0 0 288z"/></svg>
+      <svg class="search-icon-svg" viewBox="0 0 512 512" aria-hidden="true"><circle cx="215" cy="215" r="150" fill="none" stroke="currentColor" stroke-width="36"/><path d="M330 330L462 462" stroke="currentColor" stroke-width="42" stroke-linecap="round" fill="none"/></svg>
       <input type="text" id="searchInput" placeholder="Search" autocomplete="off">
       <button id="clearSearchBtn" class="clear-search hidden" aria-label="Clear search"><i class="fas fa-times"></i></button>
       <div id="searchSuggestions" class="search-suggestions hidden"></div>
@@ -812,12 +826,21 @@ border: 1px solid rgba(255,255,255,0.2);
     <button id="closeDocViewer" class="viewer-ring-btn viewer-ring-btn-close" aria-label="Close"><i class="fas fa-xmark"></i></button>
     <div class="doc-viewer-title" id="docViewerTitle"></div>
     <div class="doc-viewer-actions">
+      <button id="textSearchBtn" class="doc-viewer-action-btn hidden" title="Find in text" aria-label="Find in text"><i class="fas fa-magnifying-glass"></i></button>
       <button id="textZoomOutBtn" class="doc-viewer-action-btn hidden" title="Zoom out" aria-label="Zoom out"><i class="fas fa-magnifying-glass-minus"></i></button>
       <button id="textZoomInBtn" class="doc-viewer-action-btn hidden" title="Zoom in" aria-label="Zoom in"><i class="fas fa-magnifying-glass-plus"></i></button>
+      <button id="docExternalBtn" class="doc-viewer-action-btn" title="Open with another app" aria-label="Open with another app"><i class="fas fa-arrow-up-right-from-square"></i></button>
       <button id="shareDocViewerBtn" class="doc-viewer-action-btn" title="Share / Export" aria-label="Share or export"><i class="fas fa-share-nodes"></i></button>
     </div>
   </div>
   <div class="doc-viewer-body" id="docViewerBody"></div>
+  <div class="text-find-bar hidden" id="textFindBar">
+    <input type="text" id="textFindInput" placeholder="Find in text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+    <span class="text-find-count" id="textFindCount"></span>
+    <button type="button" id="textFindPrev" aria-label="Previous match"><i class="fas fa-chevron-up"></i></button>
+    <button type="button" id="textFindNext" aria-label="Next match"><i class="fas fa-chevron-down"></i></button>
+    <button type="button" id="textFindClose" class="text-find-close" aria-label="Close find"><i class="fas fa-xmark"></i></button>
+  </div>
 </div>
 
 <div id="sheetViewer" class="doc-viewer hidden">
@@ -825,11 +848,12 @@ border: 1px solid rgba(255,255,255,0.2);
     <button id="closeSheetViewer" class="viewer-ring-btn viewer-ring-btn-close" aria-label="Close"><i class="fas fa-xmark"></i></button>
     <div class="doc-viewer-title" id="sheetViewerTitle"></div>
     <div class="doc-viewer-actions">
+      <button id="sheetExternalBtn" class="doc-viewer-action-btn" title="Open with another app" aria-label="Open with another app"><i class="fas fa-arrow-up-right-from-square"></i></button>
       <button id="shareSheetViewerBtn" class="doc-viewer-action-btn" title="Share / Export" aria-label="Share or export"><i class="fas fa-share-nodes"></i></button>
     </div>
   </div>
-  <div class="doc-viewer-sheet-tabs" id="sheetViewerTabs"></div>
   <div class="doc-viewer-body doc-viewer-body-sheet" id="sheetViewerBody"></div>
+  <div class="doc-viewer-sheet-tabs" id="sheetViewerTabs"></div>
 </div>
 
 <!-- Settings Page -->
@@ -854,6 +878,10 @@ border: 1px solid rgba(255,255,255,0.2);
         <div class="settings-item-icon settings-icon-favorites"><i class="fas fa-crown"></i></div>
         <div class="settings-item-text"><span class="settings-item-title">DOCMAN Pro</span><span class="settings-item-sub" id="settingsProSub">Try each Pro tool once, free</span></div>
         <i class="fas fa-chevron-right settings-item-arrow"></i>
+      </button>
+      <button class="settings-item" id="settingsDevFreeRow" hidden>
+        <div class="settings-item-icon settings-icon-storage"><i class="fas fa-flask"></i></div>
+        <div class="settings-item-text"><span class="settings-item-title">Test as free user</span><span class="settings-item-sub" id="settingsDevFreeSub">DOCMAN dev only</span></div>
       </button>
       <button class="settings-item" id="settingsRestoreRow">
         <div class="settings-item-icon settings-icon-storage"><i class="fas fa-rotate-left"></i></div>
@@ -941,7 +969,7 @@ border: 1px solid rgba(255,255,255,0.2);
   </div>
   <div class="settings-panel-body">
     <div class="storage-summary-card">
-      <div class="storage-summary-icon"><i class="fas fa-database"></i></div>
+      <div class="storage-summary-icon"><img src="Images/storage-cylinder.png" alt=""></div>
       <div class="storage-summary-info">
         <div class="storage-summary-used" id="storageSummaryUsed">—</div>
         <div class="storage-summary-label">Storage Used</div>
@@ -1430,12 +1458,17 @@ border: 1px solid rgba(255,255,255,0.2);
 <div id="noteModal" class="modal">
   <div class="modal-content note-modal-card">
     <div class="note-modal-head">
+      <button type="button" class="nt-back" onclick="closeNoteModal()" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+      <span class="nt-head-title">Note</span>
+      <button type="button" class="nt-save-top" onclick="document.getElementById('saveNoteBtn').click()">SAVE</button>
+      <label class="nt-label nt-label-title" for="noteTitle">Title</label>
       <span class="note-modal-icon"><i class="far fa-pen-to-square"></i></span>
       <input type="text" id="noteTitle" placeholder="Note title..." class="note-title-input" maxlength="100" autocomplete="off">
       <span class="note-count" id="noteTitleCount">0/100</span>
       <button class="note-modal-x" onclick="closeNoteModal()" aria-label="Close"><i class="fas fa-times"></i></button>
     </div>
     <div class="modal-body modal-body-note">
+      <label class="nt-label" for="noteContent">Note</label>
       <div class="note-field note-field-body">
         <i class="far fa-file-lines note-field-ico"></i>
         <textarea id="noteContent" placeholder="Write your note here..." class="note-content-input" maxlength="1000"></textarea>
@@ -1567,6 +1600,11 @@ border: 1px solid rgba(255,255,255,0.2);
   </div>
 
   <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">📑</div>
+    <div class="dept-info-help-text"><b>Text, Word &amp; Excel Files</b> &mdash; Tap a text, Word or Excel file to read it in DOCMAN on a clean white page. You can select and copy the text, tap the <b>search</b> icon to find a word, and pinch to zoom in and out. Excel shows the sheet as it is laid out in the file, with its own column widths and merged cells. <b>Open with another app</b> (top right) sends the file to any app you choose.</div>
+  </div>
+
+  <div class="dept-info-help-row">
     <div class="dept-info-help-icon">🧽</div>
     <div class="dept-info-help-text"><b>Erase in a PDF</b> — Open a PDF and tap <b>Erase</b>. Paint over a stain, a pen mark or a line of text with one finger; use two fingers to move and zoom. <b>Paper colour</b> blends it into the page and <b>Black</b> hides private details. Undo, Redo and the brush size are in the panel, and whatever you erase stays gone in the saved copy.</div>
   </div>
@@ -1593,12 +1631,17 @@ border: 1px solid rgba(255,255,255,0.2);
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">📆</div>
-    <div class="dept-info-help-text"><b>Expiry Dates &amp; Alerts</b> &mdash; Tap <b>&#8943;</b> on a file and set an <b>Expiry date</b> for anything that runs out: passport, licence, insurance. Your phone then alerts you even when DOCMAN is closed &mdash; <b>7 days before</b>, <b>3 days before</b> and <b>the day before</b> at 9am, and on the day itself <b>every 30 minutes from 7am</b> until you tap <b>Got it</b>. It stops at 9pm, so it never wakes you at night, and if the document still isn&rsquo;t renewed you get one reminder a day for a week. Documents that run out on the same day arrive as <b>one</b> alert &mdash; &ldquo;3 documents expire today&rdquo; &mdash; that never shows a document name on your lock screen; tap it to see which. <b>Renew date</b> sets a new date and starts the cycle again. Tap the DOCMAN logo and the <b>Expiring</b> list shows a card for each document that is <b>3 days away or closer</b>, plus anything already overdue, so it stays about what needs doing now. Each card has a small picture that says what the document is &mdash; picked from the folder it sits in (a folder called Passport), then the file&rsquo;s name, then its type &mdash; the days left, a bar that fills as the date gets closer (red for two weeks or less), and <b>View</b>, <b>Edit</b> (a new date) and <b>Remind</b> (set a reminder to renew it).</div>
+    <div class="dept-info-help-text"><b>Expiry Dates &amp; Alerts</b> &mdash; Tap <b>&#8943;</b> on a file and set an <b>Expiry date</b> for anything that runs out: passport, licence, insurance. Your phone then alerts you, even when DOCMAN is closed, on this schedule:<br>&bull; <b>7 days before</b> and <b>3 days before</b>: an alert at <b>9am</b>, repeated <b>every 30 minutes until 9pm</b>.<br>&bull; <b>1 day before</b>: one alert, at <b>9am</b>.<br>&bull; <b>On the day it expires</b>: an alert <b>every 30 minutes from 7am until 9pm</b>.<br>&bull; <b>After it expires</b>: one alert a day at <b>9am</b> for 7 days, if it still isn&rsquo;t renewed.<br>If you miss an alert it simply repeats every 30 minutes. Press <b>Done</b> and that document&rsquo;s alerts <b>for today</b> stop &mdash; <b>Done is for today only</b>, so the next of the alerts above still comes on its day. Nothing rings between 9pm and 7am, so it never wakes you at night. Documents that run out on the same day arrive as <b>one</b> alert &mdash; &ldquo;3 documents expire today&rdquo; &mdash; that never shows a document name on your lock screen. Tap any alert, or the ringing <b>bell</b> that appears at the top when you open DOCMAN, and you get a glass card: <b>Needs your attention</b>. When you open DOCMAN it comes up for a document on its <b>7-day</b>, its <b>3-day</b> and its <b>expiry day</b>, and every day after it has expired, together with every reminder that is due. Each card shows what the document is (a small picture picked from its folder name, then its file name, then its type), its folder, the days left, and three buttons: a round <b>View</b> (takes you to the file&rsquo;s folder and makes it blink), a round <b>Edit</b> (the same steps as <b>+ Add reminder</b>, handy for setting a reminder to renew it) and <b>Done</b> (it leaves the card and the bell for today &mdash; Done at 7 days still brings it back at 3 days, and at 3 days it comes back on the day). When several things are waiting, the cards stack one behind another with the most urgent in front: tap the top edge of a card behind to bring it forward, and drag up and down to scroll. Just looking at the card never clears it. Tap the DOCMAN logo at the top left (the orange alarm clock) for the <b>Expiring</b> and <b>Reminders</b> tabs.</div>
   </div>
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">⏰</div>
-    <div class="dept-info-help-text"><b>Reminders</b> &mdash; Tap the DOCMAN logo at the top for <b>Expiring</b> and <b>Reminders</b>. Add one with a title, due date and time. When it falls due your phone alerts you with sound and vibration, and keeps reminding you <b>every 30 minutes for 3 hours</b> until you tap <b>Got it</b> &mdash; so a missed notification isn&rsquo;t the end of it. Set it to repeat and you only ever enter it once: below the time, under <b>Repeat</b>, pick <b>Never</b>, <b>Every month</b> or <b>Every year</b> &mdash; rent and bills monthly, a birthday or an annual renewal yearly. The moment you tap <b>Got it</b> the reminder moves itself on to the next month or year by itself, so a monthly bill never needs entering twice. A repeating one shows its cycle beside the date in the list, and the pencil button on its row can change the repeat or turn it off. <b>Expiring</b>, <b>Reminders</b> and <b>+ Add reminder</b> sit together on one row at the top. The month calendar is above the list &mdash; tap any day to see just that day&rsquo;s reminders, and dated days carry a dot &mdash; and anything overdue pulses, including the <b>Reminders</b> tab itself, so you can see it from the Expiring side. When something needs you, DOCMAN opens <b>one</b> banner at start-up with a card for each reminder that is due (<b>View</b>, <b>Edit</b> or <b>Done</b>) and each document expiring within 3 days. One or two items show as full cards; more than that become a short row each &mdash; tap a row to open its card &mdash; and <b>See all</b> takes you to the full list. Once you&rsquo;ve seen it, DOCMAN stops raising that reminder at start-up; the reminder itself stays until you delete it, and a newly added one still announces itself.</div>
+    <div class="dept-info-help-text"><b>Reminders</b> &mdash; Tap the DOCMAN logo at the top left &mdash; the orange alarm clock &mdash; for <b>Expiring</b> and <b>Reminders</b>. Add one with a title, optional <b>details</b> (anything you want to remember with it), due date and time. <b>Press and hold</b> a reminder card to read its note and details; touch outside it, or scroll, and it closes, and pressing the next card shows that one instead. When it falls due your phone alerts you with sound and vibration, and keeps reminding you <b>every 30 minutes for 3 hours</b> until you press <b>Done</b> &mdash; so a missed notification isn&rsquo;t the end of it, and once you press <b>Done</b> the rest of that day&rsquo;s alerts for it stop. Set it to repeat and you only ever enter it once: below the time, under <b>Repeat</b>, pick <b>Never</b>, <b>Every month</b> or <b>Every year</b> &mdash; rent and bills monthly, a birthday or an annual renewal yearly. The moment you press <b>Done</b> the reminder moves itself on to the next month or year by itself, so a monthly bill never needs entering twice. A repeating one shows its cycle beside the date in the list, and <b>Edit</b> can change the repeat or turn it off. <b>Expiring</b>, <b>Reminders</b> and <b>+ Add reminder</b> sit together on one row at the top. Press <b>+ Add reminder</b>, type the title, add optional details, then pick the date (today is already selected), the time, an end time and the repeat in one window. In the list every reminder is a card, and one orange <b>button bar</b> sits beside the cards &mdash; round <b>Edit</b> and <b>Delete</b> buttons on Reminders, round <b>View</b> and <b>Edit</b> buttons on Expiring. The bar stays in place while you scroll, the cards slide up over each other like a deck, and the bar always works on the top card, the one with the orange outline. Each card has its own <b>Done</b> button, and <b>Mark all done</b> clears everything that is waiting. Anything overdue makes its tab glow gently, including the <b>Reminders</b> tab itself, so you can see it from the Expiring side. A reminder that is due shows on the same <b>Needs your attention</b> glass card as expiring documents, with a round <b>View</b> (shows the reminder note), a round <b>Edit</b> and <b>Done</b>. It stays there until you press <b>Done</b>; tapping its alert opens that card with the reminder in front.</div>
+  </div>
+
+  <div class="dept-info-help-row">
+    <div class="dept-info-help-icon">📲</div>
+    <div class="dept-info-help-text"><b>Sync Calendar</b> &mdash; On the <b>Reminders</b> tab, press <b>Sync Calendar</b> and DOCMAN reads your phone&rsquo;s calendar (Google, Samsung and any other calendar on your phone) and lists everything coming up in the next year as reminders, in date order. DOCMAN only <b>reads</b> your calendar &mdash; it never changes it &mdash; and nothing leaves your phone. A calendar reminder alerts you at <b>8am on the day</b> and every 30 minutes until 11am, until you press <b>Done</b>. A repeating event comes in once: a monthly or yearly one repeats by itself, and any other shows its next date and moves on when you sync again. Press the button again any time: new events are added, changed ones are updated, and any you deleted come back. Switch on <b>AUTO</b> beside the button and DOCMAN syncs by itself whenever you open the app (Auto-sync is part of DOCMAN Pro; the button itself gets one free try). Free DOCMAN holds <b>3 reminders</b> and <b>3 expiry dates</b>; more than that is part of DOCMAN Pro.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1633,12 +1676,12 @@ border: 1px solid rgba(255,255,255,0.2);
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">💾</div>
-    <div class="dept-info-help-text"><b>Backup &amp; Restore</b> — In Settings, Backup &amp; Export saves everything to a single encrypted file, protected by a password you choose or a recovery key DOCMAN generates for you — save it somewhere safe, since it can't be recovered if lost. Import Data restores from one — since this replaces all current data, DOCMAN automatically saves a Safety Snapshot of what was there right before, viewable under Settings → Safety Snapshots, so a wrong import is never permanent.</div>
+    <div class="dept-info-help-text"><b>Backup &amp; Restore</b> — In Settings, Backup &amp; Export saves everything to a single encrypted file, protected by a password you choose or a recovery key DOCMAN generates for you — save it somewhere safe, since it can't be recovered if lost. Import Data restores from one — since this replaces all current data, DOCMAN automatically saves a Safety Snapshot of what was there right before, viewable under Settings → Safety Snapshots, so a wrong import is never permanent. After a backup, <b>Save a copy</b> opens Google Drive&rsquo;s save screen so the copy leaves your phone (if Drive isn&rsquo;t installed, you pick the place yourself).</div>
   </div>
 
   <div class="dept-info-help-row">
     <div class="dept-info-help-icon">👑</div>
-    <div class="dept-info-help-text"><b>DOCMAN Pro</b> — Scan, Sign, Highlight, Fill form, Erase, Crop, reading scanned pages, Edit image, Convert to PDF, Merge PDFs and Lock can each be used once for free — a <b>FREE</b> tag shows the ones you haven&rsquo;t tried yet. Unlock DOCMAN Pro once (no subscription) from Settings → DOCMAN Pro to use them as often as you like and add as many departments and folders as you need. Bought it before? Use <b>Restore purchase</b>. Nothing you&rsquo;ve already made is ever locked away.</div>
+    <div class="dept-info-help-text"><b>DOCMAN Pro</b> — Scan, Sign, Highlight, Fill form, Erase, Crop, reading scanned pages, Edit image, Convert to PDF, Merge PDFs, Calendar sync and Lock can each be used once for free — a <b>FREE</b> tag shows the ones you haven&rsquo;t tried yet. Unlock DOCMAN Pro once (no subscription) from Settings → DOCMAN Pro to use them as often as you like and add as many departments, folders, reminders and expiry dates as you need. Bought it before? Use <b>Restore purchase</b>. Nothing you&rsquo;ve already made is ever locked away.</div>
   </div>
 
   <div class="dept-info-help-row">
@@ -1741,7 +1784,7 @@ border: 1px solid rgba(255,255,255,0.2);
     '</div>';
 })();
 </script>
-<script src="app.js?v=605"></script>
+<script src="app.js?v=788"></script>
 
 
 <script>
@@ -1787,6 +1830,12 @@ border: 1px solid rgba(255,255,255,0.2);
     setTimeout(() => { if (subEl) subEl.classList.add('show'); }, 1300);
     setTimeout(() => { splashTimerDone = true; tryReveal(); }, 2400);
   });
+  // 26 Oct: when something needs attention the app asks for the start-up screen to finish early (not before minMs after the page started),
+  // so the "Needs your attention" card comes straight away. Without pending items nothing changes (the full 2.4 s reveal).
+  window.docmanSkipSplashWait = function (minMs) {
+    const left = Math.max(0, (minMs || 1200) - performance.now());
+    setTimeout(() => { splashTimerDone = true; tryReveal(); }, left);
+  };
   // Safety fallback: hide splash no matter what, even if window 'load'
   // never fires for some reason.
   setTimeout(() => { splashTimerDone = true; tryReveal(); }, 6000);

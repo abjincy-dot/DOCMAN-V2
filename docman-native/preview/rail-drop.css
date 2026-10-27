@@ -1,0 +1,14 @@
+/* 22 Oct: (1) the orange bar hangs lower than the card with a squarish bottom (the shape the user drew: the corners rounded, the bottom not a half circle), and the
+   three pills are spaced out: View stays, Edit ~6 px lower, Delete ~12 px lower, each with a larger invisible touch area.
+   (2) ONE flat colour on the whole bar: the pills no longer cast a dark shadow (with the old 4 px gap the shadows overlapped and darkened the middle),
+   and the rim has the same colour as the fill, so no lighter or darker patches remain. */
+#expiringDocsList .xc-shared-rail {
+    height: calc(var(--xc-card-h, 93px) + 15px);
+    padding: 7px 0 9px; gap: 10px; justify-content: flex-start;
+    border-radius: 22px 0 18px 18px;
+    background: #e34a03 !important;
+    border-color: #e34a03 !important;
+    box-shadow: 0 0 7px rgba(255, 120, 20, 0.45) !important;
+}
+#expiringDocsList .xc-shared-rail .xc-act { position: relative; box-shadow: inset 0 0 5px rgba(255, 150, 20, 0.3); }
+#expiringDocsList .xc-shared-rail .xc-act::after { content: ""; position: absolute; inset: -3px -5px; }

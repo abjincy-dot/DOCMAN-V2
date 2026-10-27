@@ -1,0 +1,12 @@
+/* 24 Oct: department buttons get the same raised 3D push-button depth as Sync Calendar: bright top edge, dark bottom edge, a shadow underneath, and a 2 px press.
+   The colour layer (.dept-pill-bg) covers an inset shadow on the button itself, so the edges are drawn on an overlay (::after). */
+.dept-oval { box-shadow: 0 5px 8px -3px rgba(0, 0, 0, 0.7) !important; }
+.dept-oval::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 5;
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.40), inset 0 -4px 7px rgba(0, 0, 0, 0.42);
+}
+.dept-oval:active, .dept-oval.pressed-feedback {
+    transform: translateY(2px) !important; filter: none !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.55) !important;
+}
+.dept-oval:active::after, .dept-oval.pressed-feedback::after { box-shadow: inset 0 3px 8px rgba(0, 0, 0, 0.6); }

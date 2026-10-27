@@ -1,0 +1,31 @@
+
+/* 26 Oct (glass card, part 5): the flight copies the user's video (notification cards): the card rises from the bottom with motion blur, banked in 3D (perspective tilt),
+   straightens as it lands. The other pending items are cards stacked under it (.gl-peek, up to 2) which fly in a beat later. Replaces part 4's swoop.
+   Undo: delete this block (part 4's swoop returns) and the .gl-wrap / .gl-peek markup is harmless. */
+.gl-wrap { position: relative; width: 100%; max-width: 360px; }
+.gl-wrap .gl-card { max-width: none; z-index: 1; }
+.gl-peek { position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 0; border-radius: 26px; pointer-events: none;
+    background: linear-gradient(160deg, rgba(214,70,200,.16), rgba(120,90,230,.12)), rgba(30,16,50,.78); border: 1.5px solid rgba(190,170,255,.45); }
+.gl-p1 { transform: translateY(20px) scale(.95); clip-path: inset(calc(100% - 24px) 0 0 0); }
+.gl-p2 { transform: translateY(38px) scale(.90); clip-path: inset(calc(100% - 42px) 0 0 0); opacity: .8; }
+.gl-card.gl-fly { animation: glFlight 1.1s cubic-bezier(.22, .8, .24, 1) both; transform-origin: 50% 100%; }
+.gl-wrap.gl-fly .gl-p1 { animation: glFlightP1 1.1s cubic-bezier(.22, .8, .24, 1) .14s both; }
+.gl-wrap.gl-fly .gl-p2 { animation: glFlightP2 1.1s cubic-bezier(.22, .8, .24, 1) .26s both; }
+@keyframes glFlight {
+    0%   { opacity: 0; filter: blur(12px); transform: perspective(900px) translateY(78vh) rotateX(38deg) rotateZ(-5deg) scale(.82); }
+    35%  { opacity: 1; filter: blur(5px);  transform: perspective(900px) translateY(30vh) rotateX(24deg) rotateZ(-3deg) scale(.9); }
+    70%  { filter: blur(.6px);             transform: perspective(900px) translateY(-2.5vh) rotateX(6deg) rotateZ(1deg) scale(1.01); }
+    88%  { filter: blur(0);                transform: perspective(900px) translateY(1vh) rotateX(-1.5deg) rotateZ(-.3deg) scale(1); }
+    100% { opacity: 1; filter: none;       transform: none; }
+}
+@keyframes glFlightP1 {
+    0%   { opacity: 0; transform: translateY(90vh) scale(.8); }
+    60%  { opacity: 1; }
+    100% { opacity: 1; transform: translateY(20px) scale(.95); }
+}
+@keyframes glFlightP2 {
+    0%   { opacity: 0; transform: translateY(96vh) scale(.78); }
+    60%  { opacity: .8; }
+    100% { opacity: .8; transform: translateY(38px) scale(.90); }
+}
+@media (prefers-reduced-motion: reduce) { .gl-card.gl-fly, .gl-wrap.gl-fly .gl-p1, .gl-wrap.gl-fly .gl-p2 { animation: none; } }

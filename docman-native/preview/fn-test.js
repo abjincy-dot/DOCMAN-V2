@@ -1,0 +1,21 @@
+const act = `(async()=>{
+  entitlement.purchased = true;
+  const dept = Object.keys(fileSystem)[0];
+  const leaf = Object.keys(fileSystem[dept]).find(k => fileSystem[dept][k] && typeof fileSystem[dept][k] === 'object' && !Object.keys(fileSystem[dept][k]).length) || Object.keys(fileSystem[dept])[0];
+  const path = dept + '/' + leaf;
+  allFiles[path] = []; allNotes[path] = [1,2,3].map(i => ({ id: 'tn' + i, title: 'Note ' + i, content: 'text ' + i, text: 'text ' + i, createdAt: Date.now(), modifiedAt: Date.now(), color: 'yellow' }));
+  currentPath = [dept, leaf]; currentActiveTab = 'pdfs'; render(); await new Promise(r=>setTimeout(r,800));
+  const q = s => document.querySelector(s);
+  const out = {path};
+  out.filesTab = { selectBtn: !!q('.ft-select'), hop: (q('.empty-state-hop')||{}).textContent || null, badgeNotes: (q('.ft-toggle-label-notes')||{getAttribute(){}}).getAttribute('data-count'), badgeFiles: (q('.ft-toggle-label-files')||{getAttribute(){}}).getAttribute('data-count') };
+  window.__shot1 = true;
+  document.title = JSON.stringify(out);
+  await new Promise(r=>setTimeout(r,200));
+  setActiveTab('notes'); await new Promise(r=>setTimeout(r,1200));
+  out.notesTab = { selectBtn: !!q('.ft-select'), cards: document.querySelectorAll('#content .card, #content .file-card, #content .note-card').length, badgeFiles: (q('.ft-toggle-label-files')||{getAttribute(){}}).getAttribute('data-count') };
+  allFiles[path] = [{ name: 'a.pdf', size: 1000, date: Date.now(), type: 'application/pdf', fsPath: path + '/a.pdf' }];
+  currentActiveTab = 'notes'; render(); await new Promise(r=>setTimeout(r,600));
+  out.notesWithFiles = { selectBtn: !!q('.ft-select'), badgeFiles: (q('.ft-toggle-label-files')||{getAttribute(){}}).getAttribute('data-count') };
+  document.title = JSON.stringify(out);
+})();`;
+require('fs').writeFileSync(__dirname + '/fn-test-act.txt', act);

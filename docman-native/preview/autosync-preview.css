@@ -1,0 +1,13 @@
+/* PREVIEW ONLY: two layouts for an "Auto-sync" switch next to Sync Calendar. */
+.xc-autosw { position: relative; width: 34px; height: 20px; border-radius: 999px; background: #3a3f50; border: 1px solid rgba(255,255,255,0.25); flex: none; display: inline-block; transition: background .2s; }
+.xc-autosw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.5); transition: transform .2s; }
+.xc-autosw.on { background: linear-gradient(90deg, #ff8a1f, #ee3a2a); border-color: rgba(255,200,140,0.6); box-shadow: 0 0 8px rgba(255,120,30,.45); }
+.xc-autosw.on::after { transform: translateX(14px); }
+/* A: the switch lives inside the Sync Calendar pill */
+.xc-panel .xc-sync.xc-sync-a { gap: 6px; padding: 0 9px 0 10px; }
+.xc-panel .xc-sync.xc-sync-a .xc-sync-sep { width: 1px; height: 18px; background: rgba(255,255,255,0.28); margin: 0 1px 0 2px; }
+.xc-panel .xc-sync.xc-sync-a .xc-sync-auto { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.03em; color: #ffb26b; }
+/* B: a thin row under the header */
+.xc-autorow { display: flex; align-items: center; gap: 9px; margin: -2px 2px 10px; padding: 7px 12px; border-radius: 14px; border: 1px solid rgba(255,138,31,0.45); background: rgba(255,138,31,0.08); color: #e8e8ee; font: 600 0.74rem Inter, sans-serif; }
+.xc-autorow i { color: #ffb26b; font-size: 0.85rem; }
+.xc-autorow .xc-autolast { margin-left: auto; margin-right: 4px; font-weight: 500; font-size: 0.66rem; color: #99a3aa; }

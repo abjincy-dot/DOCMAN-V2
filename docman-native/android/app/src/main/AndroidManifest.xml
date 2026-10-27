@@ -5,6 +5,16 @@
          in memory to save annotations blew the default heap and crashed
          the whole process. Raises the ceiling; PDDocument.save() also
          catches OutOfMemoryError itself now as a second line of defense. -->
+    <!-- "Save a copy" asks whether Google Drive is installed before handing it the backup (Android 11+ hides other apps
+         unless they are named here). Nothing else is looked up. -->
+    <queries>
+        <package android:name="com.google.android.apps.docs" />
+    </queries>
+
+    <!-- "Sync Calendar" (Reminders): READS the phone's calendar events so they can be listed as reminders. Read only; asked for
+         when the button is first pressed, never at launch. Nothing is written to the calendar or sent anywhere. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+
     <application
         android:name=".DocmanApplication"
         android:allowBackup="true"
