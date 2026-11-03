@@ -48,11 +48,11 @@ echo "4/5  Building and installing (this takes about 10 seconds)..."
 rm -f ./*.wgt
 "$TIZEN" package -t wgt -s "$PROFILE" -- . >/dev/null 2>&1 || fail "Could not build the app"
 mv ./*.wgt MyTV.wgt 2>/dev/null
-install() { OUT=$("$TIZEN" install -n MyTV.wgt -s "$TV" -- . 2>&1); echo "$OUT" | grep -q "install completed"; }
-if ! install; then
+do_install() { OUT=$("$TIZEN" install -n MyTV.wgt -s "$TV" -- . 2>&1); echo "$OUT" | grep -q "install completed"; }
+if ! do_install; then
   echo "     Connection was stale, reconnecting and trying again..."
   reconnect hard || fail "Lost the connection to the TV. Make sure the TV is ON."
-  install || { echo "$OUT" | tail -5; fail "Install failed"; }
+  do_install || { echo "$OUT" | tail -5; fail "Install failed"; }
 fi
 
 echo "5/5  Opening My TV on the TV..."
