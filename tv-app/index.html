@@ -5,36 +5,84 @@
 <title>My TV</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{width:1920px;height:1080px;overflow:hidden;background:#0b1020;color:#fff;font-family:sans-serif}
+html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#fff;font-family:sans-serif}
 .screen{position:absolute;top:0;left:0;width:1920px;height:1080px;display:none}
 .screen.on{display:block}
 .top{position:absolute;top:50px;right:80px;font-size:44px;opacity:.8}
-#home h1{font-size:80px;font-weight:300;text-align:center;margin-top:150px}
-#tiles{display:flex;justify-content:center;margin-top:130px}
-.tile{width:360px;height:360px;margin:0 28px;border-radius:32px;background:#1b2340;border:6px solid transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:44px;transition:transform .15s,background .15s}
+.hint{position:absolute;bottom:40px;width:100%;text-align:center;font-size:28px;opacity:.45}
+
+/* ---------- Home ---------- */
+#home{background:radial-gradient(ellipse at 50% 0%,#1d2b52 0%,#0a0e1a 70%)}
+#home h1{font-size:84px;font-weight:300;text-align:center;margin-top:140px;letter-spacing:4px}
+#home .sub{font-size:34px;text-align:center;opacity:.6;margin-top:14px}
+#tiles{display:flex;justify-content:center;margin-top:110px}
+.tile{width:360px;height:360px;margin:0 28px;border-radius:36px;background:rgba(255,255,255,.07);border:5px solid rgba(255,255,255,.08);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:44px;transition:transform .15s,background .15s,border-color .15s}
 .tile .ic{font-size:140px;margin-bottom:24px}
-.tile.f{transform:scale(1.1);background:#2d3a6b;border-color:#6ea8ff}
-.hint{position:absolute;bottom:50px;width:100%;text-align:center;font-size:30px;opacity:.5}
-#clock{background:linear-gradient(135deg,#1a1440,#0b2a4a 50%,#123d3a);background-size:300% 300%;animation:bg 30s ease infinite}
+.tile.f{transform:scale(1.1);background:rgba(110,168,255,.22);border-color:#8fbcff}
+
+/* ---------- Clock ---------- */
+#cc{position:absolute;top:0;left:0}
+.cs{position:absolute;top:0;left:0;width:1920px;height:1080px;display:none}
+#cInfo{position:absolute;top:44px;left:70px;font-size:38px;opacity:.75;z-index:5}
+#cToast{position:absolute;bottom:90px;width:100%;text-align:center;z-index:50;transition:opacity .6s;opacity:0}
+#cToast span{display:inline-block;padding:18px 44px;border-radius:50px;background:rgba(0,0,0,.6);border:2px solid rgba(255,255,255,.2);font-size:36px}
+#clock .hint{z-index:5}
+/* Big digital */
+#csDigital{background:linear-gradient(135deg,#120b2e,#06223a 50%,#0b2e2a);background-size:300% 300%;animation:bg 40s ease infinite;text-align:center}
 @keyframes bg{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
-#ana{position:absolute;top:140px;left:150px}
-#clock .side{position:absolute;top:0;left:1000px;width:840px;height:1080px;display:flex;flex-direction:column;justify-content:center}
-#clock .greet{font-size:52px;opacity:.75;letter-spacing:2px}
-#clock .t{font-size:260px;font-weight:200;line-height:1.05;letter-spacing:-4px}
-#clock .t span{font-size:110px;opacity:.55;margin-left:16px;letter-spacing:0}
-#clock .d{font-size:56px;opacity:.75;margin-top:10px}
-#weather .city{font-size:56px;text-align:center;margin-top:110px;opacity:.8}
-#weather .now{display:flex;justify-content:center;align-items:center;margin-top:30px}
-#weather .now .ic{font-size:200px;margin-right:50px}
-#weather .now .temp{font-size:220px;font-weight:200}
-#weather .desc{font-size:52px;text-align:center}
-#weather .extra{font-size:36px;text-align:center;opacity:.6;margin-top:16px}
-#days{display:flex;justify-content:center;margin-top:60px}
-.day{width:240px;margin:0 16px;padding:24px 0;border-radius:24px;background:#1b2340;text-align:center;font-size:34px}
-.day .ic{font-size:72px;margin:10px 0}
+#dT{font-size:440px;font-weight:100;margin-top:170px;line-height:1;letter-spacing:-10px}
+#dT small{font-size:120px;letter-spacing:0;opacity:.6;margin-left:20px}
+#dBar{width:1100px;height:10px;border-radius:5px;background:rgba(255,255,255,.12);margin:40px auto 0;overflow:hidden}
+#dBar div{height:100%;background:linear-gradient(90deg,#6ee7ff,#a78bfa);border-radius:5px}
+#dD{font-size:60px;opacity:.75;margin-top:46px;letter-spacing:2px}
+/* Flip */
+#csFlip{background:radial-gradient(ellipse at 50% 30%,#23232b,#0a0a0d 75%)}
+#fRow{position:absolute;top:250px;width:100%;display:flex;justify-content:center;align-items:center}
+.fc{position:relative;width:250px;height:360px;margin:0 10px;border-radius:26px;background:linear-gradient(#2c2c33 50%,#232329 50%);box-shadow:0 20px 50px rgba(0,0,0,.6);font-size:300px;font-weight:600;line-height:360px;text-align:center;color:#f2f2f2;overflow:hidden}
+.fc:after{content:'';position:absolute;left:0;top:179px;width:100%;height:3px;background:#0a0a0d}
+.fc.flip{animation:flip .45s ease}
+@keyframes flip{0%{transform:rotateX(0)}50%{transform:rotateX(90deg)}100%{transform:rotateX(0)}}
+.fc.sm{width:150px;height:220px;font-size:170px;line-height:220px;border-radius:18px;margin-top:140px}
+.fc.sm:after{top:109px}
+.fsep{font-size:200px;color:#9a9aa6;margin:0 18px;line-height:360px}
+#fAm{position:absolute;top:640px;width:100%;text-align:center;font-size:46px;opacity:.6;letter-spacing:4px}
+#fD{position:absolute;top:720px;width:100%;text-align:center;font-size:58px;opacity:.75}
+
+/* ---------- Weather ---------- */
+#weather{transition:background 1s}
+#wHead{position:absolute;top:44px;left:80px;font-size:52px;font-weight:300}
+#wHead small{font-size:34px;opacity:.6;margin-left:20px}
+#wClock{position:absolute;top:50px;right:80px;font-size:44px;opacity:.85}
+.card{position:absolute;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.12);border-radius:30px}
+#wHero{left:80px;top:140px;width:680px;height:420px;padding:36px 44px}
+#wHero .ic{position:absolute;right:40px;top:30px;font-size:170px}
+#wHero .temp{font-size:200px;font-weight:200;line-height:1;margin-top:10px}
+#wHero .desc{font-size:52px;margin-top:6px}
+#wHero .feel{font-size:34px;opacity:.7;margin-top:14px}
+#wGrid{position:absolute;left:800px;top:140px;width:1040px;height:420px}
+.st{position:absolute;width:245px;height:200px;padding:22px 24px}
+.st .l{font-size:26px;opacity:.6;text-transform:uppercase;letter-spacing:2px}
+.st .v{font-size:58px;margin-top:14px;font-weight:300}
+.st .v small{font-size:30px;opacity:.7}
+.st .s{font-size:26px;opacity:.75;margin-top:8px}
+#wHourly{left:80px;top:595px;width:1760px;height:200px;display:flex;padding:0 14px;align-items:center}
+.hr{flex:1;text-align:center;font-size:28px}
+.hr .ic{font-size:52px;margin:8px 0}
+.hr .t{font-size:34px}
+.hr .p{font-size:24px;color:#8fd3ff;margin-top:4px;height:28px}
+#wDaily{left:80px;top:820px;width:1760px;height:180px;display:flex;padding:0 14px;align-items:center}
+.dy{flex:1;text-align:center;font-size:30px;border-right:2px solid rgba(255,255,255,.08)}
+.dy:last-child{border-right:0}
+.dy .ic{font-size:56px;margin:6px 0}
+.dy .r{font-size:32px}
+.dy .r span{opacity:.55}
+#wMsg{position:absolute;top:500px;width:100%;text-align:center;font-size:46px;display:none}
+
+/* ---------- Photos / Game ---------- */
 #photos{background:#000}
 #photos img{position:absolute;top:0;left:0;width:1920px;height:1080px;object-fit:cover;opacity:0;transition:opacity 1.5s}
 #pmsg{position:absolute;top:500px;width:100%;text-align:center;font-size:48px}
+#game{background:#0a0e1a}
 #game .score{position:absolute;top:30px;left:160px;font-size:44px}
 #cv{position:absolute;top:120px;left:160px;border-radius:16px}
 </style>
@@ -44,6 +92,7 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#0b1020;color:#f
 <div id="home" class="screen on">
   <div class="top" id="homeTime"></div>
   <h1>My TV</h1>
+  <div class="sub" id="homeSub"></div>
   <div id="tiles">
     <div class="tile" data-go="clock"><div class="ic">🕒</div>Clock</div>
     <div class="tile" data-go="weather"><div class="ic">⛅</div>Weather</div>
@@ -54,24 +103,32 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#0b1020;color:#f
 </div>
 
 <div id="clock" class="screen">
-  <canvas id="ana" width="800" height="800"></canvas>
-  <div class="side">
-    <div class="greet" id="cG"></div>
-    <div class="t" id="cT"></div>
-    <div class="d" id="cD"></div>
+  <canvas id="cc" width="1920" height="1080"></canvas>
+  <div class="cs" id="csDigital"><div id="dT"></div><div id="dBar"><div id="dBarIn"></div></div><div id="dD"></div></div>
+  <div class="cs" id="csFlip">
+    <div id="fRow">
+      <div class="fc" id="f0"></div><div class="fc" id="f1"></div><div class="fsep">:</div>
+      <div class="fc" id="f2"></div><div class="fc" id="f3"></div><div class="fsep"></div>
+      <div class="fc sm" id="f4"></div><div class="fc sm" id="f5"></div>
+    </div>
+    <div id="fAm"></div><div id="fD"></div>
   </div>
-  <div class="hint">Back to menu</div>
+  <div id="cInfo"></div>
+  <div class="hint">◀ ▶ clock style &nbsp;·&nbsp; ▲ ▼ 12h / 24h &nbsp;·&nbsp; Back menu</div>
 </div>
 
 <div id="weather" class="screen">
-  <div class="top" id="wTime"></div>
-  <div class="city" id="wCity"></div>
-  <div class="now"><div class="ic" id="wIc"></div><div class="temp" id="wTemp">…</div></div>
-  <div class="desc" id="wDesc">Loading weather…</div>
-  <div class="extra" id="wExtra"></div>
-  <div id="days"></div>
-  <div class="hint">Back to menu</div>
+  <div id="wHead"></div>
+  <div id="wClock"></div>
+  <div class="card" id="wHero"><div class="ic" id="wIc"></div><div class="temp" id="wTemp"></div><div class="desc" id="wDesc"></div><div class="feel" id="wFeel"></div></div>
+  <div id="wGrid"></div>
+  <div class="card" id="wHourly"></div>
+  <div class="card" id="wDaily"></div>
+  <div id="wMsg">Loading weather…</div>
+  <div class="hint" style="bottom:22px">◀ ▶ change location &nbsp;·&nbsp; Back menu</div>
 </div>
+
+<div id="cToast"><span id="cToastT"></span></div>
 
 <div id="photos" class="screen">
   <img id="pA" alt=""><img id="pB" alt="">
@@ -84,13 +141,31 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#0b1020;color:#f
 </div>
 
 <script>
-// ===== Settings: change your city here =====
-var CITY = { name: 'Dubai', lat: 25.2048, lon: 55.2708 };
+// ===== Locations (◀ ▶ on the Weather screen) =====
+var CITIES = [
+  ['Sohar', 'Oman', 24.3474, 56.7097], ['Muscat', 'Oman', 23.5880, 58.3829], ['Salalah', 'Oman', 17.0151, 54.0924],
+  ['Nizwa', 'Oman', 22.9333, 57.5333], ['Sur', 'Oman', 22.5667, 59.5289], ['Ibri', 'Oman', 23.2257, 56.5157],
+  ['Dubai', 'UAE', 25.2048, 55.2708], ['Abu Dhabi', 'UAE', 24.4539, 54.3773], ['Doha', 'Qatar', 25.2854, 51.5310],
+  ['Riyadh', 'Saudi Arabia', 24.7136, 46.6753], ['Kochi', 'India', 9.9312, 76.2673], ['Thiruvananthapuram', 'India', 8.5241, 76.9366],
+  ['Kozhikode', 'India', 11.2588, 75.7804], ['Thrissur', 'India', 10.5276, 76.2144], ['Chennai', 'India', 13.0827, 80.2707],
+  ['Bengaluru', 'India', 12.9716, 77.5946], ['Mumbai', 'India', 19.0760, 72.8777], ['Delhi', 'India', 28.6139, 77.2090],
+  ['London', 'UK', 51.5074, -0.1278]
+];
+var cityIdx = 0, CITY;
+function setCity(i) {
+  cityIdx = (i + CITIES.length) % CITIES.length;
+  var c = CITIES[cityIdx]; CITY = { name: c[0], country: c[1], lat: c[2], lon: c[3] };
+}
 
 var cur = 'home', focus = 0;
+try { setCity(+localStorage.getItem('city') || 0); } catch (x) { setCity(0); }
 var tiles = document.querySelectorAll('.tile');
 function $(id) { return document.getElementById(id); }
 function pad(n) { return (n < 10 ? '0' : '') + n; }
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (x) { return null; } }
+var DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function dateText(d) { return DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear(); }
 
 // ----- Navigation -----
 function setFocus(i) {
@@ -102,13 +177,14 @@ function open(id) {
   var s = document.querySelectorAll('.screen');
   for (var i = 0; i < s.length; i++) s[i].className = 'screen' + (s[i].id === id ? ' on' : '');
   cur = id;
-  if (id === 'weather') loadWeather();
+  if (id === 'clock') { setStyle(clockStyle, true); }
+  if (id === 'weather') { renderWeather(); loadWeather(); }
   if (id === 'photos') { nextPhoto(); pTimer = setInterval(nextPhoto, 7000); }
   if (id === 'game') gStart();
 }
 document.addEventListener('keydown', function (e) {
   var k = e.keyCode;
-  if (k === 10009) { // Back
+  if (k === 10009 || k === 8) { // Back
     if (cur === 'home') { try { tizen.application.getCurrentApplication().exit(); } catch (x) {} }
     else open('home');
     e.preventDefault(); return;
@@ -117,6 +193,16 @@ document.addEventListener('keydown', function (e) {
     if (k === 37) setFocus(focus - 1);
     else if (k === 39) setFocus(focus + 1);
     else if (k === 13) open(tiles[focus].getAttribute('data-go'));
+  } else if (cur === 'clock') {
+    if (k === 37) setStyle(clockStyle - 1);
+    else if (k === 39 || k === 13) setStyle(clockStyle + 1);
+    else if (k === 38 || k === 40) { h12 = !h12; store('h12', h12 ? '1' : '0'); lastSec = -1; toast(h12 ? '12-hour clock' : '24-hour clock'); }
+  } else if (cur === 'weather') {
+    if (k === 37 || k === 39) {
+      setCity(cityIdx + (k === 39 ? 1 : -1)); store('city', cityIdx);
+      toast('📍 ' + CITY.name + ', ' + CITY.country + '   (' + (cityIdx + 1) + ' of ' + CITIES.length + ')');
+      wData = null; aqData = null; wLast = 0; clearWeather(); renderWeather(); loadWeather(); tick();
+    }
   } else if (cur === 'photos') {
     if (k === 37 || k === 39 || k === 13) { clearInterval(pTimer); nextPhoto(); pTimer = setInterval(nextPhoto, 7000); }
   } else if (cur === 'game') {
@@ -124,95 +210,259 @@ document.addEventListener('keydown', function (e) {
   }
 });
 
-// ----- Clock -----
-var DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+// ----- Time helpers -----
+var h12 = store('h12') === '1';
+function hourText(h) { return h12 ? String(h % 12 || 12) : pad(h); }
+function ampm(h) { return h12 ? (h < 12 ? 'AM' : 'PM') : ''; }
+function greeting(h) { return h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 21 ? 'Good evening' : 'Good night'; }
+
 function tick() {
-  var d = new Date(), hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
-  $('homeTime').textContent = hm; $('wTime').textContent = hm;
-  $('cT').innerHTML = hm + '<span>' + pad(d.getSeconds()) + '</span>';
-  var hr = d.getHours();
-  $('cG').textContent = hr < 5 ? 'Good night' : hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : hr < 21 ? 'Good evening' : 'Good night';
-  $('cD').textContent = DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+  var d = new Date(), hm = hourText(d.getHours()) + ':' + pad(d.getMinutes()) + (h12 ? ' ' + ampm(d.getHours()) : '');
+  $('homeTime').textContent = hm; $('wClock').textContent = hm;
+  $('homeSub').textContent = greeting(d.getHours()) + '  ·  ' + dateText(d);
+  var w = wData && wData.current;
+  $('cInfo').textContent = w ? CITY.name + '  ' + wx(w.weather_code, w.is_day)[0] + ' ' + Math.round(w.temperature_2m) + '°' : CITY.name;
 }
-setInterval(tick, 1000); tick();
+setInterval(tick, 1000);
 
-// Analog clock with smooth sweeping hands
-var ac = $('ana').getContext('2d');
-function hand(ang, len, w, col, back) {
-  ac.save(); ac.rotate(ang); ac.beginPath(); ac.lineCap = 'round';
-  ac.moveTo(0, back || 0); ac.lineTo(0, -len); ac.lineWidth = w; ac.strokeStyle = col;
-  ac.shadowColor = 'rgba(0,0,0,.5)'; ac.shadowBlur = 12; ac.stroke(); ac.restore();
+// ===================== CLOCK =====================
+var STYLES = ['Classic', 'Big digital', 'Flip', 'Neon', 'Gold'];
+var clockStyle = +(store('cs') || 0) % STYLES.length, lastSec = -1, toastTimer;
+var cc = $('cc'), g = cc.getContext('2d');
+function toast(t) {
+  $('cToastT').textContent = t; $('cToast').style.opacity = 1;
+  clearTimeout(toastTimer); toastTimer = setTimeout(function () { $('cToast').style.opacity = 0; }, 2200);
 }
-function drawAnalog() {
-  if (cur === 'clock') {
-    var d = new Date(), ms = d.getMilliseconds(), s = d.getSeconds() + ms / 1000,
-        m = d.getMinutes() + s / 60, h = (d.getHours() % 12) + m / 60, R = 380;
-    ac.setTransform(1, 0, 0, 1, 400, 400); ac.clearRect(-400, -400, 800, 800);
-    var g = ac.createRadialGradient(0, -120, 50, 0, 0, R);
-    g.addColorStop(0, 'rgba(255,255,255,.16)'); g.addColorStop(1, 'rgba(255,255,255,.04)');
-    ac.beginPath(); ac.arc(0, 0, R, 0, 7); ac.fillStyle = g; ac.fill();
-    ac.lineWidth = 3; ac.strokeStyle = 'rgba(255,255,255,.25)'; ac.stroke();
-    // seconds progress ring
-    ac.beginPath(); ac.arc(0, 0, R - 14, -Math.PI / 2, -Math.PI / 2 + s / 60 * 2 * Math.PI);
-    ac.lineWidth = 8; ac.lineCap = 'round'; ac.strokeStyle = 'rgba(126,200,255,.8)'; ac.stroke();
-    for (var i = 0; i < 60; i++) {
-      var a = i * Math.PI / 30, big = i % 5 === 0;
-      ac.save(); ac.rotate(a); ac.beginPath();
-      ac.moveTo(0, -R + 40); ac.lineTo(0, -R + (big ? 80 : 54));
-      ac.lineWidth = big ? 8 : 3; ac.lineCap = 'round';
-      ac.strokeStyle = big ? '#fff' : 'rgba(255,255,255,.4)'; ac.stroke(); ac.restore();
-    }
-    hand(h * Math.PI / 6, 190, 18, '#ffffff', 30);
-    hand(m * Math.PI / 30, 280, 12, '#dfe9ff', 30);
-    hand(s * Math.PI / 30, 310, 4, '#ff7a59', 60);
-    ac.beginPath(); ac.arc(0, 0, 16, 0, 7); ac.fillStyle = '#ff7a59'; ac.fill();
-    ac.beginPath(); ac.arc(0, 0, 6, 0, 7); ac.fillStyle = '#fff'; ac.fill();
+function setStyle(i, quiet) {
+  clockStyle = (i + STYLES.length) % STYLES.length; store('cs', clockStyle); lastSec = -1;
+  cc.style.display = (clockStyle === 1 || clockStyle === 2) ? 'none' : 'block';
+  $('csDigital').style.display = clockStyle === 1 ? 'block' : 'none';
+  $('csFlip').style.display = clockStyle === 2 ? 'block' : 'none';
+  toast('Style ' + (clockStyle + 1) + ' of ' + STYLES.length + ':  ' + STYLES[clockStyle]);
+}
+
+// Analog dial used by Classic and Gold
+function dial(x, y, R, t, th) {
+  var s = t.s, m = t.m, h = t.h;
+  g.save(); g.translate(x, y);
+  var fg = g.createRadialGradient(0, -R * 0.3, R * 0.1, 0, 0, R);
+  fg.addColorStop(0, th.face0); fg.addColorStop(1, th.face1);
+  g.beginPath(); g.arc(0, 0, R, 0, 7); g.fillStyle = fg; g.fill();
+  g.lineWidth = th.rimW; g.strokeStyle = th.rim; g.stroke();
+  if (th.ring) {
+    g.beginPath(); g.arc(0, 0, R - 16, -Math.PI / 2, -Math.PI / 2 + s / 60 * 2 * Math.PI);
+    g.lineWidth = 8; g.lineCap = 'round'; g.strokeStyle = th.ring; g.stroke();
   }
-  requestAnimationFrame(drawAnalog);
+  for (var i = 0; i < 60; i++) {
+    var big = i % 5 === 0;
+    g.save(); g.rotate(i * Math.PI / 30); g.beginPath(); g.lineCap = 'round';
+    g.moveTo(0, -R + 38); g.lineTo(0, -R + (big ? (i % 15 === 0 ? 92 : 76) : 52));
+    g.lineWidth = big ? (i % 15 === 0 ? 12 : 7) : 3;
+    g.strokeStyle = big ? th.tick : th.tickS; g.stroke(); g.restore();
+  }
+  if (th.nums) {
+    g.fillStyle = th.num; g.font = '300 ' + Math.round(R * 0.15) + 'px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (var n = 1; n <= 12; n++) { var a = n * Math.PI / 6; g.fillText(n, Math.sin(a) * (R - 140), -Math.cos(a) * (R - 140)); }
+  }
+  if (th.date) {
+    g.fillStyle = '#0d0d0d'; g.strokeStyle = th.tick; g.lineWidth = 2;
+    g.fillRect(R * 0.42, -30, 90, 60); g.strokeRect(R * 0.42, -30, 90, 60);
+    g.fillStyle = th.tick; g.font = '600 38px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(t.d.getDate(), R * 0.42 + 45, 2);
+    g.font = '400 30px sans-serif'; g.fillStyle = th.tickS; g.fillText(th.label, 0, -R * 0.42);
+  }
+  function hand(ang, len, w, col, back) {
+    g.save(); g.rotate(ang); g.beginPath(); g.lineCap = 'round';
+    g.moveTo(0, back); g.lineTo(0, -len); g.lineWidth = w; g.strokeStyle = col;
+    g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 14; g.shadowOffsetY = 6; g.stroke(); g.restore();
+  }
+  hand(h * Math.PI / 6, R * 0.5, 20, th.hand, 34);
+  hand(m * Math.PI / 30, R * 0.74, 13, th.hand2, 34);
+  hand(s * Math.PI / 30, R * 0.84, 4, th.sec, 70);
+  g.beginPath(); g.arc(0, 0, 18, 0, 7); g.fillStyle = th.sec; g.fill();
+  g.beginPath(); g.arc(0, 0, 7, 0, 7); g.fillStyle = '#fff'; g.fill();
+  g.restore();
 }
-drawAnalog();
+var TH_CLASSIC = { face0: 'rgba(255,255,255,.14)', face1: 'rgba(255,255,255,.03)', rim: 'rgba(255,255,255,.25)', rimW: 3,
+  ring: 'rgba(126,200,255,.85)', tick: '#fff', tickS: 'rgba(255,255,255,.35)', nums: true, num: 'rgba(255,255,255,.85)',
+  hand: '#fff', hand2: '#e2ebff', sec: '#ff7a59' };
+var TH_GOLD = { face0: '#1c1a16', face1: '#050505', rim: '#b8922f', rimW: 10, ring: null,
+  tick: '#e0bf62', tickS: 'rgba(224,191,98,.45)', nums: false, date: true, label: '',
+  hand: '#e8c86a', hand2: '#f3dc96', sec: '#c9a23f' };
 
-// ----- Weather (Open-Meteo, no key needed) -----
-function wx(c) {
-  if (c === 0) return ['☀️', 'Clear'];
-  if (c <= 2) return ['⛅', 'Partly cloudy'];
+function timeParts() {
+  var d = new Date(), s = d.getSeconds() + d.getMilliseconds() / 1000, m = d.getMinutes() + s / 60;
+  return { d: d, s: s, m: m, h: (d.getHours() % 12) + m / 60 };
+}
+function drawClassic(t) {
+  var bg = g.createLinearGradient(0, 0, 1920, 1080);
+  bg.addColorStop(0, '#0b0f1e'); bg.addColorStop(1, '#101a2c');
+  g.fillStyle = bg; g.fillRect(0, 0, 1920, 1080);
+  dial(560, 540, 400, t, TH_CLASSIC);
+  var d = t.d, x = 1080;
+  g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillStyle = 'rgba(255,255,255,.7)';
+  g.font = '300 54px sans-serif'; g.fillText(greeting(d.getHours()), x, 400);
+  g.fillStyle = '#fff'; g.font = '200 250px sans-serif';
+  var hm = hourText(d.getHours()) + ':' + pad(d.getMinutes()); g.fillText(hm, x - 10, 640);
+  var wHm = g.measureText(hm).width;
+  g.fillStyle = 'rgba(255,255,255,.5)'; g.font = '300 100px sans-serif';
+  g.fillText(pad(d.getSeconds()), x + wHm + 10, 640);
+  if (h12) { g.font = '300 50px sans-serif'; g.fillText(ampm(d.getHours()), x + wHm + 10, 530); }
+  g.fillStyle = 'rgba(255,255,255,.7)'; g.font = '300 54px sans-serif'; g.fillText(dateText(d), x, 730);
+}
+function drawNeon(t) {
+  g.fillStyle = '#05040c'; g.fillRect(0, 0, 1920, 1080);
+  var glow = g.createRadialGradient(960, 540, 50, 960, 540, 700);
+  glow.addColorStop(0, 'rgba(120,40,200,.25)'); glow.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = glow; g.fillRect(0, 0, 1920, 1080);
+  var sec = Math.floor(t.s), d = t.d;
+  for (var i = 0; i < 60; i++) {
+    var a = i * Math.PI / 30, x = 960 + Math.sin(a) * 440, y = 540 - Math.cos(a) * 440, on = i <= sec;
+    g.beginPath(); g.arc(x, y, i % 5 === 0 ? 11 : 7, 0, 7);
+    g.fillStyle = i === sec ? '#ff4fd8' : on ? '#3ef0ff' : 'rgba(255,255,255,.12)';
+    g.shadowColor = g.fillStyle; g.shadowBlur = on ? 25 : 0; g.fill();
+  }
+  g.shadowBlur = 40; g.shadowColor = '#3ef0ff'; g.fillStyle = '#e9fdff';
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '200 260px sans-serif';
+  g.fillText(hourText(d.getHours()) + ':' + pad(d.getMinutes()), 960, 510);
+  g.shadowColor = '#ff4fd8'; g.shadowBlur = 25; g.fillStyle = '#ffd1f4'; g.font = '300 50px sans-serif';
+  g.fillText((h12 ? ampm(d.getHours()) + '  ·  ' : '') + dateText(d), 960, 680);
+  g.shadowBlur = 0;
+}
+function drawGold(t) {
+  var bg = g.createRadialGradient(960, 540, 100, 960, 540, 1100);
+  bg.addColorStop(0, '#16130d'); bg.addColorStop(1, '#000');
+  g.fillStyle = bg; g.fillRect(0, 0, 1920, 1080);
+  TH_GOLD.label = CITY.name.toUpperCase();
+  dial(960, 540, 460, t, TH_GOLD);
+}
+var flipPrev = ['', '', '', '', '', ''];
+function updateDom(d) {
+  var hh = hourText(d.getHours()), mm = pad(d.getMinutes()), ss = pad(d.getSeconds());
+  if (clockStyle === 1) {
+    $('dT').innerHTML = hh + ':' + mm + '<small>' + ss + (h12 ? ' ' + ampm(d.getHours()) : '') + '</small>';
+    $('dD').textContent = dateText(d);
+  } else if (clockStyle === 2) {
+    var digits = (hh.length < 2 ? ' ' + hh : hh) + mm + ss;
+    for (var i = 0; i < 6; i++) {
+      var el = $('f' + i), v = digits.charAt(i);
+      if (flipPrev[i] !== v) { el.textContent = v; el.className = el.className.replace(' flip', ''); void el.offsetWidth; if (flipPrev[i] !== '') el.className += ' flip'; flipPrev[i] = v; }
+    }
+    $('fAm').textContent = h12 ? ampm(d.getHours()) : greeting(d.getHours()).toUpperCase();
+    $('fD').textContent = dateText(d);
+  }
+}
+function clockLoop() {
+  if (cur === 'clock') {
+    var t = timeParts(), sec = t.d.getSeconds();
+    if (clockStyle === 0) drawClassic(t);
+    else if (clockStyle === 3) drawNeon(t);
+    else if (clockStyle === 4) drawGold(t);
+    else if (clockStyle === 1) $('dBarIn').style.width = (t.s / 60 * 100) + '%';
+    if (sec !== lastSec) { lastSec = sec; updateDom(t.d); }
+  }
+  requestAnimationFrame(clockLoop);
+}
+
+// ===================== WEATHER =====================
+function wx(c, day) {
+  if (c === 0) return day === 0 ? ['🌙', 'Clear night'] : ['☀️', 'Clear sky'];
+  if (c === 1) return day === 0 ? ['🌙', 'Mostly clear'] : ['🌤️', 'Mostly sunny'];
+  if (c === 2) return ['⛅', 'Partly cloudy'];
   if (c === 3) return ['☁️', 'Cloudy'];
   if (c <= 48) return ['🌫️', 'Fog'];
   if (c <= 57) return ['🌦️', 'Drizzle'];
   if (c <= 67) return ['🌧️', 'Rain'];
   if (c <= 77) return ['❄️', 'Snow'];
-  if (c <= 82) return ['🌦️', 'Showers'];
+  if (c <= 82) return ['🌦️', 'Rain showers'];
   return ['⛈️', 'Thunderstorm'];
 }
-var wLast = 0;
+function wBg(c, day) {
+  if (day === 0) return 'linear-gradient(160deg,#0b1026,#1a1240 60%,#060816)';
+  if (c >= 51) return 'linear-gradient(160deg,#1c2a3a,#2d3e50 60%,#141c26)';
+  if (c >= 2) return 'linear-gradient(160deg,#24384f,#3d5670 60%,#18263a)';
+  return 'linear-gradient(160deg,#0f4c81,#1f7fb5 55%,#f0a35e)';
+}
+function compass(deg) { return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg / 45) % 8]; }
+function uvLevel(u) { return u < 3 ? 'Low' : u < 6 ? 'Moderate' : u < 8 ? 'High' : u < 11 ? 'Very high' : 'Extreme'; }
+function aqiLevel(a) {
+  return a <= 50 ? ['Good', '#5ee68a'] : a <= 100 ? ['Moderate', '#ffd84d'] : a <= 150 ? ['Unhealthy for some', '#ff9f43'] :
+    a <= 200 ? ['Unhealthy', '#ff5a5f'] : a <= 300 ? ['Very unhealthy', '#b26bff'] : ['Hazardous', '#a0522d'];
+}
+function hhmm(iso) { var h = +iso.slice(11, 13), m = iso.slice(14, 16); return h12 ? (h % 12 || 12) + ':' + m + ' ' + (h < 12 ? 'AM' : 'PM') : pad(h) + ':' + m; }
+
+var wData = null, aqData = null, wLast = 0, wReq = 0;
+function clearWeather() {
+  var ids = ['wIc', 'wTemp', 'wDesc', 'wFeel', 'wGrid', 'wHourly', 'wDaily'];
+  for (var i = 0; i < ids.length; i++) $(ids[i]).innerHTML = '';
+}
 function loadWeather() {
-  $('wCity').textContent = CITY.name;
-  if (Date.now() - wLast < 15 * 60 * 1000) return;
-  var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + CITY.lat + '&longitude=' + CITY.lon +
-    '&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m' +
-    '&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=5';
-  fetch(url).then(function (r) { return r.json(); }).then(function (j) {
-    var c = j.current, w = wx(c.weather_code);
-    $('wIc').textContent = w[0];
-    $('wTemp').textContent = Math.round(c.temperature_2m) + '°';
-    $('wDesc').textContent = w[1];
-    $('wExtra').textContent = 'Humidity ' + c.relative_humidity_2m + '%  ·  Wind ' + Math.round(c.wind_speed_10m) + ' km/h';
-    var h = '';
-    for (var i = 0; i < j.daily.time.length; i++) {
-      var dw = wx(j.daily.weather_code[i]), dd = new Date(j.daily.time[i] + 'T12:00:00');
-      h += '<div class="day">' + (i === 0 ? 'Today' : DAYS[dd.getDay()].slice(0, 3)) +
-        '<div class="ic">' + dw[0] + '</div>' + Math.round(j.daily.temperature_2m_max[i]) + '° / ' +
-        Math.round(j.daily.temperature_2m_min[i]) + '°</div>';
-    }
-    $('days').innerHTML = h;
-    wLast = Date.now();
-  }).catch(function () {
-    $('wDesc').textContent = 'Could not load weather. Check the TV internet connection.';
-  });
+  if (Date.now() - wLast < 10 * 60 * 1000) return;
+  wLast = Date.now();
+  var req = ++wReq, ll = 'latitude=' + CITY.lat + '&longitude=' + CITY.lon;
+  fetch('https://api.open-meteo.com/v1/forecast?' + ll +
+    '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,precipitation' +
+    '&hourly=temperature_2m,weather_code,precipitation_probability,is_day,uv_index,visibility' +
+    '&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_probability_max' +
+    '&timezone=auto&forecast_days=7')
+    .then(function (r) { if (!r.ok) throw r.status; return r.json(); })
+    .then(function (j) { if (req !== wReq) return; wData = j; renderWeather(); tick(); })
+    .catch(function () { if (req === wReq) wLast = 0; if (req === wReq && !wData) { $('wMsg').style.display = 'block'; $('wMsg').textContent = 'Could not load weather. Check the TV internet connection.'; } });
+  fetch('https://air-quality-api.open-meteo.com/v1/air-quality?' + ll + '&current=us_aqi,pm2_5,dust&timezone=auto')
+    .then(function (r) { if (!r.ok) throw r.status; return r.json(); })
+    .then(function (j) { if (req !== wReq) return; aqData = j; renderWeather(); })
+    .catch(function () {});
+}
+setInterval(function () { wLast = 0; loadWeather(); }, 30 * 60 * 1000);
+
+function stat(x, y, label, value, sub) {
+  return '<div class="card st" style="left:' + x + 'px;top:' + y + 'px"><div class="l">' + label + '</div><div class="v">' + value + '</div><div class="s">' + sub + '</div></div>';
+}
+function renderWeather() {
+  $('wHead').innerHTML = CITY.name + '<small>' + CITY.country + '  ·  ' + dateText(new Date()) + '</small>';
+  if (!wData) { if ($('wMsg').textContent.indexOf('Could') < 0 || !wLast) { $('wMsg').textContent = 'Loading weather for ' + CITY.name + '…'; } $('wMsg').style.display = 'block'; return; }
+  $('wMsg').style.display = 'none';
+  var c = wData.current, h = wData.hourly, dl = wData.daily, w = wx(c.weather_code, c.is_day);
+  $('weather').style.background = wBg(c.weather_code, c.is_day);
+  var now = c.time.slice(0, 13), hi = 0;
+  for (var i = 0; i < h.time.length; i++) if (h.time[i].slice(0, 13) >= now) { hi = i; break; }
+  $('wIc').textContent = w[0];
+  $('wTemp').textContent = Math.round(c.temperature_2m) + '°';
+  $('wDesc').textContent = w[1];
+  $('wFeel').textContent = 'Feels like ' + Math.round(c.apparent_temperature) + '°   ·   H ' + Math.round(dl.temperature_2m_max[0]) + '°  L ' + Math.round(dl.temperature_2m_min[0]) + '°';
+
+  var uv = h.uv_index[hi] || 0, vis = (h.visibility[hi] || 0) / 1000, aq = aqData && aqData.current;
+  var aqHtml = aq ? '<span style="color:' + aqiLevel(aq.us_aqi)[1] + '">' + Math.round(aq.us_aqi) + '</span>' : '–';
+  var arrow = '<span style="display:inline-block;transform:rotate(' + (c.wind_direction_10m + 180) + 'deg)">↑</span>';
+  var X = [0, 265, 530, 795], Y = [0, 220];
+  $('wGrid').innerHTML =
+    stat(X[0], Y[0], 'Humidity', c.relative_humidity_2m + '<small>%</small>', c.relative_humidity_2m > 70 ? 'Very humid' : c.relative_humidity_2m > 40 ? 'Comfortable' : 'Dry') +
+    stat(X[1], Y[0], 'Wind', Math.round(c.wind_speed_10m) + '<small> km/h</small>', arrow + ' ' + compass(c.wind_direction_10m) + ' · gusts ' + Math.round(c.wind_gusts_10m)) +
+    stat(X[2], Y[0], 'UV index', Math.round(uv), uvLevel(uv) + ' · max ' + Math.round(dl.uv_index_max[0])) +
+    stat(X[3], Y[0], 'Air quality', aqHtml, aq ? aqiLevel(aq.us_aqi)[0] + (aq.dust > 50 ? ' · dust' : '') : 'Loading…') +
+    stat(X[0], Y[1], 'Sunrise', '🌅', hhmm(dl.sunrise[0])) +
+    stat(X[1], Y[1], 'Sunset', '🌇', hhmm(dl.sunset[0])) +
+    stat(X[2], Y[1], 'Pressure', Math.round(c.pressure_msl) + '<small> hPa</small>', 'Sea level') +
+    stat(X[3], Y[1], 'Rain', (dl.precipitation_probability_max[0] || 0) + '<small>%</small>', 'Visibility ' + (vis >= 10 ? '10+' : vis.toFixed(1)) + ' km');
+
+  var hs = '';
+  for (var k = hi; k < hi + 12 && k < h.time.length; k++) {
+    var p = h.precipitation_probability[k];
+    hs += '<div class="hr"><div>' + (k === hi ? 'Now' : hhmm(h.time[k]).replace(':00', '')) + '</div><div class="ic">' + wx(h.weather_code[k], h.is_day[k])[0] +
+      '</div><div class="t">' + Math.round(h.temperature_2m[k]) + '°</div><div class="p">' + (p > 0 ? '💧' + p + '%' : '') + '</div></div>';
+  }
+  $('wHourly').innerHTML = hs;
+
+  var ds = '';
+  for (var n = 0; n < dl.time.length; n++) {
+    var dd = new Date(dl.time[n] + 'T12:00:00');
+    ds += '<div class="dy"><div>' + (n === 0 ? 'Today' : DAYS[dd.getDay()].slice(0, 3)) + '</div><div class="ic">' + wx(dl.weather_code[n], 1)[0] +
+      '</div><div class="r">' + Math.round(dl.temperature_2m_max[n]) + '° <span>' + Math.round(dl.temperature_2m_min[n]) + '°</span></div></div>';
+  }
+  $('wDaily').innerHTML = ds;
 }
 
-// ----- Photos (random photos from picsum.photos) -----
+// ===================== PHOTOS =====================
 var pA = $('pA'), pB = $('pB'), pFront = pA, pTimer, pN = 0;
 function nextPhoto() {
   var back = pFront === pA ? pB : pA;
@@ -227,10 +477,9 @@ function nextPhoto() {
   back.src = 'https://picsum.photos/1920/1080?random=' + (++pN) + '&t=' + Date.now();
 }
 
-// ----- Game: Snake -----
+// ===================== GAME: Snake =====================
 var cv = $('cv'), cx = cv.getContext('2d'), CELL = 50, GW = 32, GH = 18;
-var snake, dir, nextDir, food, score, over, gTimer, best = 0;
-try { best = +localStorage.getItem('best') || 0; } catch (x) {}
+var snake, dir, nextDir, food, score, over, gTimer, best = +(store('best') || 0);
 function gStart() {
   snake = [{x: 8, y: 9}, {x: 7, y: 9}, {x: 6, y: 9}];
   dir = nextDir = {x: 1, y: 0}; score = 0; over = false;
@@ -243,7 +492,7 @@ function step() {
   var h = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
   if (h.x < 0 || h.y < 0 || h.x >= GW || h.y >= GH || hits(h)) {
     over = true; clearInterval(gTimer);
-    if (score > best) { best = score; try { localStorage.setItem('best', best); } catch (x) {} }
+    if (score > best) { best = score; store('best', best); }
     draw(); return;
   }
   snake.unshift(h);
@@ -272,7 +521,8 @@ function draw() {
   }
 }
 
-setFocus(0);
+// ----- Start -----
+setFocus(0); tick(); loadWeather(); clockLoop();
 </script>
 </body>
 </html>
