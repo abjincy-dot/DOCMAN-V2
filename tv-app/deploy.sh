@@ -33,16 +33,27 @@ done
 echo "var MY_PHOTOS = [${list%,}];" > photos.js
 echo "     $n photos added"
 
+reconnect() {
+  "$SDB" disconnect "$TV" >/dev/null 2>&1
+  [ "$1" = "hard" ] && { "$SDB" kill-server >/dev/null 2>&1; sleep 1; "$SDB" start-server >/dev/null 2>&1; }
+  "$SDB" connect "$TV" >/dev/null 2>&1
+  sleep 1
+  "$SDB" devices | grep -q "$TV"
+}
+
 echo "3/5  Connecting to the TV..."
-"$SDB" connect "$TV" >/dev/null 2>&1
-"$SDB" devices | grep -q "$TV" || fail "TV not found. Make sure the TV is ON and on the same Wi-Fi."
+reconnect || reconnect hard || fail "TV not found. Make sure the TV is ON (not standby) and on the same Wi-Fi."
 
 echo "4/5  Building and installing (this takes about 10 seconds)..."
 rm -f ./*.wgt
 "$TIZEN" package -t wgt -s "$PROFILE" -- . >/dev/null 2>&1 || fail "Could not build the app"
 mv ./*.wgt MyTV.wgt 2>/dev/null
-OUT=$("$TIZEN" install -n MyTV.wgt -s "$TV" -- . 2>&1)
-echo "$OUT" | grep -q "install completed" || { echo "$OUT" | tail -5; fail "Install failed"; }
+install() { OUT=$("$TIZEN" install -n MyTV.wgt -s "$TV" -- . 2>&1); echo "$OUT" | grep -q "install completed"; }
+if ! install; then
+  echo "     Connection was stale, reconnecting and trying again..."
+  reconnect hard || fail "Lost the connection to the TV. Make sure the TV is ON."
+  install || { echo "$OUT" | tail -5; fail "Install failed"; }
+fi
 
 echo "5/5  Opening My TV on the TV..."
 "$TIZEN" run -p HelloTV001.HelloTV -s "$TV" >/dev/null 2>&1
