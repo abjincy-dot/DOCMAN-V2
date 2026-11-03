@@ -12,13 +12,13 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
 .hint{position:absolute;bottom:40px;width:100%;text-align:center;font-size:28px;opacity:.45}
 
 /* ---------- Home ---------- */
-#home{background:radial-gradient(ellipse at 50% 0%,#1d2b52 0%,#0a0e1a 70%)}
+#home{background:radial-gradient(ellipse at 50% 0%,#151a26 0%,#050608 70%)}
 #home h1{font-size:84px;font-weight:300;text-align:center;margin-top:140px;letter-spacing:4px}
 #home .sub{font-size:34px;text-align:center;opacity:.6;margin-top:14px}
 #tiles{display:flex;justify-content:center;margin-top:110px}
-.tile{width:360px;height:360px;margin:0 28px;border-radius:36px;background:rgba(255,255,255,.07);border:5px solid rgba(255,255,255,.08);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:44px;transition:transform .15s,background .15s,border-color .15s}
+.tile{width:360px;height:360px;margin:0 28px;border-radius:36px;background:rgba(255,255,255,.05);border:5px solid rgba(255,255,255,.06);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:44px;transition:transform .15s,background .15s,border-color .15s}
 .tile .ic{font-size:140px;margin-bottom:24px}
-.tile.f{transform:scale(1.1);background:rgba(110,168,255,.22);border-color:#8fbcff}
+.tile.f{transform:scale(1.1);background:rgba(255,255,255,.13);border-color:#e8e8e8}
 
 /* ---------- Clock ---------- */
 #cc{position:absolute;top:0;left:0}
@@ -28,7 +28,7 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
 #cToast span{display:inline-block;padding:18px 44px;border-radius:50px;background:rgba(0,0,0,.6);border:2px solid rgba(255,255,255,.2);font-size:36px}
 #clock .hint{z-index:5}
 /* Big digital */
-#csDigital{background:linear-gradient(135deg,#120b2e,#06223a 50%,#0b2e2a);background-size:300% 300%;animation:bg 40s ease infinite;text-align:center}
+#csDigital{background:radial-gradient(ellipse at 50% 40%,#14161d,#040405 75%);text-align:center}
 @keyframes bg{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
 #dT{font-size:440px;font-weight:100;margin-top:170px;line-height:1;letter-spacing:-10px}
 #dT small{font-size:120px;letter-spacing:0;opacity:.6;margin-left:20px}
@@ -49,11 +49,11 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
 #fD{position:absolute;top:720px;width:100%;text-align:center;font-size:58px;opacity:.75}
 
 /* ---------- Weather ---------- */
-#weather{transition:background 1s}
+#weather{background:#06070a}
 #wHead{position:absolute;top:44px;left:80px;font-size:52px;font-weight:300}
 #wHead small{font-size:34px;opacity:.6;margin-left:20px}
 #wClock{position:absolute;top:50px;right:80px;font-size:44px;opacity:.85}
-.card{position:absolute;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.12);border-radius:30px}
+.card{position:absolute;background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.08);border-radius:30px}
 #wHero{left:80px;top:140px;width:680px;height:420px;padding:36px 44px}
 #wHero .ic{position:absolute;right:40px;top:30px;font-size:170px}
 #wHero .temp{font-size:200px;font-weight:200;line-height:1;margin-top:10px}
@@ -82,7 +82,7 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
 #photos{background:#000}
 #photos img{position:absolute;top:0;left:0;width:1920px;height:1080px;object-fit:cover;opacity:0;transition:opacity 1.5s}
 #pmsg{position:absolute;top:500px;width:100%;text-align:center;font-size:48px}
-#game{background:#0a0e1a}
+#game{background:#050608}
 #game .score{position:absolute;top:30px;left:160px;font-size:44px}
 #cv{position:absolute;top:120px;left:160px;border-radius:16px}
 </style>
@@ -178,7 +178,7 @@ function open(id) {
   for (var i = 0; i < s.length; i++) s[i].className = 'screen' + (s[i].id === id ? ' on' : '');
   cur = id;
   if (id === 'clock') { setStyle(clockStyle, true); }
-  if (id === 'weather') { renderWeather(); loadWeather(); }
+  if (id === 'weather') { loadWeather(); renderWeather(); }
   if (id === 'photos') { nextPhoto(); pTimer = setInterval(nextPhoto, 7000); }
   if (id === 'game') gStart();
 }
@@ -201,7 +201,7 @@ document.addEventListener('keydown', function (e) {
     if (k === 37 || k === 39) {
       setCity(cityIdx + (k === 39 ? 1 : -1)); store('city', cityIdx);
       toast('📍 ' + CITY.name + ', ' + CITY.country + '   (' + (cityIdx + 1) + ' of ' + CITIES.length + ')');
-      wData = null; aqData = null; wLast = 0; clearWeather(); renderWeather(); loadWeather(); tick();
+      loadWeather(); if (!wData) clearWeather(); renderWeather(); tick();
     }
   } else if (cur === 'photos') {
     if (k === 37 || k === 39 || k === 13) { clearInterval(pTimer); nextPhoto(); pTimer = setInterval(nextPhoto, 7000); }
@@ -241,49 +241,59 @@ function setStyle(i, quiet) {
   toast('Style ' + (clockStyle + 1) + ' of ' + STYLES.length + ':  ' + STYLES[clockStyle]);
 }
 
-// Analog dial used by Classic and Gold
-function dial(x, y, R, t, th) {
+// Static parts (background, dial, ticks) are drawn once and reused every frame
+var layer = document.createElement('canvas'); layer.width = 1920; layer.height = 1080;
+var lg = layer.getContext('2d'), layerKey = '';
+function useLayer(key, paint) {
+  if (layerKey !== key) { lg.setTransform(1, 0, 0, 1, 0, 0); lg.clearRect(0, 0, 1920, 1080); paint(lg); layerKey = key; }
+  g.drawImage(layer, 0, 0);
+}
+function dialStatic(c, x, y, R, th) {
+  c.save(); c.translate(x, y);
+  var fg = c.createRadialGradient(0, -R * 0.3, R * 0.1, 0, 0, R);
+  fg.addColorStop(0, th.face0); fg.addColorStop(1, th.face1);
+  c.beginPath(); c.arc(0, 0, R, 0, 7); c.fillStyle = fg; c.fill();
+  c.lineWidth = th.rimW; c.strokeStyle = th.rim; c.stroke();
+  for (var i = 0; i < 60; i++) {
+    var big = i % 5 === 0;
+    c.save(); c.rotate(i * Math.PI / 30); c.beginPath(); c.lineCap = 'round';
+    c.moveTo(0, -R + 38); c.lineTo(0, -R + (big ? (i % 15 === 0 ? 92 : 76) : 52));
+    c.lineWidth = big ? (i % 15 === 0 ? 12 : 7) : 3;
+    c.strokeStyle = big ? th.tick : th.tickS; c.stroke(); c.restore();
+  }
+  if (th.nums) {
+    c.fillStyle = th.num; c.font = '300 ' + Math.round(R * 0.15) + 'px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    for (var n = 1; n <= 12; n++) { var a = n * Math.PI / 6; c.fillText(n, Math.sin(a) * (R - 140), -Math.cos(a) * (R - 140)); }
+  }
+  if (th.label) { c.font = '400 30px sans-serif'; c.fillStyle = th.tickS; c.textAlign = 'center'; c.fillText(th.label, 0, -R * 0.42); }
+  c.restore();
+}
+function dialHands(x, y, R, t, th) {
   var s = t.s, m = t.m, h = t.h;
   g.save(); g.translate(x, y);
-  var fg = g.createRadialGradient(0, -R * 0.3, R * 0.1, 0, 0, R);
-  fg.addColorStop(0, th.face0); fg.addColorStop(1, th.face1);
-  g.beginPath(); g.arc(0, 0, R, 0, 7); g.fillStyle = fg; g.fill();
-  g.lineWidth = th.rimW; g.strokeStyle = th.rim; g.stroke();
   if (th.ring) {
     g.beginPath(); g.arc(0, 0, R - 16, -Math.PI / 2, -Math.PI / 2 + s / 60 * 2 * Math.PI);
     g.lineWidth = 8; g.lineCap = 'round'; g.strokeStyle = th.ring; g.stroke();
-  }
-  for (var i = 0; i < 60; i++) {
-    var big = i % 5 === 0;
-    g.save(); g.rotate(i * Math.PI / 30); g.beginPath(); g.lineCap = 'round';
-    g.moveTo(0, -R + 38); g.lineTo(0, -R + (big ? (i % 15 === 0 ? 92 : 76) : 52));
-    g.lineWidth = big ? (i % 15 === 0 ? 12 : 7) : 3;
-    g.strokeStyle = big ? th.tick : th.tickS; g.stroke(); g.restore();
-  }
-  if (th.nums) {
-    g.fillStyle = th.num; g.font = '300 ' + Math.round(R * 0.15) + 'px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    for (var n = 1; n <= 12; n++) { var a = n * Math.PI / 6; g.fillText(n, Math.sin(a) * (R - 140), -Math.cos(a) * (R - 140)); }
   }
   if (th.date) {
     g.fillStyle = '#0d0d0d'; g.strokeStyle = th.tick; g.lineWidth = 2;
     g.fillRect(R * 0.42, -30, 90, 60); g.strokeRect(R * 0.42, -30, 90, 60);
     g.fillStyle = th.tick; g.font = '600 38px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText(t.d.getDate(), R * 0.42 + 45, 2);
-    g.font = '400 30px sans-serif'; g.fillStyle = th.tickS; g.fillText(th.label, 0, -R * 0.42);
   }
-  function hand(ang, len, w, col, back) {
-    g.save(); g.rotate(ang); g.beginPath(); g.lineCap = 'round';
-    g.moveTo(0, back); g.lineTo(0, -len); g.lineWidth = w; g.strokeStyle = col;
-    g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 14; g.shadowOffsetY = 6; g.stroke(); g.restore();
+  function hand(ang, len, w, col, back, shade) {
+    g.save(); g.rotate(ang);
+    if (shade) { g.beginPath(); g.lineCap = 'round'; g.moveTo(4, back + 6); g.lineTo(4, -len + 6); g.lineWidth = w + 2; g.strokeStyle = 'rgba(0,0,0,.45)'; g.stroke(); }
+    g.beginPath(); g.lineCap = 'round'; g.moveTo(0, back); g.lineTo(0, -len); g.lineWidth = w; g.strokeStyle = col; g.stroke(); g.restore();
   }
-  hand(h * Math.PI / 6, R * 0.5, 20, th.hand, 34);
-  hand(m * Math.PI / 30, R * 0.74, 13, th.hand2, 34);
-  hand(s * Math.PI / 30, R * 0.84, 4, th.sec, 70);
+  hand(h * Math.PI / 6, R * 0.5, 20, th.hand, 34, true);
+  hand(m * Math.PI / 30, R * 0.74, 13, th.hand2, 34, true);
+  hand(s * Math.PI / 30, R * 0.84, 4, th.sec, 70, false);
   g.beginPath(); g.arc(0, 0, 18, 0, 7); g.fillStyle = th.sec; g.fill();
   g.beginPath(); g.arc(0, 0, 7, 0, 7); g.fillStyle = '#fff'; g.fill();
   g.restore();
 }
-var TH_CLASSIC = { face0: 'rgba(255,255,255,.14)', face1: 'rgba(255,255,255,.03)', rim: 'rgba(255,255,255,.25)', rimW: 3,
+var TH_CLASSIC = { face0: 'rgba(255,255,255,.10)', face1: 'rgba(255,255,255,.02)', rim: 'rgba(255,255,255,.22)', rimW: 3,
   ring: 'rgba(126,200,255,.85)', tick: '#fff', tickS: 'rgba(255,255,255,.35)', nums: true, num: 'rgba(255,255,255,.85)',
   hand: '#fff', hand2: '#e2ebff', sec: '#ff7a59' };
 var TH_GOLD = { face0: '#1c1a16', face1: '#050505', rim: '#b8922f', rimW: 10, ring: null,
@@ -295,10 +305,13 @@ function timeParts() {
   return { d: d, s: s, m: m, h: (d.getHours() % 12) + m / 60 };
 }
 function drawClassic(t) {
-  var bg = g.createLinearGradient(0, 0, 1920, 1080);
-  bg.addColorStop(0, '#0b0f1e'); bg.addColorStop(1, '#101a2c');
-  g.fillStyle = bg; g.fillRect(0, 0, 1920, 1080);
-  dial(560, 540, 400, t, TH_CLASSIC);
+  useLayer('classic', function (c) {
+    var bg = c.createLinearGradient(0, 0, 1920, 1080);
+    bg.addColorStop(0, '#08090c'); bg.addColorStop(1, '#0f1116');
+    c.fillStyle = bg; c.fillRect(0, 0, 1920, 1080);
+    dialStatic(c, 560, 540, 400, TH_CLASSIC);
+  });
+  dialHands(560, 540, 400, t, TH_CLASSIC);
   var d = t.d, x = 1080;
   g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillStyle = 'rgba(255,255,255,.7)';
   g.font = '300 54px sans-serif'; g.fillText(greeting(d.getHours()), x, 400);
@@ -310,31 +323,48 @@ function drawClassic(t) {
   if (h12) { g.font = '300 50px sans-serif'; g.fillText(ampm(d.getHours()), x + wHm + 10, 530); }
   g.fillStyle = 'rgba(255,255,255,.7)'; g.font = '300 54px sans-serif'; g.fillText(dateText(d), x, 730);
 }
+// Neon: glowing text is drawn once per minute into its own layer
+var neonTxt = document.createElement('canvas'); neonTxt.width = 1920; neonTxt.height = 1080;
+var ng = neonTxt.getContext('2d'), neonKey = '';
 function drawNeon(t) {
-  g.fillStyle = '#05040c'; g.fillRect(0, 0, 1920, 1080);
-  var glow = g.createRadialGradient(960, 540, 50, 960, 540, 700);
-  glow.addColorStop(0, 'rgba(120,40,200,.25)'); glow.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = glow; g.fillRect(0, 0, 1920, 1080);
+  useLayer('neon', function (c) {
+    c.fillStyle = '#040407'; c.fillRect(0, 0, 1920, 1080);
+    var glow = c.createRadialGradient(960, 540, 50, 960, 540, 700);
+    glow.addColorStop(0, 'rgba(120,40,200,.18)'); glow.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = glow; c.fillRect(0, 0, 1920, 1080);
+    for (var i = 0; i < 60; i++) {
+      var a = i * Math.PI / 30;
+      c.beginPath(); c.arc(960 + Math.sin(a) * 440, 540 - Math.cos(a) * 440, i % 5 === 0 ? 11 : 7, 0, 7);
+      c.fillStyle = 'rgba(255,255,255,.12)'; c.fill();
+    }
+  });
   var sec = Math.floor(t.s), d = t.d;
-  for (var i = 0; i < 60; i++) {
-    var a = i * Math.PI / 30, x = 960 + Math.sin(a) * 440, y = 540 - Math.cos(a) * 440, on = i <= sec;
-    g.beginPath(); g.arc(x, y, i % 5 === 0 ? 11 : 7, 0, 7);
-    g.fillStyle = i === sec ? '#ff4fd8' : on ? '#3ef0ff' : 'rgba(255,255,255,.12)';
-    g.shadowColor = g.fillStyle; g.shadowBlur = on ? 25 : 0; g.fill();
+  for (var i = 0; i <= sec; i++) {
+    var a = i * Math.PI / 30, x = 960 + Math.sin(a) * 440, y = 540 - Math.cos(a) * 440, r = i % 5 === 0 ? 11 : 7;
+    var col = i === sec ? '255,79,216' : '62,240,255';
+    g.beginPath(); g.arc(x, y, r * 2.4, 0, 7); g.fillStyle = 'rgba(' + col + ',.18)'; g.fill();
+    g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = 'rgb(' + col + ')'; g.fill();
   }
-  g.shadowBlur = 40; g.shadowColor = '#3ef0ff'; g.fillStyle = '#e9fdff';
-  g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '200 260px sans-serif';
-  g.fillText(hourText(d.getHours()) + ':' + pad(d.getMinutes()), 960, 510);
-  g.shadowColor = '#ff4fd8'; g.shadowBlur = 25; g.fillStyle = '#ffd1f4'; g.font = '300 50px sans-serif';
-  g.fillText((h12 ? ampm(d.getHours()) + '  ·  ' : '') + dateText(d), 960, 680);
-  g.shadowBlur = 0;
+  var key = hourText(d.getHours()) + ':' + pad(d.getMinutes()) + h12 + d.getDate();
+  if (neonKey !== key) {
+    neonKey = key; ng.clearRect(0, 0, 1920, 1080);
+    ng.textAlign = 'center'; ng.textBaseline = 'middle';
+    ng.shadowBlur = 40; ng.shadowColor = '#3ef0ff'; ng.fillStyle = '#e9fdff'; ng.font = '200 260px sans-serif';
+    ng.fillText(hourText(d.getHours()) + ':' + pad(d.getMinutes()), 960, 510);
+    ng.shadowColor = '#ff4fd8'; ng.shadowBlur = 25; ng.fillStyle = '#ffd1f4'; ng.font = '300 50px sans-serif';
+    ng.fillText((h12 ? ampm(d.getHours()) + '  ·  ' : '') + dateText(d), 960, 680);
+  }
+  g.drawImage(neonTxt, 0, 0);
 }
 function drawGold(t) {
-  var bg = g.createRadialGradient(960, 540, 100, 960, 540, 1100);
-  bg.addColorStop(0, '#16130d'); bg.addColorStop(1, '#000');
-  g.fillStyle = bg; g.fillRect(0, 0, 1920, 1080);
   TH_GOLD.label = CITY.name.toUpperCase();
-  dial(960, 540, 460, t, TH_GOLD);
+  useLayer('gold' + CITY.name, function (c) {
+    var bg = c.createRadialGradient(960, 540, 100, 960, 540, 1100);
+    bg.addColorStop(0, '#16130d'); bg.addColorStop(1, '#000');
+    c.fillStyle = bg; c.fillRect(0, 0, 1920, 1080);
+    dialStatic(c, 960, 540, 460, TH_GOLD);
+  });
+  dialHands(960, 540, 460, t, TH_GOLD);
 }
 var flipPrev = ['', '', '', '', '', ''];
 function updateDom(d) {
@@ -352,8 +382,10 @@ function updateDom(d) {
     $('fD').textContent = dateText(d);
   }
 }
-function clockLoop() {
-  if (cur === 'clock') {
+var lastFrame = 0;
+function clockLoop(now) {
+  if (cur === 'clock' && (!now || now - lastFrame > 30)) {
+    lastFrame = now || 0;
     var t = timeParts(), sec = t.d.getSeconds();
     if (clockStyle === 0) drawClassic(t);
     else if (clockStyle === 3) drawNeon(t);
@@ -378,10 +410,10 @@ function wx(c, day) {
   return ['⛈️', 'Thunderstorm'];
 }
 function wBg(c, day) {
-  if (day === 0) return 'linear-gradient(160deg,#0b1026,#1a1240 60%,#060816)';
-  if (c >= 51) return 'linear-gradient(160deg,#1c2a3a,#2d3e50 60%,#141c26)';
-  if (c >= 2) return 'linear-gradient(160deg,#24384f,#3d5670 60%,#18263a)';
-  return 'linear-gradient(160deg,#0f4c81,#1f7fb5 55%,#f0a35e)';
+  if (day === 0) return 'linear-gradient(160deg,#07070d,#0c0a16 60%,#040406)';
+  if (c >= 51) return 'linear-gradient(160deg,#06090d,#0c1118 60%,#040506)';
+  if (c >= 2) return 'linear-gradient(160deg,#08090c,#101216 60%,#050506)';
+  return 'linear-gradient(160deg,#07080b,#0e1014 55%,#16110a)';
 }
 function compass(deg) { return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg / 45) % 8]; }
 function uvLevel(u) { return u < 3 ? 'Low' : u < 6 ? 'Moderate' : u < 8 ? 'High' : u < 11 ? 'Very high' : 'Extreme'; }
@@ -391,36 +423,47 @@ function aqiLevel(a) {
 }
 function hhmm(iso) { var h = +iso.slice(11, 13), m = iso.slice(14, 16); return h12 ? (h % 12 || 12) + ':' + m + ' ' + (h < 12 ? 'AM' : 'PM') : pad(h) + ':' + m; }
 
-var wData = null, aqData = null, wLast = 0, wReq = 0;
+var wData = null, aqData = null, wCache = {}, wErr = false;
 function clearWeather() {
   var ids = ['wIc', 'wTemp', 'wDesc', 'wFeel', 'wGrid', 'wHourly', 'wDaily'];
   for (var i = 0; i < ids.length; i++) $(ids[i]).innerHTML = '';
 }
-function loadWeather() {
-  if (Date.now() - wLast < 10 * 60 * 1000) return;
-  wLast = Date.now();
-  var req = ++wReq, ll = 'latitude=' + CITY.lat + '&longitude=' + CITY.lon;
+function jsonOk(r) { if (!r.ok) throw r.status; return r.json(); }
+function fresh(idx) { var e = wCache[idx]; return e && e.w && Date.now() - e.t < 15 * 60 * 1000; }
+function fetchCity(idx, cb) {
+  var c = CITIES[idx], ll = 'latitude=' + c[2] + '&longitude=' + c[3], e = wCache[idx] || (wCache[idx] = {});
+  if (e.busy) return;
+  e.busy = true; e.fail = false;
   fetch('https://api.open-meteo.com/v1/forecast?' + ll +
     '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,precipitation' +
     '&hourly=temperature_2m,weather_code,precipitation_probability,is_day,uv_index,visibility' +
     '&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_probability_max' +
     '&timezone=auto&forecast_days=7')
-    .then(function (r) { if (!r.ok) throw r.status; return r.json(); })
-    .then(function (j) { if (req !== wReq) return; wData = j; renderWeather(); tick(); })
-    .catch(function () { if (req === wReq) wLast = 0; if (req === wReq && !wData) { $('wMsg').style.display = 'block'; $('wMsg').textContent = 'Could not load weather. Check the TV internet connection.'; } });
+    .then(jsonOk)
+    .then(function (j) { e.w = j; e.t = Date.now(); e.busy = false; if (cb) cb(idx); })
+    .catch(function () { e.busy = false; e.fail = true; if (cb) cb(idx); });
   fetch('https://air-quality-api.open-meteo.com/v1/air-quality?' + ll + '&current=us_aqi,pm2_5,dust&timezone=auto')
-    .then(function (r) { if (!r.ok) throw r.status; return r.json(); })
-    .then(function (j) { if (req !== wReq) return; aqData = j; renderWeather(); })
-    .catch(function () {});
+    .then(jsonOk).then(function (j) { e.aq = j; if (cb) cb(idx); }).catch(function () {});
 }
-setInterval(function () { wLast = 0; loadWeather(); }, 30 * 60 * 1000);
+function useCity() { var e = wCache[cityIdx] || {}; wData = e.w || null; aqData = e.aq || null; wErr = !!e.fail && !e.w; }
+function onData(idx) { if (idx !== cityIdx) return; useCity(); if (cur === 'weather') renderWeather(); tick(); }
+function prefetch() {
+  var n = [cityIdx + 1, cityIdx - 1];
+  for (var i = 0; i < n.length; i++) { var k = (n[i] + CITIES.length) % CITIES.length; if (!fresh(k)) fetchCity(k); }
+}
+function loadWeather() {
+  useCity();
+  if (fresh(cityIdx)) { prefetch(); return; }
+  fetchCity(cityIdx, function (i) { onData(i); if (i === cityIdx) prefetch(); });
+}
+setInterval(loadWeather, 15 * 60 * 1000);
 
 function stat(x, y, label, value, sub) {
   return '<div class="card st" style="left:' + x + 'px;top:' + y + 'px"><div class="l">' + label + '</div><div class="v">' + value + '</div><div class="s">' + sub + '</div></div>';
 }
 function renderWeather() {
   $('wHead').innerHTML = CITY.name + '<small>' + CITY.country + '  ·  ' + dateText(new Date()) + '</small>';
-  if (!wData) { if ($('wMsg').textContent.indexOf('Could') < 0 || !wLast) { $('wMsg').textContent = 'Loading weather for ' + CITY.name + '…'; } $('wMsg').style.display = 'block'; return; }
+  if (!wData) { $('wMsg').textContent = wErr ? 'Could not load weather. Check the TV internet connection.' : 'Loading weather for ' + CITY.name + '…'; $('wMsg').style.display = 'block'; return; }
   $('wMsg').style.display = 'none';
   var c = wData.current, h = wData.hourly, dl = wData.daily, w = wx(c.weather_code, c.is_day);
   $('weather').style.background = wBg(c.weather_code, c.is_day);
@@ -505,7 +548,7 @@ function gameKey(k) {
   else if (k === 13 && over) gStart();
 }
 function draw() {
-  cx.fillStyle = '#141b33'; cx.fillRect(0, 0, cv.width, cv.height);
+  cx.fillStyle = '#111317'; cx.fillRect(0, 0, cv.width, cv.height);
   cx.fillStyle = '#ff5a5f';
   cx.beginPath(); cx.arc(food.x * CELL + 25, food.y * CELL + 25, 20, 0, 7); cx.fill();
   for (var i = 0; i < snake.length; i++) {
