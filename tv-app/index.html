@@ -13,11 +13,13 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
 
 /* ---------- Home ---------- */
 #home{background:radial-gradient(ellipse at 50% 0%,#151a26 0%,#050608 70%)}
-#home h1{font-size:84px;font-weight:300;text-align:center;margin-top:140px;letter-spacing:4px}
+#home h1{font-size:80px;font-weight:300;text-align:center;margin-top:80px;letter-spacing:4px}
 #home .sub{font-size:34px;text-align:center;opacity:.6;margin-top:14px}
-#tiles{display:flex;justify-content:center;margin-top:110px}
-.tile{width:360px;height:360px;margin:0 28px;border-radius:36px;background:rgba(255,255,255,.05);border:5px solid rgba(255,255,255,.06);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:44px;transition:transform .15s,background .15s,border-color .15s}
-.tile .ic{font-size:140px;margin-bottom:24px}
+#tiles{display:flex;flex-wrap:wrap;justify-content:center;width:1480px;margin:60px auto 0}
+#homeRadio{position:absolute;top:54px;left:80px;font-size:34px;color:#7dffb0;opacity:.9}
+.tile{width:320px;height:250px;margin:20px;border-radius:36px;background:rgba(255,255,255,.05);border:5px solid rgba(255,255,255,.06);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:44px;transition:transform .15s,background .15s,border-color .15s}
+.tile{font-size:38px}
+.tile .ic{font-size:96px;margin-bottom:14px}
 .tile.f{transform:scale(1.1);background:rgba(255,255,255,.13);border-color:#e8e8e8}
 
 /* ---------- Clock ---------- */
@@ -85,7 +87,79 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
 #game{background:#050608}
 #game .score{position:absolute;top:30px;left:160px;font-size:44px}
 #cv{position:absolute;top:120px;left:160px;border-radius:16px}
+
+/* ---------- Shared page title ---------- */
+.ptitle{position:absolute;top:50px;left:90px;font-size:60px;font-weight:300}
+.ptitle small{font-size:32px;opacity:.55;margin-left:20px}
+
+/* ---------- My Apps ---------- */
+#apps{background:radial-gradient(ellipse at 50% 0%,#151a26 0%,#050608 70%)}
+#appGrid{position:absolute;top:200px;left:0;width:1920px;display:flex;flex-wrap:wrap;justify-content:center}
+.app{width:480px;height:290px;margin:26px;border-radius:34px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:44px;border:6px solid transparent;transition:transform .15s,border-color .15s;box-shadow:0 20px 50px rgba(0,0,0,.5)}
+.app .lg{font-size:100px;font-weight:700;margin-bottom:12px;line-height:1.1}
+.app.f{transform:scale(1.08);border-color:#fff}
+
+/* ---------- Currency ---------- */
+#money{background:#06070a}
+#mHero{left:80px;top:150px;width:1010px;height:840px;padding:40px 54px}
+#mHero .lab{font-size:36px;opacity:.6}
+#mHero .big{font-size:150px;font-weight:200;line-height:1.15}
+#mHero .chg{font-size:36px}
+#mChart{margin:26px 0 18px}
+.conv{display:flex;justify-content:space-between;font-size:38px;padding:14px 6px;border-top:2px solid rgba(255,255,255,.07)}
+.conv span{opacity:.6}
+#mList{left:1130px;top:150px;width:710px;height:840px;padding:24px 30px}
+.ml{display:flex;justify-content:space-between;align-items:center;font-size:40px;padding:16px 22px;border-radius:18px;margin-bottom:6px}
+.ml.sel{background:rgba(255,255,255,.11)}
+.ml span{opacity:.55;font-size:28px;margin-left:14px}
+#mMsg{position:absolute;top:500px;width:100%;text-align:center;font-size:46px;display:none}
+
+/* ---------- Radio ---------- */
+#radio{background:radial-gradient(ellipse at 30% 10%,#17131f 0%,#050507 70%)}
+#rCats{position:absolute;left:80px;top:170px;width:400px}
+.rc{font-size:40px;padding:20px 30px;border-radius:20px;margin-bottom:10px;opacity:.55}
+.rc.sel{background:rgba(255,255,255,.1);opacity:1}
+#rList{position:absolute;left:530px;top:170px;width:1310px;height:690px;overflow:hidden}
+.rs{display:flex;align-items:center;height:84px;padding:0 26px;border-radius:18px;font-size:36px;margin-bottom:2px}
+.rs.sel{background:rgba(255,255,255,.12)}
+.rs img{width:56px;height:56px;border-radius:12px;margin-right:26px;background:#1c1c22;object-fit:cover}
+.rs .n{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rs .m{font-size:26px;opacity:.5;margin-left:20px;white-space:nowrap}
+.rs.play .n{color:#7dffb0}
+#rNow{left:80px;top:890px;width:1760px;height:110px;display:flex;align-items:center;padding:0 40px;font-size:38px}
+#rNow .t{flex:1;margin-left:24px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eq{width:70px;height:60px;display:flex;align-items:flex-end}
+.eq span{display:inline-block;width:12px;margin-right:6px;background:#7dffb0;height:14px;border-radius:3px}
+.eq.on span{animation:eq .9s ease-in-out infinite}
+.eq.on span:nth-child(2){animation-delay:.2s}.eq.on span:nth-child(3){animation-delay:.4s}.eq.on span:nth-child(4){animation-delay:.1s}
+@keyframes eq{0%,100%{height:12px}50%{height:56px}}
+#rMsg{position:absolute;left:530px;top:400px;width:1310px;text-align:center;font-size:42px;opacity:.7}
+
+/* ---------- Phone remote ---------- */
+#remote{background:radial-gradient(ellipse at 50% 0%,#151a26 0%,#050608 70%)}
+#qr{position:absolute;left:180px;top:210px;width:540px;height:540px;background:#fff;border-radius:34px;padding:30px}
+#qr img{width:480px;height:480px}
+#rmInfo{position:absolute;left:820px;top:220px;width:980px;font-size:44px;line-height:1.55}
+#rmInfo b{color:#7dc8ff;font-weight:400}
+#rmStat{margin-top:40px;font-size:36px}
+
+/* ---------- Ambient screensaver ---------- */
+#ambient{background:#000}
+#ambient img{position:absolute;top:0;left:0;width:1920px;height:1080px;object-fit:cover;opacity:0;transition:opacity 3s}
+#aShade{position:absolute;top:0;left:0;width:1920px;height:1080px;background:radial-gradient(ellipse at 50% 50%,rgba(0,0,0,0) 40%,rgba(0,0,0,.55) 100%)}
+#aBox{position:absolute;left:80px;top:600px;width:760px;padding:36px 48px;border-radius:32px;background:rgba(0,0,0,.42);transition:left 3s,top 3s}
+#aTime{font-size:170px;font-weight:200;line-height:1}
+#aDate{font-size:42px;opacity:.85;margin-top:6px}
+#aExtra{font-size:36px;margin-top:18px;opacity:.9;line-height:1.5}
+
+/* ---------- Message from phone ---------- */
+#msgBox{position:absolute;left:360px;top:290px;width:1200px;padding:56px 60px;border-radius:40px;background:rgba(16,18,24,.97);border:3px solid rgba(255,255,255,.25);text-align:center;z-index:60;display:none;box-shadow:0 30px 90px rgba(0,0,0,.8)}
+#msgBox .h{font-size:34px;opacity:.6}
+#msgBox .t{font-size:70px;margin-top:22px;word-wrap:break-word;line-height:1.25}
+#msgBox .k{font-size:28px;opacity:.45;margin-top:30px}
 </style>
+<script src="$WEBAPIS/webapis/webapis.js"></script>
+<script src="photos.js"></script>
 </head>
 <body>
 
@@ -93,13 +167,18 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
   <div class="top" id="homeTime"></div>
   <h1>My TV</h1>
   <div class="sub" id="homeSub"></div>
+  <div id="homeRadio"></div>
   <div id="tiles">
     <div class="tile" data-go="clock"><div class="ic">🕒</div>Clock</div>
     <div class="tile" data-go="weather"><div class="ic">⛅</div>Weather</div>
+    <div class="tile" data-go="apps"><div class="ic">📺</div>My Apps</div>
+    <div class="tile" data-go="money"><div class="ic">💱</div>Currency</div>
+    <div class="tile" data-go="radio"><div class="ic">📻</div>Radio</div>
     <div class="tile" data-go="photos"><div class="ic">🖼️</div>Photos</div>
     <div class="tile" data-go="game"><div class="ic">🐍</div>Game</div>
+    <div class="tile" data-go="remote"><div class="ic">📱</div>Phone remote</div>
   </div>
-  <div class="hint">◀ ▶ choose &nbsp;·&nbsp; OK open &nbsp;·&nbsp; Back exit</div>
+  <div class="hint">◀ ▶ ▲ ▼ choose &nbsp;·&nbsp; OK open &nbsp;·&nbsp; Back exit</div>
 </div>
 
 <div id="clock" class="screen">
@@ -133,7 +212,54 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
 <div id="photos" class="screen">
   <img id="pA" alt=""><img id="pB" alt="">
   <div id="pmsg">Loading photos…</div>
+  <div class="hint" id="pHint" style="z-index:3;opacity:.6"></div>
 </div>
+
+<div id="apps" class="screen">
+  <div class="ptitle">My Apps</div>
+  <div id="appGrid"></div>
+  <div class="hint">◀ ▶ ▲ ▼ choose &nbsp;·&nbsp; OK open app &nbsp;·&nbsp; Back menu</div>
+</div>
+
+<div id="money" class="screen">
+  <div class="ptitle" id="mTitle">Currency</div>
+  <div class="top" id="mTime"></div>
+  <div class="card" id="mHero"></div>
+  <div class="card" id="mList"></div>
+  <div id="mMsg">Loading exchange rates…</div>
+  <div class="hint" style="bottom:22px">▲ ▼ choose currency &nbsp;·&nbsp; Back menu</div>
+</div>
+
+<div id="radio" class="screen">
+  <div class="ptitle">Radio</div>
+  <div class="top" id="rTime"></div>
+  <div id="rCats"></div>
+  <div id="rList"></div>
+  <div id="rMsg"></div>
+  <div class="card" id="rNow"><div class="eq" id="rEq"><span></span><span></span><span></span><span></span></div><div class="t" id="rNowT">Nothing playing</div></div>
+  <div class="hint" style="bottom:22px">◀ ▶ language &nbsp;·&nbsp; ▲ ▼ station &nbsp;·&nbsp; OK play / stop &nbsp;·&nbsp; Back menu (music keeps playing)</div>
+</div>
+
+<div id="remote" class="screen">
+  <div class="ptitle">Phone remote</div>
+  <div id="qr"><img id="qrImg" alt=""></div>
+  <div id="rmInfo">
+    1. Open the <b>camera</b> on your phone<br>
+    2. Point it at the <b>QR code</b><br>
+    3. Tap the link that appears<br><br>
+    Your phone is now a remote for My TV, and you can also <b>send messages</b> to the TV screen.
+    <div id="rmStat"></div>
+  </div>
+  <div class="hint">Back menu</div>
+</div>
+
+<div id="ambient" class="screen">
+  <img id="aA" alt=""><img id="aB" alt="">
+  <div id="aShade"></div>
+  <div id="aBox"><div id="aTime"></div><div id="aDate"></div><div id="aExtra"></div></div>
+</div>
+
+<div id="msgBox"><div class="h">📱 Message</div><div class="t" id="msgT"></div><div class="k">Press any button to close</div></div>
 
 <div id="game" class="screen">
   <div class="score" id="gScore"></div>
@@ -173,7 +299,7 @@ function setFocus(i) {
   for (var j = 0; j < tiles.length; j++) tiles[j].className = 'tile' + (j === focus ? ' f' : '');
 }
 function open(id) {
-  clearInterval(pTimer); clearInterval(gTimer);
+  clearInterval(pTimer); clearInterval(gTimer); clearInterval(aTimer); clearInterval(aMove);
   var s = document.querySelectorAll('.screen');
   for (var i = 0; i < s.length; i++) s[i].className = 'screen' + (s[i].id === id ? ' on' : '');
   cur = id;
@@ -181,17 +307,34 @@ function open(id) {
   if (id === 'weather') { loadWeather(); renderWeather(); }
   if (id === 'photos') { nextPhoto(); pTimer = setInterval(nextPhoto, 7000); }
   if (id === 'game') gStart();
+  if (id === 'apps') renderApps();
+  if (id === 'money') { renderMoney(); loadMoney(); }
+  if (id === 'radio') { renderRadio(); loadRadio(); }
+  if (id === 'remote') renderRemote();
+  if (id === 'ambient') startAmbientScreen();
 }
 document.addEventListener('keydown', function (e) {
   var k = e.keyCode;
+  if (k === 10009 || k === 8 || k === 13 || (k >= 37 && k <= 40)) e.preventDefault();
+  userInput(k, false);
+});
+function userInput(k, fromPhone) {
+  lastInput = Date.now();
+  if ($('msgBox').style.display === 'block') { hideMsg(); return; }
+  if (cur === 'ambient') { stopAmbient(); return; }
+  handleKey(k, fromPhone);
+}
+function handleKey(k, fromPhone) {
   if (k === 10009 || k === 8) { // Back
-    if (cur === 'home') { try { tizen.application.getCurrentApplication().exit(); } catch (x) {} }
+    if (cur === 'home') { if (!fromPhone) { try { tizen.application.getCurrentApplication().exit(); } catch (x) {} } }
     else open('home');
-    e.preventDefault(); return;
+    return;
   }
   if (cur === 'home') {
     if (k === 37) setFocus(focus - 1);
     else if (k === 39) setFocus(focus + 1);
+    else if (k === 38 && focus >= 4) setFocus(focus - 4);
+    else if (k === 40 && focus + 4 < tiles.length) setFocus(focus + 4);
     else if (k === 13) open(tiles[focus].getAttribute('data-go'));
   } else if (cur === 'clock') {
     if (k === 37) setStyle(clockStyle - 1);
@@ -207,8 +350,14 @@ document.addEventListener('keydown', function (e) {
     if (k === 37 || k === 39 || k === 13) { clearInterval(pTimer); nextPhoto(); pTimer = setInterval(nextPhoto, 7000); }
   } else if (cur === 'game') {
     gameKey(k);
+  } else if (cur === 'apps') {
+    appsKey(k);
+  } else if (cur === 'money') {
+    moneyKey(k);
+  } else if (cur === 'radio') {
+    radioKey(k);
   }
-});
+}
 
 // ----- Time helpers -----
 var h12 = store('h12') === '1';
@@ -223,7 +372,7 @@ function tick() {
   var w = wData && wData.current;
   $('cInfo').textContent = w ? CITY.name + '  ' + wx(w.weather_code, w.is_day)[0] + ' ' + Math.round(w.temperature_2m) + '°' : CITY.name;
 }
-setInterval(tick, 1000);
+setInterval(function () { tick(); tick2(); }, 1000);
 
 // ===================== CLOCK =====================
 var STYLES = ['Classic', 'Big digital', 'Flip', 'Neon', 'Gold'];
@@ -506,19 +655,21 @@ function renderWeather() {
 }
 
 // ===================== PHOTOS =====================
-var pA = $('pA'), pB = $('pB'), pFront = pA, pTimer, pN = 0;
-function nextPhoto() {
-  var back = pFront === pA ? pB : pA;
-  back.onload = function () {
-    back.style.opacity = 1; pFront.style.opacity = 0; pFront = back;
-    $('pmsg').style.display = 'none';
-  };
-  back.onerror = function () {
-    $('pmsg').style.display = 'block';
-    $('pmsg').textContent = 'Could not load photos. Check the TV internet connection.';
-  };
-  back.src = 'https://picsum.photos/1920/1080?random=' + (++pN) + '&t=' + Date.now();
-}
+// Your own photos come from photos.js (made by deploy.sh from the Mac folder "Pictures/TV Photos")
+var MY = (typeof MY_PHOTOS !== 'undefined' && MY_PHOTOS.length) ? MY_PHOTOS.slice() : [];
+for (var si = MY.length - 1; si > 0; si--) { var sj = Math.floor(Math.random() * (si + 1)), st = MY[si]; MY[si] = MY[sj]; MY[sj] = st; }
+function photoUrl(n) { return MY.length ? MY[n % MY.length] : 'https://picsum.photos/1920/1080?random=' + n + '&t=' + Date.now(); }
+function Fader(a, b, msg) { this.a = a; this.b = b; this.front = a; this.msg = msg; }
+Fader.prototype.show = function (url) {
+  var self = this, back = this.front === this.a ? this.b : this.a;
+  back.onload = function () { back.style.opacity = 1; self.front.style.opacity = 0; self.front = back; if (self.msg) self.msg.style.display = 'none'; };
+  back.onerror = function () { if (self.msg) { self.msg.style.display = 'block'; self.msg.textContent = 'Could not load photos. Check the TV internet connection.'; } };
+  back.src = url;
+};
+var pFader = new Fader($('pA'), $('pB'), $('pmsg')), pTimer, pN = 0;
+$('pHint').textContent = MY.length ? MY.length + ' of your photos  ·  ◀ ▶ next  ·  Back menu'
+  : 'Showing sample photos  ·  Add yours to the Mac folder "Pictures/TV Photos"  ·  Back menu';
+function nextPhoto() { pFader.show(photoUrl(++pN)); }
 
 // ===================== GAME: Snake =====================
 var cv = $('cv'), cx = cv.getContext('2d'), CELL = 50, GW = 32, GH = 18;
@@ -564,8 +715,241 @@ function draw() {
   }
 }
 
+// ===================== MY APPS =====================
+// Tizen app IDs come from this TV's own app list
+var APPS = [
+  ['YouTube', '9Ur5IzDKqV.TizenYouTube', 'linear-gradient(135deg,#d60f2c,#7a0816)', '▶'],
+  ['Netflix', 'org.tizen.netflix-app', 'linear-gradient(135deg,#1a1a1a,#000)', '<span style="color:#e50914">N</span>'],
+  ['Prime Video', 'org.tizen.primevideo', 'linear-gradient(135deg,#0f79af,#06324d)', 'prime'],
+  ['Apple TV', 'com.samsung.tv.aria-video', 'linear-gradient(135deg,#3a3a3c,#111)', 'tv'],
+  ['Spotify', 'rJeHak5zRg.Spotify', 'linear-gradient(135deg,#1db954,#0b5d29)', '♫'],
+  ['Browser', 'org.tizen.browser', 'linear-gradient(135deg,#3b6cff,#1a2d78)', '🌐']
+];
+var appFocus = 0;
+function renderApps() {
+  var h = '';
+  for (var i = 0; i < APPS.length; i++)
+    h += '<div class="app' + (i === appFocus ? ' f' : '') + '" style="background:' + APPS[i][2] + '"><div class="lg">' + APPS[i][3] + '</div>' + APPS[i][0] + '</div>';
+  $('appGrid').innerHTML = h;
+}
+function appsKey(k) {
+  var n = APPS.length;
+  if (k === 37) appFocus = (appFocus + n - 1) % n;
+  else if (k === 39) appFocus = (appFocus + 1) % n;
+  else if (k === 38 && appFocus >= 3) appFocus -= 3;
+  else if (k === 40 && appFocus + 3 < n) appFocus += 3;
+  else if (k === 13) { launchApp(appFocus); return; }
+  renderApps();
+}
+function launchApp(i) {
+  var a = APPS[i];
+  toast('Opening ' + a[0] + '…');
+  try {
+    tizen.application.launch(a[1], function () {}, function (e) { toast('Could not open ' + a[0] + ' (' + (e && e.name) + ')'); });
+  } catch (x) { toast('Could not open ' + a[0]); }
+}
+
+// ===================== CURRENCY (base: Omani Rial) =====================
+var CURS = [['inr', 'Indian Rupee', '₹'], ['aed', 'UAE Dirham', 'AED '], ['usd', 'US Dollar', '$'], ['eur', 'Euro', '€'],
+  ['gbp', 'British Pound', '£'], ['sar', 'Saudi Riyal', 'SAR '], ['qar', 'Qatari Riyal', 'QAR '], ['php', 'Philippine Peso', '₱'], ['pkr', 'Pakistani Rupee', 'Rs ']];
+var curSel = +(store('cur') || 0) % CURS.length, mData = null, mHist = [], mTime = 0;
+function jsonOk2(r) { if (!r.ok) throw r.status; return r.json(); }
+function getRates(tag) {
+  return fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@' + tag + '/v1/currencies/omr.json').then(jsonOk2)
+    .catch(function () { return fetch('https://' + tag + '.currency-api.pages.dev/v1/currencies/omr.json').then(jsonOk2); });
+}
+function loadMoney() {
+  if (mData && Date.now() - mTime < 60 * 60 * 1000) return;
+  getRates('latest').then(function (j) {
+    mData = j; mTime = Date.now(); renderMoney();
+    var base = new Date(j.date + 'T12:00:00Z'), jobs = [];
+    for (var i = 7; i >= 1; i--) {
+      var d = new Date(base.getTime() - i * 86400000), tag = d.toISOString().slice(0, 10);
+      jobs.push(getRates(tag).catch(function () { return null; }));
+    }
+    return Promise.all(jobs).then(function (list) {
+      mHist = []; for (var n = 0; n < list.length; n++) if (list[n] && list[n].omr) mHist.push(list[n]);
+      mHist.push(mData); renderMoney();
+    });
+  }).catch(function () { if (!mData) { $('mMsg').style.display = 'block'; $('mMsg').textContent = 'Could not load exchange rates. Check the TV internet connection.'; } });
+}
+function money(v) {
+  var p = v >= 1000 ? 0 : v >= 10 ? 2 : 3, t = v.toFixed(p).split('.');
+  t[0] = t[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return t.join('.');
+}
+function sparkline(vals) {
+  if (vals.length < 2) return '';
+  var W = 900, H = 150, mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals), rg = (mx - mn) || 1, pts = [];
+  for (var i = 0; i < vals.length; i++) pts.push(Math.round(i * W / (vals.length - 1)) + ',' + Math.round(H - 10 - (vals[i] - mn) / rg * (H - 30)));
+  var up = vals[vals.length - 1] >= vals[0], col = up ? '#5ee68a' : '#ff6b6b';
+  return '<svg width="' + W + '" height="' + H + '"><polyline points="0,' + H + ' ' + pts.join(' ') + ' ' + W + ',' + H + '" fill="' + col + '" fill-opacity=".12" stroke="none"/>' +
+    '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + col + '" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+}
+function renderMoney() {
+  if (!mData) { $('mHero').innerHTML = ''; $('mList').innerHTML = ''; $('mMsg').style.display = 'block'; return; }
+  $('mMsg').style.display = 'none';
+  var c = CURS[curSel], rate = mData.omr[c[0]], vals = [];
+  for (var i = 0; i < mHist.length; i++) if (mHist[i].omr[c[0]]) vals.push(mHist[i].omr[c[0]]);
+  var chg = vals.length > 1 ? (vals[vals.length - 1] - vals[0]) / vals[0] * 100 : null;
+  $('mTitle').innerHTML = 'Currency<small>Omani Rial  ·  updated ' + mData.date + '</small>';
+  var h = '<div class="lab">1 Omani Rial (OMR) = ' + c[1] + '</div><div class="big">' + c[2] + money(rate) + '</div>' +
+    '<div class="chg" style="color:' + (chg === null ? '#aaa' : chg >= 0 ? '#5ee68a' : '#ff6b6b') + '">' +
+    (chg === null ? 'Loading 7-day trend…' : (chg >= 0 ? '▲ ' : '▼ ') + Math.abs(chg).toFixed(2) + '% in the last 7 days') + '</div>' +
+    '<div id="mChart">' + sparkline(vals) + '</div>';
+  var am = [10, 50, 100, 500];
+  for (var a = 0; a < am.length; a++) h += '<div class="conv"><span>' + am[a] + ' OMR</span>' + c[2] + money(am[a] * rate) + '</div>';
+  $('mHero').innerHTML = h;
+  var l = '';
+  for (var n = 0; n < CURS.length; n++) {
+    var cc2 = CURS[n], v = mData.omr[cc2[0]];
+    if (v) l += '<div class="ml' + (n === curSel ? ' sel' : '') + '"><div>' + cc2[0].toUpperCase() + '<span>' + cc2[1] + '</span></div><div>' + cc2[2] + money(v) + '</div></div>';
+  }
+  $('mList').innerHTML = l;
+}
+function moneyKey(k) {
+  if (k === 38 || k === 37) curSel = (curSel + CURS.length - 1) % CURS.length;
+  else if (k === 40 || k === 39) curSel = (curSel + 1) % CURS.length;
+  else return;
+  store('cur', curSel); renderMoney();
+}
+
+// ===================== RADIO =====================
+var RCATS = [['Malayalam', 'language=malayalam'], ['Hindi', 'language=hindi'], ['Tamil', 'language=tamil'],
+  ['Arabic', 'language=arabic'], ['Oman', 'countrycode=OM'], ['English hits', 'tag=hits&language=english']];
+var RHOSTS = ['https://all.api.radio-browser.info', 'https://de1.api.radio-browser.info', 'https://nl1.api.radio-browser.info', 'https://at1.api.radio-browser.info'];
+var rCat = +(store('rcat') || 0) % RCATS.length, rSel = 0, rData = {}, rPlaying = null;
+var player = new Audio();
+function rFetch(q, i) {
+  i = i || 0;
+  if (i >= RHOSTS.length) return Promise.reject('all hosts failed');
+  return fetch(RHOSTS[i] + '/json/stations/search?' + q + '&hidebroken=true&order=clickcount&reverse=true&limit=60')
+    .then(jsonOk2).catch(function () { return rFetch(q, i + 1); });
+}
+function loadRadio() {
+  var cat = rCat;
+  if (rData[cat] && rData[cat] !== 'error') return;
+  rData[cat] = 'loading'; renderRadio();
+  rFetch(RCATS[cat][1]).then(function (list) {
+    var seen = {}, out = [];
+    for (var i = 0; i < list.length && out.length < 30; i++) {
+      var s1 = list[i], key = (s1.name || '').trim().toLowerCase();
+      if (!s1.url_resolved || s1.hls === 1 || !key || seen[key]) continue;
+      seen[key] = 1; out.push({ name: s1.name.trim(), url: s1.url_resolved, icon: s1.favicon, meta: [s1.country, s1.codec, s1.bitrate ? s1.bitrate + ' kbps' : ''].filter(Boolean).join(' · ') });
+    }
+    rData[cat] = out; if (cur === 'radio') renderRadio();
+  }).catch(function () { rData[cat] = 'error'; if (cur === 'radio') renderRadio(); });
+}
+function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+function renderRadio() {
+  var h = '';
+  for (var c = 0; c < RCATS.length; c++) h += '<div class="rc' + (c === rCat ? ' sel' : '') + '">' + RCATS[c][0] + '</div>';
+  $('rCats').innerHTML = h;
+  var d = rData[rCat];
+  $('rMsg').textContent = d === 'error' ? 'Could not load stations. Check the TV internet connection.' : (!d || d === 'loading') ? 'Loading stations…' : d.length ? '' : 'No stations found';
+  if (!d || typeof d === 'string') { $('rList').innerHTML = ''; return; }
+  var start = Math.max(0, Math.min(rSel - 3, d.length - 8)), l = '';
+  for (var i = start; i < Math.min(d.length, start + 8); i++) {
+    var st2 = d[i], playing = rPlaying && rPlaying.url === st2.url;
+    l += '<div class="rs' + (i === rSel ? ' sel' : '') + (playing ? ' play' : '') + '">' +
+      '<img src="' + esc(st2.icon || '') + '" onerror="this.style.visibility=\'hidden\'">' +
+      '<div class="n">' + (playing ? '♪ ' : '') + esc(st2.name) + '</div><div class="m">' + esc(st2.meta) + '</div></div>';
+  }
+  $('rList').innerHTML = l;
+}
+function radioKey(k) {
+  var d = rData[rCat];
+  if (k === 37 || k === 39) {
+    rCat = (rCat + (k === 39 ? 1 : RCATS.length - 1)) % RCATS.length; rSel = 0; store('rcat', rCat);
+    loadRadio(); renderRadio(); return;
+  }
+  if (!d || typeof d === 'string' || !d.length) return;
+  if (k === 38) rSel = Math.max(0, rSel - 1);
+  else if (k === 40) rSel = Math.min(d.length - 1, rSel + 1);
+  else if (k === 13) {
+    if (rPlaying && rPlaying.url === d[rSel].url) stopRadio(); else playRadio(d[rSel]);
+  }
+  renderRadio();
+}
+function playRadio(st3) {
+  rPlaying = st3; player.src = st3.url;
+  $('rNowT').textContent = 'Connecting to ' + st3.name + '…'; $('rEq').className = 'eq';
+  var p = player.play(); if (p && p.catch) p.catch(function () {});
+}
+function stopRadio() { rPlaying = null; player.pause(); player.removeAttribute('src'); try { player.load(); } catch (x) {} $('rNowT').textContent = 'Nothing playing'; $('rEq').className = 'eq'; renderRadio(); }
+player.addEventListener('playing', function () { if (rPlaying) { $('rNowT').textContent = 'Now playing: ' + rPlaying.name; $('rEq').className = 'eq on'; } });
+player.addEventListener('error', function () { if (rPlaying && player.getAttribute('src')) { toast('This station is not working. Try another one.'); var n = rPlaying.name; stopRadio(); $('rNowT').textContent = n + ' is not available'; } });
+
+// ===================== PHONE REMOTE (via ntfy.sh) =====================
+var REMOTE_PAGE = 'https://raw.githack.com/abjincy-dot/docman-v2/claude/fervent-fermat-mrg4wl/tv-app/remote.html';
+var RTOPIC = store('rtopic');
+if (!RTOPIC) { RTOPIC = 'mytv-' + Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 8); store('rtopic', RTOPIC); }
+var rOnline = false, es = null;
+function remoteLink() { return REMOTE_PAGE + '#' + RTOPIC; }
+function renderRemote() {
+  $('qrImg').src = 'https://api.qrserver.com/v1/create-qr-code/?size=480x480&margin=0&data=' + encodeURIComponent(remoteLink());
+  $('rmStat').innerHTML = (rOnline ? '<span style="color:#5ee68a">● Ready</span>' : '<span style="color:#ffb347">● Connecting…</span>') +
+    '<br><span style="font-size:28px;opacity:.55">Code: ' + RTOPIC + '</span>';
+}
+function startRemote() {
+  try {
+    es = new EventSource('https://ntfy.sh/' + RTOPIC + '/sse');
+    es.onopen = function () { rOnline = true; if (cur === 'remote') renderRemote(); };
+    es.onerror = function () { rOnline = false; if (cur === 'remote') renderRemote(); };
+    es.onmessage = function (ev) {
+      try { var m = JSON.parse(ev.data); if (m.message) remoteCmd(JSON.parse(m.message)); } catch (x) {}
+    };
+  } catch (x) {}
+}
+var SCREENS = ['home', 'clock', 'weather', 'apps', 'money', 'radio', 'photos', 'game', 'remote'];
+function remoteCmd(c) {
+  if (!c || typeof c !== 'object') return;
+  if (typeof c.k === 'number' && [13, 37, 38, 39, 40, 10009].indexOf(c.k) >= 0) { userInput(c.k, true); return; }
+  lastInput = Date.now();
+  if (typeof c.open === 'string' && SCREENS.indexOf(c.open) >= 0) { hideMsg(); open(c.open); }
+  else if (typeof c.msg === 'string' && c.msg.trim()) showMsg(c.msg.trim().slice(0, 240));
+  else if (c.saver) startAmbient();
+  else if (c.radio === 'stop') stopRadio();
+}
+var msgTimer;
+function showMsg(t) { $('msgT').textContent = t; $('msgBox').style.display = 'block'; clearTimeout(msgTimer); msgTimer = setTimeout(hideMsg, 60000); }
+function hideMsg() { $('msgBox').style.display = 'none'; }
+
+// ===================== AMBIENT SCREENSAVER =====================
+var AMBIENT_MINUTES = 5, lastInput = Date.now(), ambPrev = 'home', aTimer, aMove, aN = 0, aPos = 0;
+var aFader = new Fader($('aA'), $('aB'), null);
+var A_SPOTS = [[80, 600], [1080, 600], [1080, 90], [80, 90]];
+setInterval(function () {
+  if (cur === 'ambient' || cur === 'game' || cur === 'photos') return;
+  if (Date.now() - lastInput > AMBIENT_MINUTES * 60000) startAmbient();
+}, 10000);
+function startAmbient() { if (cur !== 'ambient') { ambPrev = cur; open('ambient'); } }
+function stopAmbient() { lastInput = Date.now(); open(ambPrev === 'ambient' ? 'home' : ambPrev); }
+function startAmbientScreen() {
+  aFader.show(photoUrl(++aN));
+  aTimer = setInterval(function () { aFader.show(photoUrl(++aN)); }, 30000);
+  aMove = setInterval(function () { aPos = (aPos + 1) % A_SPOTS.length; $('aBox').style.left = A_SPOTS[aPos][0] + 'px'; $('aBox').style.top = A_SPOTS[aPos][1] + 'px'; }, 60000);
+  tick2();
+}
+
+// Updates once per second for the extra screens
+function tick2() {
+  var d = new Date(), w = wData && wData.current;
+  $('homeRadio').textContent = rPlaying ? '♪ ' + rPlaying.name : '';
+  $('mTime').textContent = $('homeTime').textContent; $('rTime').textContent = $('homeTime').textContent;
+  if (cur !== 'ambient') return;
+  $('aTime').textContent = hourText(d.getHours()) + ':' + pad(d.getMinutes()) + (h12 ? ' ' + ampm(d.getHours()) : '');
+  $('aDate').textContent = dateText(d);
+  var ex = [];
+  if (w) ex.push(wx(w.weather_code, w.is_day)[0] + '  ' + Math.round(w.temperature_2m) + '°  ' + CITY.name);
+  if (mData) ex.push('💱  1 OMR = ₹' + money(mData.omr.inr));
+  if (rPlaying) ex.push('♪  ' + rPlaying.name);
+  $('aExtra').innerHTML = ex.map(esc).join('<br>');
+}
+
 // ----- Start -----
-setFocus(0); tick(); loadWeather(); clockLoop();
+try { webapis.appcommon.setScreenSaver(webapis.appcommon.AppCommonScreenSaverState.SCREEN_SAVER_OFF); } catch (x) {}
+setFocus(0); tick(); tick2(); loadWeather(); loadMoney(); clockLoop(); startRemote();
 </script>
 </body>
 </html>

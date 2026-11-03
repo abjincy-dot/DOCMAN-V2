@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0b0c10">
+<title>My TV Remote</title>
+<style>
+:root{--bg:#0b0c10;--card:#16181f;--card2:#1f222b;--fg:#f2f3f5;--mut:#8b8f9c;--acc:#7dc8ff;--ok:#5ee68a}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--fg);font-family:-apple-system,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:18px 16px 40px;user-select:none;-webkit-user-select:none}
+h1{font-size:22px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+#st{font-size:13px;color:var(--mut)}
+.pad{position:relative;width:min(300px,80vw);height:min(300px,80vw);margin:26px auto 14px;border-radius:50%;background:var(--card)}
+.pad button{position:absolute;width:33%;height:33%;border:0;background:transparent;color:var(--fg);font-size:30px;border-radius:50%}
+.pad button:active{background:var(--card2)}
+#u{left:33.5%;top:0}#d{left:33.5%;bottom:0}#l{left:0;top:33.5%}#r{right:0;top:33.5%}
+#ok{left:33.5%;top:33.5%;background:var(--card2)!important;font-size:20px;font-weight:600}
+.row{display:flex;gap:10px;margin-top:10px}
+.row button,.grid button{flex:1;border:0;border-radius:16px;background:var(--card);color:var(--fg);font-size:16px;padding:16px 6px}
+.row button:active,.grid button:active{background:var(--card2)}
+h2{font-size:14px;color:var(--mut);font-weight:500;margin:26px 2px 10px;text-transform:uppercase;letter-spacing:1px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.grid button{padding:14px 4px;font-size:13px}
+.grid button b{display:block;font-size:24px;margin-bottom:4px;font-weight:400}
+textarea{width:100%;height:84px;border-radius:16px;border:1px solid #2a2d38;background:var(--card);color:var(--fg);font-size:17px;padding:14px;resize:none;font-family:inherit}
+#send{background:var(--acc);color:#04121f;font-weight:600}
+#pair{display:none;margin-top:30px}
+#pair input{width:100%;padding:14px;border-radius:14px;border:1px solid #2a2d38;background:var(--card);color:var(--fg);font-size:17px;margin:12px 0}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#262a35;padding:10px 18px;border-radius:20px;font-size:14px;opacity:0;transition:opacity .3s}
+</style>
+</head>
+<body>
+<h1>My TV Remote <span id="st"></span></h1>
+
+<div id="main">
+  <div class="pad">
+    <button id="u" data-k="38">▲</button>
+    <button id="l" data-k="37">◀</button>
+    <button id="ok" data-k="13">OK</button>
+    <button id="r" data-k="39">▶</button>
+    <button id="d" data-k="40">▼</button>
+  </div>
+  <div class="row"><button data-k="10009">↩ Back</button><button data-o="home">⌂ Menu</button></div>
+
+  <h2>Open</h2>
+  <div class="grid">
+    <button data-o="clock"><b>🕒</b>Clock</button>
+    <button data-o="weather"><b>⛅</b>Weather</button>
+    <button data-o="apps"><b>📺</b>Apps</button>
+    <button data-o="money"><b>💱</b>Currency</button>
+    <button data-o="radio"><b>📻</b>Radio</button>
+    <button data-o="photos"><b>🖼️</b>Photos</button>
+    <button data-o="game"><b>🐍</b>Game</button>
+    <button data-c="saver"><b>🌙</b>Screensaver</button>
+  </div>
+  <div class="row"><button data-c="radiostop">⏹ Stop radio</button></div>
+
+  <h2>Send a message to the TV</h2>
+  <textarea id="msg" maxlength="240" placeholder="Dinner is ready! 🍛"></textarea>
+  <div class="row"><button id="send">Send to TV</button></div>
+</div>
+
+<div id="pair">
+  <p>Open <b>Phone remote</b> on the TV and scan the QR code, or type the code shown on the TV:</p>
+  <input id="code" placeholder="mytv-xxxxxxxxxxxx" autocapitalize="off" autocorrect="off">
+  <div class="row"><button id="pairBtn">Connect</button></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+var topic = (location.hash || '').slice(1);
+try { if (topic) localStorage.setItem('mytv-topic', topic); else topic = localStorage.getItem('mytv-topic') || ''; } catch (e) {}
+if (!/^mytv-[a-z0-9]{6,20}$/.test(topic)) topic = '';
+
+function $(id) { return document.getElementById(id); }
+function toast(t) { var el = $('toast'); el.textContent = t; el.style.opacity = 1; clearTimeout(el._t); el._t = setTimeout(function () { el.style.opacity = 0; }, 1500); }
+function showPair(on) { $('main').style.display = on ? 'none' : 'block'; $('pair').style.display = on ? 'block' : 'none'; $('st').textContent = on ? '' : '● connected'; $('st').style.color = '#5ee68a'; }
+
+function send(cmd, label) {
+  if (!topic) return showPair(true);
+  if (navigator.vibrate) navigator.vibrate(12);
+  fetch('https://ntfy.sh/' + topic, { method: 'POST', body: JSON.stringify(cmd) })
+    .then(function (r) { if (!r.ok) throw r.status; if (label) toast(label); })
+    .catch(function () { toast('Could not reach the TV. Check your internet.'); });
+}
+
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.k) send({ k: +b.dataset.k });
+  else if (b.dataset.o) send({ open: b.dataset.o }, 'Opening ' + b.textContent.replace(/^\S+\s*/, ''));
+  else if (b.dataset.c === 'saver') send({ saver: 1 }, 'Screensaver on');
+  else if (b.dataset.c === 'radiostop') send({ radio: 'stop' }, 'Radio stopped');
+});
+$('send').onclick = function () {
+  var t = $('msg').value.trim(); if (!t) return;
+  send({ msg: t }, 'Message sent'); $('msg').value = '';
+};
+$('pairBtn').onclick = function () {
+  var c = $('code').value.trim().toLowerCase();
+  if (!/^mytv-[a-z0-9]{6,20}$/.test(c)) return toast('That code does not look right');
+  topic = c; try { localStorage.setItem('mytv-topic', c); } catch (e) {}
+  showPair(false); toast('Connected');
+};
+showPair(!topic);
+</script>
+</body>
+</html>
