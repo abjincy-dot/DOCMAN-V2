@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>My TV</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:#0b1020;color:#fff;font-family:sans-serif}
+.screen{position:absolute;top:0;left:0;width:1920px;height:1080px;display:none}
+.screen.on{display:block}
+.top{position:absolute;top:50px;right:80px;font-size:44px;opacity:.8}
+#home h1{font-size:80px;font-weight:300;text-align:center;margin-top:150px}
+#tiles{display:flex;justify-content:center;margin-top:130px}
+.tile{width:360px;height:360px;margin:0 28px;border-radius:32px;background:#1b2340;border:6px solid transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:44px;transition:transform .15s,background .15s}
+.tile .ic{font-size:140px;margin-bottom:24px}
+.tile.f{transform:scale(1.1);background:#2d3a6b;border-color:#6ea8ff}
+.hint{position:absolute;bottom:50px;width:100%;text-align:center;font-size:30px;opacity:.5}
+#clock{background:linear-gradient(135deg,#1a1440,#0b2a4a 50%,#123d3a);background-size:300% 300%;animation:bg 30s ease infinite}
+@keyframes bg{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+#ana{position:absolute;top:140px;left:150px}
+#clock .side{position:absolute;top:0;left:1000px;width:840px;height:1080px;display:flex;flex-direction:column;justify-content:center}
+#clock .greet{font-size:52px;opacity:.75;letter-spacing:2px}
+#clock .t{font-size:260px;font-weight:200;line-height:1.05;letter-spacing:-4px}
+#clock .t span{font-size:110px;opacity:.55;margin-left:16px;letter-spacing:0}
+#clock .d{font-size:56px;opacity:.75;margin-top:10px}
+#weather .city{font-size:56px;text-align:center;margin-top:110px;opacity:.8}
+#weather .now{display:flex;justify-content:center;align-items:center;margin-top:30px}
+#weather .now .ic{font-size:200px;margin-right:50px}
+#weather .now .temp{font-size:220px;font-weight:200}
+#weather .desc{font-size:52px;text-align:center}
+#weather .extra{font-size:36px;text-align:center;opacity:.6;margin-top:16px}
+#days{display:flex;justify-content:center;margin-top:60px}
+.day{width:240px;margin:0 16px;padding:24px 0;border-radius:24px;background:#1b2340;text-align:center;font-size:34px}
+.day .ic{font-size:72px;margin:10px 0}
+#photos{background:#000}
+#photos img{position:absolute;top:0;left:0;width:1920px;height:1080px;object-fit:cover;opacity:0;transition:opacity 1.5s}
+#pmsg{position:absolute;top:500px;width:100%;text-align:center;font-size:48px}
+#game .score{position:absolute;top:30px;left:160px;font-size:44px}
+#cv{position:absolute;top:120px;left:160px;border-radius:16px}
+</style>
+</head>
+<body>
+
+<div id="home" class="screen on">
+  <div class="top" id="homeTime"></div>
+  <h1>My TV</h1>
+  <div id="tiles">
+    <div class="tile" data-go="clock"><div class="ic">🕒</div>Clock</div>
+    <div class="tile" data-go="weather"><div class="ic">⛅</div>Weather</div>
+    <div class="tile" data-go="photos"><div class="ic">🖼️</div>Photos</div>
+    <div class="tile" data-go="game"><div class="ic">🐍</div>Game</div>
+  </div>
+  <div class="hint">◀ ▶ choose &nbsp;·&nbsp; OK open &nbsp;·&nbsp; Back exit</div>
+</div>
+
+<div id="clock" class="screen">
+  <canvas id="ana" width="800" height="800"></canvas>
+  <div class="side">
+    <div class="greet" id="cG"></div>
+    <div class="t" id="cT"></div>
+    <div class="d" id="cD"></div>
+  </div>
+  <div class="hint">Back to menu</div>
+</div>
+
+<div id="weather" class="screen">
+  <div class="top" id="wTime"></div>
+  <div class="city" id="wCity"></div>
+  <div class="now"><div class="ic" id="wIc"></div><div class="temp" id="wTemp">…</div></div>
+  <div class="desc" id="wDesc">Loading weather…</div>
+  <div class="extra" id="wExtra"></div>
+  <div id="days"></div>
+  <div class="hint">Back to menu</div>
+</div>
+
+<div id="photos" class="screen">
+  <img id="pA" alt=""><img id="pB" alt="">
+  <div id="pmsg">Loading photos…</div>
+</div>
+
+<div id="game" class="screen">
+  <div class="score" id="gScore"></div>
+  <canvas id="cv" width="1600" height="900"></canvas>
+</div>
+
+<script>
+// ===== Settings: change your city here =====
+var CITY = { name: 'Dubai', lat: 25.2048, lon: 55.2708 };
+
+var cur = 'home', focus = 0;
+var tiles = document.querySelectorAll('.tile');
+function $(id) { return document.getElementById(id); }
+function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+// ----- Navigation -----
+function setFocus(i) {
+  focus = (i + tiles.length) % tiles.length;
+  for (var j = 0; j < tiles.length; j++) tiles[j].className = 'tile' + (j === focus ? ' f' : '');
+}
+function open(id) {
+  clearInterval(pTimer); clearInterval(gTimer);
+  var s = document.querySelectorAll('.screen');
+  for (var i = 0; i < s.length; i++) s[i].className = 'screen' + (s[i].id === id ? ' on' : '');
+  cur = id;
+  if (id === 'weather') loadWeather();
+  if (id === 'photos') { nextPhoto(); pTimer = setInterval(nextPhoto, 7000); }
+  if (id === 'game') gStart();
+}
+document.addEventListener('keydown', function (e) {
+  var k = e.keyCode;
+  if (k === 10009) { // Back
+    if (cur === 'home') { try { tizen.application.getCurrentApplication().exit(); } catch (x) {} }
+    else open('home');
+    e.preventDefault(); return;
+  }
+  if (cur === 'home') {
+    if (k === 37) setFocus(focus - 1);
+    else if (k === 39) setFocus(focus + 1);
+    else if (k === 13) open(tiles[focus].getAttribute('data-go'));
+  } else if (cur === 'photos') {
+    if (k === 37 || k === 39 || k === 13) { clearInterval(pTimer); nextPhoto(); pTimer = setInterval(nextPhoto, 7000); }
+  } else if (cur === 'game') {
+    gameKey(k);
+  }
+});
+
+// ----- Clock -----
+var DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function tick() {
+  var d = new Date(), hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
+  $('homeTime').textContent = hm; $('wTime').textContent = hm;
+  $('cT').innerHTML = hm + '<span>' + pad(d.getSeconds()) + '</span>';
+  var hr = d.getHours();
+  $('cG').textContent = hr < 5 ? 'Good night' : hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : hr < 21 ? 'Good evening' : 'Good night';
+  $('cD').textContent = DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+}
+setInterval(tick, 1000); tick();
+
+// Analog clock with smooth sweeping hands
+var ac = $('ana').getContext('2d');
+function hand(ang, len, w, col, back) {
+  ac.save(); ac.rotate(ang); ac.beginPath(); ac.lineCap = 'round';
+  ac.moveTo(0, back || 0); ac.lineTo(0, -len); ac.lineWidth = w; ac.strokeStyle = col;
+  ac.shadowColor = 'rgba(0,0,0,.5)'; ac.shadowBlur = 12; ac.stroke(); ac.restore();
+}
+function drawAnalog() {
+  if (cur === 'clock') {
+    var d = new Date(), ms = d.getMilliseconds(), s = d.getSeconds() + ms / 1000,
+        m = d.getMinutes() + s / 60, h = (d.getHours() % 12) + m / 60, R = 380;
+    ac.setTransform(1, 0, 0, 1, 400, 400); ac.clearRect(-400, -400, 800, 800);
+    var g = ac.createRadialGradient(0, -120, 50, 0, 0, R);
+    g.addColorStop(0, 'rgba(255,255,255,.16)'); g.addColorStop(1, 'rgba(255,255,255,.04)');
+    ac.beginPath(); ac.arc(0, 0, R, 0, 7); ac.fillStyle = g; ac.fill();
+    ac.lineWidth = 3; ac.strokeStyle = 'rgba(255,255,255,.25)'; ac.stroke();
+    // seconds progress ring
+    ac.beginPath(); ac.arc(0, 0, R - 14, -Math.PI / 2, -Math.PI / 2 + s / 60 * 2 * Math.PI);
+    ac.lineWidth = 8; ac.lineCap = 'round'; ac.strokeStyle = 'rgba(126,200,255,.8)'; ac.stroke();
+    for (var i = 0; i < 60; i++) {
+      var a = i * Math.PI / 30, big = i % 5 === 0;
+      ac.save(); ac.rotate(a); ac.beginPath();
+      ac.moveTo(0, -R + 40); ac.lineTo(0, -R + (big ? 80 : 54));
+      ac.lineWidth = big ? 8 : 3; ac.lineCap = 'round';
+      ac.strokeStyle = big ? '#fff' : 'rgba(255,255,255,.4)'; ac.stroke(); ac.restore();
+    }
+    hand(h * Math.PI / 6, 190, 18, '#ffffff', 30);
+    hand(m * Math.PI / 30, 280, 12, '#dfe9ff', 30);
+    hand(s * Math.PI / 30, 310, 4, '#ff7a59', 60);
+    ac.beginPath(); ac.arc(0, 0, 16, 0, 7); ac.fillStyle = '#ff7a59'; ac.fill();
+    ac.beginPath(); ac.arc(0, 0, 6, 0, 7); ac.fillStyle = '#fff'; ac.fill();
+  }
+  requestAnimationFrame(drawAnalog);
+}
+drawAnalog();
+
+// ----- Weather (Open-Meteo, no key needed) -----
+function wx(c) {
+  if (c === 0) return ['☀️', 'Clear'];
+  if (c <= 2) return ['⛅', 'Partly cloudy'];
+  if (c === 3) return ['☁️', 'Cloudy'];
+  if (c <= 48) return ['🌫️', 'Fog'];
+  if (c <= 57) return ['🌦️', 'Drizzle'];
+  if (c <= 67) return ['🌧️', 'Rain'];
+  if (c <= 77) return ['❄️', 'Snow'];
+  if (c <= 82) return ['🌦️', 'Showers'];
+  return ['⛈️', 'Thunderstorm'];
+}
+var wLast = 0;
+function loadWeather() {
+  $('wCity').textContent = CITY.name;
+  if (Date.now() - wLast < 15 * 60 * 1000) return;
+  var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + CITY.lat + '&longitude=' + CITY.lon +
+    '&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m' +
+    '&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=5';
+  fetch(url).then(function (r) { return r.json(); }).then(function (j) {
+    var c = j.current, w = wx(c.weather_code);
+    $('wIc').textContent = w[0];
+    $('wTemp').textContent = Math.round(c.temperature_2m) + '°';
+    $('wDesc').textContent = w[1];
+    $('wExtra').textContent = 'Humidity ' + c.relative_humidity_2m + '%  ·  Wind ' + Math.round(c.wind_speed_10m) + ' km/h';
+    var h = '';
+    for (var i = 0; i < j.daily.time.length; i++) {
+      var dw = wx(j.daily.weather_code[i]), dd = new Date(j.daily.time[i] + 'T12:00:00');
+      h += '<div class="day">' + (i === 0 ? 'Today' : DAYS[dd.getDay()].slice(0, 3)) +
+        '<div class="ic">' + dw[0] + '</div>' + Math.round(j.daily.temperature_2m_max[i]) + '° / ' +
+        Math.round(j.daily.temperature_2m_min[i]) + '°</div>';
+    }
+    $('days').innerHTML = h;
+    wLast = Date.now();
+  }).catch(function () {
+    $('wDesc').textContent = 'Could not load weather. Check the TV internet connection.';
+  });
+}
+
+// ----- Photos (random photos from picsum.photos) -----
+var pA = $('pA'), pB = $('pB'), pFront = pA, pTimer, pN = 0;
+function nextPhoto() {
+  var back = pFront === pA ? pB : pA;
+  back.onload = function () {
+    back.style.opacity = 1; pFront.style.opacity = 0; pFront = back;
+    $('pmsg').style.display = 'none';
+  };
+  back.onerror = function () {
+    $('pmsg').style.display = 'block';
+    $('pmsg').textContent = 'Could not load photos. Check the TV internet connection.';
+  };
+  back.src = 'https://picsum.photos/1920/1080?random=' + (++pN) + '&t=' + Date.now();
+}
+
+// ----- Game: Snake -----
+var cv = $('cv'), cx = cv.getContext('2d'), CELL = 50, GW = 32, GH = 18;
+var snake, dir, nextDir, food, score, over, gTimer, best = 0;
+try { best = +localStorage.getItem('best') || 0; } catch (x) {}
+function gStart() {
+  snake = [{x: 8, y: 9}, {x: 7, y: 9}, {x: 6, y: 9}];
+  dir = nextDir = {x: 1, y: 0}; score = 0; over = false;
+  placeFood(); clearInterval(gTimer); gTimer = setInterval(step, 130); draw();
+}
+function hits(p) { for (var i = 0; i < snake.length; i++) if (snake[i].x === p.x && snake[i].y === p.y) return true; return false; }
+function placeFood() { do { food = {x: Math.floor(Math.random() * GW), y: Math.floor(Math.random() * GH)}; } while (hits(food)); }
+function step() {
+  dir = nextDir;
+  var h = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
+  if (h.x < 0 || h.y < 0 || h.x >= GW || h.y >= GH || hits(h)) {
+    over = true; clearInterval(gTimer);
+    if (score > best) { best = score; try { localStorage.setItem('best', best); } catch (x) {} }
+    draw(); return;
+  }
+  snake.unshift(h);
+  if (h.x === food.x && h.y === food.y) { score++; placeFood(); } else snake.pop();
+  draw();
+}
+function gameKey(k) {
+  var m = {37: [-1, 0], 38: [0, -1], 39: [1, 0], 40: [0, 1]}[k];
+  if (m && !over) { if (!(m[0] === -dir.x && m[1] === -dir.y)) nextDir = {x: m[0], y: m[1]}; }
+  else if (k === 13 && over) gStart();
+}
+function draw() {
+  cx.fillStyle = '#141b33'; cx.fillRect(0, 0, cv.width, cv.height);
+  cx.fillStyle = '#ff5a5f';
+  cx.beginPath(); cx.arc(food.x * CELL + 25, food.y * CELL + 25, 20, 0, 7); cx.fill();
+  for (var i = 0; i < snake.length; i++) {
+    cx.fillStyle = i === 0 ? '#7dffb0' : '#3ccf7a';
+    cx.fillRect(snake[i].x * CELL + 3, snake[i].y * CELL + 3, CELL - 6, CELL - 6);
+  }
+  $('gScore').textContent = 'Score ' + score + '   ·   Best ' + best + '   ·   Arrows to move, Back for menu';
+  if (over) {
+    cx.fillStyle = 'rgba(0,0,0,.6)'; cx.fillRect(0, 0, cv.width, cv.height);
+    cx.fillStyle = '#fff'; cx.textAlign = 'center';
+    cx.font = '100px sans-serif'; cx.fillText('Game over', 800, 420);
+    cx.font = '48px sans-serif'; cx.fillText('Press OK to play again', 800, 520);
+  }
+}
+
+setFocus(0);
+</script>
+</body>
+</html>
