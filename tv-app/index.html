@@ -12,15 +12,15 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
 .hint{position:absolute;bottom:40px;width:100%;text-align:center;font-size:28px;opacity:.45}
 
 /* ---------- Home ---------- */
-#home{background:radial-gradient(ellipse at 50% 0%,#151a26 0%,#050608 70%)}
+#home{background:#08090c}
 #home h1{font-size:80px;font-weight:300;text-align:center;margin-top:80px;letter-spacing:4px}
 #home .sub{font-size:34px;text-align:center;opacity:.6;margin-top:14px}
 #tiles{display:flex;flex-wrap:wrap;justify-content:center;width:1480px;margin:60px auto 0}
 #homeRadio{position:absolute;top:54px;left:80px;font-size:34px;color:#7dffb0;opacity:.9}
-.tile{width:320px;height:250px;margin:20px;border-radius:36px;background:rgba(255,255,255,.05);border:5px solid rgba(255,255,255,.06);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:44px;transition:transform .15s,background .15s,border-color .15s}
+.tile{width:320px;height:250px;margin:20px;border-radius:36px;background:#121419;border:5px solid #181a20;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:44px;}
 .tile{font-size:38px}
 .tile .ic{font-size:96px;margin-bottom:14px}
-.tile.f{transform:scale(1.1);background:rgba(255,255,255,.13);border-color:#e8e8e8}
+.tile.f{background:#23262e;border-color:#e8e8e8}
 
 /* ---------- Clock ---------- */
 #cc{position:absolute;top:0;left:0}
@@ -30,7 +30,7 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
 #cToast span{display:inline-block;padding:18px 44px;border-radius:50px;background:rgba(0,0,0,.6);border:2px solid rgba(255,255,255,.2);font-size:36px}
 #clock .hint{z-index:5}
 /* Big digital */
-#csDigital{background:radial-gradient(ellipse at 50% 40%,#14161d,#040405 75%);text-align:center}
+#csDigital{background:#060608;text-align:center}
 @keyframes bg{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
 #dT{font-size:440px;font-weight:100;margin-top:170px;line-height:1;letter-spacing:-10px}
 #dT small{font-size:120px;letter-spacing:0;opacity:.6;margin-left:20px}
@@ -38,9 +38,9 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
 #dBar div{height:100%;background:linear-gradient(90deg,#6ee7ff,#a78bfa);border-radius:5px}
 #dD{font-size:60px;opacity:.75;margin-top:46px;letter-spacing:2px}
 /* Flip */
-#csFlip{background:radial-gradient(ellipse at 50% 30%,#23232b,#0a0a0d 75%)}
+#csFlip{background:#0b0b0e}
 #fRow{position:absolute;top:250px;width:100%;display:flex;justify-content:center;align-items:center}
-.fc{position:relative;width:250px;height:360px;margin:0 10px;border-radius:26px;background:linear-gradient(#2c2c33 50%,#232329 50%);box-shadow:0 20px 50px rgba(0,0,0,.6);font-size:300px;font-weight:600;line-height:360px;text-align:center;color:#f2f2f2;overflow:hidden}
+.fc{position:relative;width:250px;height:360px;margin:0 10px;border-radius:26px;background:linear-gradient(#2c2c33 50%,#232329 50%);font-size:300px;font-weight:600;line-height:360px;text-align:center;color:#f2f2f2;overflow:hidden}
 .fc:after{content:'';position:absolute;left:0;top:179px;width:100%;height:3px;background:#0a0a0d}
 .fc.flip{animation:flip .45s ease}
 @keyframes flip{0%{transform:rotateX(0)}50%{transform:rotateX(90deg)}100%{transform:rotateX(0)}}
@@ -55,7 +55,7 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
 #wHead{position:absolute;top:44px;left:80px;font-size:52px;font-weight:300}
 #wHead small{font-size:34px;opacity:.6;margin-left:20px}
 #wClock{position:absolute;top:50px;right:80px;font-size:44px;opacity:.85}
-.card{position:absolute;background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.08);border-radius:30px}
+.card{position:absolute;background:#111317;border:2px solid #1a1d23;border-radius:30px}
 #wHero{left:80px;top:140px;width:680px;height:420px;padding:36px 44px}
 #wHero .ic{position:absolute;right:40px;top:30px;font-size:170px}
 #wHero .temp{font-size:200px;font-weight:200;line-height:1;margin-top:10px}
@@ -93,11 +93,11 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
 .ptitle small{font-size:32px;opacity:.55;margin-left:20px}
 
 /* ---------- My Apps ---------- */
-#apps{background:radial-gradient(ellipse at 50% 0%,#151a26 0%,#050608 70%)}
+#apps{background:#08090c}
 #appGrid{position:absolute;top:200px;left:0;width:1920px;display:flex;flex-wrap:wrap;justify-content:center}
-.app{width:480px;height:290px;margin:26px;border-radius:34px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:44px;border:6px solid transparent;transition:transform .15s,border-color .15s;box-shadow:0 20px 50px rgba(0,0,0,.5)}
+.app{width:480px;height:290px;margin:26px;border-radius:34px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:44px;border:6px solid transparent}
 .app .lg{font-size:100px;font-weight:700;margin-bottom:12px;line-height:1.1}
-.app.f{transform:scale(1.08);border-color:#fff}
+.app.f{border-color:#fff}
 
 /* ---------- Currency ---------- */
 #money{background:#06070a}
@@ -115,7 +115,7 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
 #mMsg{position:absolute;top:500px;width:100%;text-align:center;font-size:46px;display:none}
 
 /* ---------- Radio ---------- */
-#radio{background:radial-gradient(ellipse at 30% 10%,#17131f 0%,#050507 70%)}
+#radio{background:#08080b}
 #rCats{position:absolute;left:80px;top:170px;width:400px}
 .rc{font-size:40px;padding:20px 30px;border-radius:20px;margin-bottom:10px;opacity:.55}
 .rc.sel{background:rgba(255,255,255,.1);opacity:1}
@@ -136,7 +136,7 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#07090f;color:#f
 #rMsg{position:absolute;left:530px;top:400px;width:1310px;text-align:center;font-size:42px;opacity:.7}
 
 /* ---------- Phone remote ---------- */
-#remote{background:radial-gradient(ellipse at 50% 0%,#151a26 0%,#050608 70%)}
+#remote{background:#08090c}
 #qr{position:absolute;left:180px;top:210px;width:540px;height:540px;background:#fff;border-radius:34px;padding:30px}
 #qr img{width:480px;height:480px}
 #rmInfo{position:absolute;left:820px;top:220px;width:980px;font-size:44px;line-height:1.55}
@@ -572,7 +572,7 @@ function aqiLevel(a) {
 }
 function hhmm(iso) { var h = +iso.slice(11, 13), m = iso.slice(14, 16); return h12 ? (h % 12 || 12) + ':' + m + ' ' + (h < 12 ? 'AM' : 'PM') : pad(h) + ':' + m; }
 
-var wData = null, aqData = null, wCache = {}, wErr = false;
+var wData = null, aqData = null, wCache = {}, wErr = false, wDrawn = null, aqDrawn = null;
 function clearWeather() {
   var ids = ['wIc', 'wTemp', 'wDesc', 'wFeel', 'wGrid', 'wHourly', 'wDaily'];
   for (var i = 0; i < ids.length; i++) $(ids[i]).innerHTML = '';
@@ -612,6 +612,8 @@ function stat(x, y, label, value, sub) {
 }
 function renderWeather() {
   $('wHead').innerHTML = CITY.name + '<small>' + CITY.country + '  ·  ' + dateText(new Date()) + '</small>';
+  if (wData && wData === wDrawn && aqData === aqDrawn) return;
+  wDrawn = wData; aqDrawn = aqData;
   if (!wData) { $('wMsg').textContent = wErr ? 'Could not load weather. Check the TV internet connection.' : 'Loading weather for ' + CITY.name + '…'; $('wMsg').style.display = 'block'; return; }
   $('wMsg').style.display = 'none';
   var c = wData.current, h = wData.hourly, dl = wData.daily, w = wx(c.weather_code, c.is_day);
